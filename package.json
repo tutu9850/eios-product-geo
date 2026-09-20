@@ -1,0 +1,12 @@
+{
+  "name": "eios-product-geo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build:ui": "npm run build --workspace @eios-product/geo",
+    "typecheck:ui": "npm run typecheck --workspace @eios-product/geo"
+  }
+}

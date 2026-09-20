@@ -1,0 +1,91 @@
+import { AutoConfigFlow } from './AutoConfigFlow'
+import { GeoActionPlanCard } from './GeoActionPlanCard'
+import { GeoAssetsListCard } from './GeoAssetsListCard'
+import { GeoCognitionCard } from './GeoCognitionCard'
+import { GeoContentGenForm } from './GeoContentGenForm'
+import { GeoGapsListCard } from './GeoGapsListCard'
+import { GeoMonitorObjectsCard } from './GeoMonitorObjectsCard'
+import { GeoMonitorReportCard } from './GeoMonitorReportCard'
+import { GeoPlansListCard } from './GeoPlansListCard'
+import { GeoQuestionsListCard } from './GeoQuestionsListCard'
+import { GeoReportCard } from './GeoReportCard'
+import { GeoCardErrorBoundary } from './shared'
+
+export type GeoFlowKind =
+  | 'auto-config'
+  | 'monitor'
+  | 'assets'
+  | 'questions'
+  | 'gaps'
+  | 'cognition'
+  | 'content'
+  | 'report'
+  | 'plans'
+  | 'action-plan'
+
+/** 触发词 → GEO 功能（前端硬匹配，命中即出固定卡片，不发给 agent） */
+export function matchGeoTrigger(text: string): GeoFlowKind | null {
+  const t = text.trim()
+  if (!t) return null
+  if (/(自动配置|开始配置|帮我配置好)/.test(t)) return 'auto-config'
+  if (/(监测|定时任务)/.test(t)) return 'monitor'
+  if (/(内容资产|素材库|素材)/.test(t)) return 'assets'
+  if (/(问题池|客户问题|什么问题)/.test(t)) return 'questions'
+  if (/(知识缺口|缺口)/.test(t)) return 'gaps'
+  if (/(认知评估|认知)/.test(t)) return 'cognition'
+  if (/(内容生成|生成内容|写内容|写文章|写一篇)/.test(t)) return 'content'
+  if (/(阶段报告|^报告|周报|月报)/.test(t)) return 'report'
+  if (/(内容计划|计划)/.test(t)) return 'plans'
+  if (/(行动计划|行动|30天|三十天)/.test(t)) return 'action-plan'
+  return null
+}
+
+/** GEO 功能菜单（上拉菜单列项：名字 + 图标，不写说明） */
+export const GEO_FLOW_MENU: Array<{ kind: GeoFlowKind; icon: string; label: string }> = [
+  { kind: 'auto-config', icon: '⚙️', label: '自动配置' },
+  { kind: 'monitor', icon: '📡', label: '监测' },
+  { kind: 'questions', icon: '🗂', label: '问题池' },
+  { kind: 'gaps', icon: '🧩', label: '知识缺口' },
+  { kind: 'plans', icon: '📝', label: '内容计划' },
+  { kind: 'assets', icon: '📚', label: '内容资产' },
+  { kind: 'cognition', icon: '🧠', label: 'AI 认知' },
+  { kind: 'content', icon: '✍️', label: '内容生成' },
+  { kind: 'report', icon: '📄', label: '阶段报告' },
+  { kind: 'action-plan', icon: '📋', label: '行动计划' },
+]
+
+/** GEO 固定功能卡片路由器：按触发类型渲染对应组件 */
+export function GeoFlowRouter({ kind, onClose }: { kind: GeoFlowKind; onClose?: (kind: GeoFlowKind) => void }) {
+  switch (kind) {
+    case 'auto-config':
+      return <AutoConfigFlow onClose={onClose ? () => onClose('auto-config') : undefined} />
+    case 'monitor':
+      // 监测 = 两卡并排：监测对象+定时任务 ｜ 监测报告
+      return (
+        <div className="flex flex-wrap gap-2">
+          <GeoCardErrorBoundary label="监测对象">
+            <GeoMonitorObjectsCard />
+          </GeoCardErrorBoundary>
+          <GeoCardErrorBoundary label="监测报告">
+            <GeoMonitorReportCard />
+          </GeoCardErrorBoundary>
+        </div>
+      )
+    case 'assets':
+      return <GeoAssetsListCard />
+    case 'questions':
+      return <GeoQuestionsListCard />
+    case 'gaps':
+      return <GeoGapsListCard />
+    case 'cognition':
+      return <GeoCognitionCard />
+    case 'content':
+      return <GeoContentGenForm />
+    case 'report':
+      return <GeoReportCard />
+    case 'action-plan':
+      return <GeoActionPlanCard />
+    case 'plans':
+      return <GeoPlansListCard />
+  }
+}

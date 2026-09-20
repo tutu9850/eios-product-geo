@@ -1,0 +1,82 @@
+/* Yayu 设计 token：所有原始色值、字体、圆角、阴影只在这里定义。
+ * 业务代码只允许引用语义 token（bg-surface / text-muted / bg-accent 等）。
+ * 想整体换肤：只改这个文件即可；想改组件形态：改 packages/ui/src/components/*.tsx 里的 cva recipe。
+ * 设计方向：Cyber-Noir 深色指挥台（参考 StoryClaw）——近黑分层表面 + 1px 发光描边 + 荧光青柠 accent。 */
+
+:root {
+  --yayu-background: #fafaf8;
+  --yayu-surface: #ffffff;
+  --yayu-surface-raised: #f4f4f1;
+  --yayu-sidebar: #f6f6f2;
+  --yayu-input: #ffffff;
+  --yayu-border: #e5e4e0;
+  --yayu-border-strong: #d3d2cc;
+  --yayu-foreground: #1a1a18;
+  --yayu-muted: #6e6e69;
+  --yayu-faint: #9a9a94;
+  --yayu-accent: #5f8000;
+  --yayu-accent-hover: #547200;
+  --yayu-on-accent: #ffffff;
+  --yayu-accent-soft: #eef5d8;
+  --yayu-success: #1f7a45;
+  --yayu-warning: #9a6a00;
+  --yayu-danger: #c2413d;
+  --yayu-info: #2563ab;
+  --yayu-on-danger: #ffffff;
+  --yayu-on-info: #ffffff;
+  --yayu-running: #1f9d5d;
+  --yayu-waiting: #b07b00;
+  --yayu-failed: #d3453f;
+  --yayu-idle: #8a8a85;
+
+  /* 层级与质感 */
+  --yayu-overlay: rgba(15, 15, 15, 0.55);
+  --yayu-glass: rgba(255, 255, 255, 0.78);
+  --yayu-shadow-card: 0 1px 2px rgba(20, 20, 18, 0.06);
+  --yayu-shadow-popover: 0 12px 32px rgba(20, 20, 18, 0.14);
+  --yayu-glow-accent: 0 0 0 1px rgba(95, 128, 0, 0.28), 0 0 24px rgba(95, 128, 0, 0.2);
+
+  /* 圆角：soft-tech，避免全圆，也不锋利 */
+  --yayu-radius-sm: 0.375rem;
+  --yayu-radius-md: 0.5rem;
+  --yayu-radius-lg: 0.75rem;
+  --yayu-radius-xl: 1rem;
+  --yayu-radius-2xl: 1.5rem;
+
+  --yayu-font-sans: "Inter", "PingFang SC", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+  --yayu-font-display: "Hanken Grotesk", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
+  --yayu-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+.dark {
+  --yayu-background: #0a0a0a;
+  --yayu-surface: #131313;
+  --yayu-surface-raised: #1b1b1b;
+  --yayu-sidebar: #0e0e0e;
+  --yayu-input: #1a1a1a;
+  --yayu-border: #262626;
+  --yayu-border-strong: #343434;
+  --yayu-foreground: #ededed;
+  --yayu-muted: #a1a1aa;
+  --yayu-faint: #7a7a82;
+  --yayu-accent: #d4ff00;
+  --yayu-accent-hover: #bce600;
+  --yayu-on-accent: #101500;
+  --yayu-accent-soft: #1c2600;
+  --yayu-success: #4cbf7d;
+  --yayu-warning: #d9a441;
+  --yayu-danger: #f0716b;
+  --yayu-info: #6aa7e8;
+  --yayu-on-danger: #2b0707;
+  --yayu-on-info: #0a0a0a;
+  --yayu-running: #4cbf7d;
+  --yayu-waiting: #d9a441;
+  --yayu-failed: #f0716b;
+  --yayu-idle: #8a8a85;
+
+  --yayu-overlay: rgba(0, 0, 0, 0.65);
+  --yayu-glass: rgba(19, 19, 19, 0.72);
+  --yayu-shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --yayu-shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.55);
+  --yayu-glow-accent: 0 0 0 1px rgba(212, 255, 0, 0.3), 0 0 24px rgba(212, 255, 0, 0.16);
+}

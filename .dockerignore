@@ -1,0 +1,22 @@
+# Docker 构建上下文：只给 docker/Dockerfile 用到的代码。
+.git
+.cursor
+.DS_Store
+*.log
+.venv
+venv
+__pycache__
+*.pyc
+*.egg-info
+apps/data
+apps/storage
+geo_storage
+geo.db
+geo.db-*
+.env
+*.env
+!*.env.example
+logs
+.pytest_cache
+.idea
+.vscode

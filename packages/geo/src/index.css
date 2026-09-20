@@ -1,0 +1,29 @@
+@import "@fontsource-variable/inter";
+@import "tailwindcss" source("../..");
+@import "@yayu/ui/theme.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-background: var(--yayu-background);
+  --color-surface: var(--yayu-surface);
+  --color-surface-raised: var(--yayu-surface-raised);
+  --color-input: var(--yayu-input);
+  --color-border: var(--yayu-border);
+  --color-foreground: var(--yayu-foreground);
+  --color-muted: var(--yayu-muted);
+  --color-faint: var(--yayu-faint);
+  --color-accent: var(--yayu-accent);
+  --color-success: var(--yayu-success);
+  --color-warning: var(--yayu-warning);
+  --color-danger: var(--yayu-danger);
+  --radius-md: var(--yayu-radius-md);
+  --radius-xl: var(--yayu-radius-xl);
+  --font-sans: var(--yayu-font-sans);
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root { min-height: 100%; }
+  body { @apply m-0 bg-background font-sans text-foreground; }
+}

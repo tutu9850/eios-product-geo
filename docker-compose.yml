@@ -1,0 +1,25 @@
+# EIOS GEO 单仓开发用。全家桶请用 /Users/tutu/eios-all/docker-compose.yml，不要两边一起起。
+# 同时跑会拆到 eios-geo_default，3001 解析不到 geo 主机名 → 老板屏空数据。
+# 用法（仅单仓调试）: docker compose up -d --build && curl localhost:3002/api/v1/monitor/overview
+services:
+  geo:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: eios-geo
+    restart: always
+    ports:
+      - "3002:3002"
+    env_file:
+      - apps/api/.env
+    environment:
+      # S1 修复（2026-08-19）：apps/api/.env 的 GEO_DB_PATH=apps/data/geo.db 是相对路径，
+      # 容器 cwd=/app/apps/api 解析到不存在的目录 → 数据库全炸。显式覆盖为卷内绝对路径
+      #（与 Dockerfile ENV 一致），数据落 geo_storage 卷，重建容器不丢。
+      - GEO_DB_PATH=/app/geo_storage/geo.db
+    volumes:
+      # 与 Dockerfile ENV(GEO_DB_PATH=/app/geo_storage/geo.db) 对齐——之前挂 /app/storage 路径不匹配导致 DB 打不开
+      - geo_storage:/app/geo_storage
+
+volumes:
+  geo_storage:

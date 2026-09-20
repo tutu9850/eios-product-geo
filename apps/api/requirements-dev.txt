@@ -1,0 +1,4 @@
+# 后端测试用（运行依赖在 requirements.txt）。legacy 仓把 pytest 装在 venv 里但没有登记，
+# 这里补上，避免「换台机器就跑不了测试」。
+-r requirements.txt
+pytest
