@@ -167,6 +167,33 @@ def _product_route_patterns() -> list[tuple[str, str]]:
     return list(door._PRODUCT_ROUTES)
 
 
+def test_report_pdf_route_is_admitted_and_owned_by_the_legacy_use_case(product_door):
+    """周期报告 PDF（Owner 2026-09-21 拍板加入白名单）。
+
+    老 v1 的 PDF handler 在「暂无报告」时回 **HTTP 200 + JSON**，不是文件。产品门只做
+    路径适配，所以「有没有报告」这件事由老 handler 如实说，门不替它编一个空 PDF。
+    """
+    assert (
+        map_product_path("GET", "/intelligence/reports/latest/pdf")
+        == "/api/v1/intelligence/reports/latest/pdf"
+    )
+    # 老 handler 直连 SQLAlchemy 读报告表，不等同于建表（线上库一直有表）。测试库是空的，
+    # 这里先建表，才是在验「门放行了这条路由」，而不是在验空库上的 500。
+    from app.models.geo_models import init_db
+
+    init_db()
+    legacy = product_door.get("/api/v1/intelligence/reports/latest/pdf")
+    through_door = product_door.get(f"{PRODUCT_DOOR_PREFIX}/intelligence/reports/latest/pdf")
+    assert through_door.status_code == legacy.status_code
+    if legacy.headers.get("content-type", "").startswith("application/pdf"):
+        assert through_door.headers["content-type"].startswith("application/pdf")
+        assert through_door.content[:4] == b"%PDF"
+    else:
+        # 「暂无报告」时老 handler 回 200 + JSON envelope；request_id 每次不同，逐字段比。
+        assert through_door.json()["ok"] is False
+        assert through_door.json()["error"] == legacy.json()["error"]
+
+
 def test_path_mapping_is_a_prefix_adapter():
     assert map_product_path("GET", "/monitor/items") == "/api/v1/monitor/items"
     assert map_product_path("post", "/distill/gaps") == "/api/v1/distill/gaps"

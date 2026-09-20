@@ -32,7 +32,7 @@ def test_baseline_mode_blocks_primary_external_adapters(monkeypatch):
     from app.runtime.mode import OutboundNetworkBlocked
 
     monkeypatch.setenv("GEO_RUNTIME_MODE", "baseline")
-    with pytest.raises(OutboundNetworkBlocked, match="legacy_kernel"):
+    with pytest.raises(OutboundNetworkBlocked, match="eios_knowledge"):
         asyncio.run(_request("GET", "/never"))
     with pytest.raises(OutboundNetworkBlocked, match="llm"):
         asyncio.run(chat("never"))

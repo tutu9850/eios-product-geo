@@ -1,11 +1,12 @@
-"""GEO 服务配置 — 从 apps/api/.env 读取"""
+"""GEO 服务配置 —— 从**部署环境**读取，不读 GEO 自己的 .env。
+
+Owner 2026-09-21：「GEO 不保留 Builder / .env / 自己的模型 Key。」
+原来这里有 ``load_dotenv(apps/api/.env)``：那是「GEO 本地还有一份配置真相」的入口，
+而它最容易装的东西恰好是模型 key（``DEEPSEEK_API_KEY`` 之流）。已删除 —— 删掉之后
+本进程只能看到部署给它的环境，与「所有产品通过 EIOS 的统一模型入口调用模型」一致。
+"""
 import os
 from pathlib import Path
-
-from dotenv import load_dotenv
-
-_APP_DIR = Path(__file__).resolve().parents[2]  # apps/api
-load_dotenv(_APP_DIR / ".env")
 
 # 国内 6 引擎（OpenAI 兼容；model 为各引擎默认对话模型，P0 实测用）
 # web: 联网搜索参数（None = 该平台 API 不支持联网，如实标注不冒充）
@@ -47,13 +48,10 @@ KERNEL_API_URL = os.environ.get("KERNEL_API_URL", "http://localhost:8000")
 # Kernel 企业知识租户（≠ GEO 部门柜）。入驻读实体走这里，避免把部门名当成 Kernel tenant 抽空。
 KERNEL_TENANT_ID = os.environ.get("KERNEL_TENANT_ID", "tenant_corp_01")
 
-# LLM（内容生成用，OpenAI 兼容：DeepSeek 官方或任意兼容端点）
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com/v1")
-LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-chat")
-
-# GEO 模型配置来源：优先从 Builder 设置（db.json geoModel）拉取，拿不到才回退 .env
-BUILDER_GEO_MODEL_URL = os.environ.get("BUILDER_GEO_MODEL_URL", "http://localhost:3001/api/geo/model")
+# 内容生成模型（`adapters/llm.py`）**不在这里配置**：Owner 2026-09-21
+#「GEO 不保留 Builder / .env / 自己的模型 Key」「Model Capability 必须成为所有产品统一
+# 调用模型的唯一正规入口」。原来那三行（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL）与
+# BUILDER_GEO_MODEL_URL 已删除 —— 它们既是死代码，也是同一件事的第二份答案。
 
 # GEO 引擎 Key 来源：优先从 Builder 配置中心（db.json geoEngineKeys）拉取，拿不到才回退 .env
 BUILDER_GEO_ENGINES_URL = os.environ.get("BUILDER_GEO_ENGINES_URL", "http://localhost:3001/api/geo/engines-config")

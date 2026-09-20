@@ -1,4 +1,5 @@
 """EIOS GEO 服务入口（P0 空壳）"""
+import os
 import sys
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from app.api.v1 import (
     distill,
     enterprise_profile,
     export,
+    geo_consumer,
     health,
     intelligence,
     keywords,
@@ -33,6 +35,7 @@ from app.api.v1 import (
 )
 from app.api.v2 import product_monitor
 from app.core.envelope import err
+from app.product.consumer_auth import ConsumerAuthError
 from app.product.door import ProductDoorMiddleware
 from app.product.http_auth import (
     ProductAuthenticationError,
@@ -80,6 +83,7 @@ async def _startup():
     from app.product.runtime.lifecycle import start_product_database
     from app.runtime.mode import is_baseline_mode
 
+    _compose_consumer_policy()
     start_product_database(app)
 
     # Baseline mode is intentionally inert: it exists to capture deterministic
@@ -107,6 +111,32 @@ async def _startup():
         print(f"[main] intelligence recover 失败（不影响服务）: {exc}")
 
 
+def _compose_consumer_policy() -> None:
+    """只读交接面的策略（Owner 2026-09-21「正式 PDP 声明 geo.knowledge.read」）。
+
+    PDP **只由部署声明决定**（``EIOS_PDP_MODE``，基座 ``configured_policy_decision_point``）：
+    ``deployment_reads`` + ``EIOS_PDP_BUSINESS_READERS`` / ``EIOS_PDP_BUSINESS_SCOPES`` 是正式路线；
+    没声明（或声明残缺）→ ``FailClosedPolicyDecisionPoint`` → 消费面 503，不会变成空 allow-list。
+    dev 的 ``development_allow`` 是显式的本机替身，响应里会如实报成 ``development_allow``。
+
+    组合失败也不许把面留成「没有策略」以外的样子：这里只如实打印，面的判定仍然 fail-closed
+    （``consumer_auth`` 对 ``consumer_pdp is None`` 回 503）。
+    """
+    try:
+        from eios_policy import configured_policy_decision_point, policy_enforcement_mode
+    except ImportError as exc:
+        print(f"[main] eios_policy 不可用，消费面 fail-closed（503）: {exc}")
+        return
+    environment = os.environ.get("EIOS_ENVIRONMENT", "production")
+    pdp = configured_policy_decision_point(environment=environment)
+    app.state.consumer_pdp = pdp
+    app.state.consumer_policy_enforcement = policy_enforcement_mode(pdp)
+    print(
+        "[main] consumer PDP composed: "
+        f"{type(pdp).__name__} enforcement={app.state.consumer_policy_enforcement}"
+    )
+
+
 @app.on_event("shutdown")
 async def _shutdown():
     from app.product.runtime.lifecycle import stop_product_database
@@ -130,9 +160,20 @@ for r in (health.router, meta.router, monitor.router, collect.router,
           intelligence.router, enterprise_profile.router):
     app.include_router(r)
 
+# 只读交接面（Owner 2026-09-20）：别的产品（顾问）按验签过的 AuthContext 读 GEO 自己的库。
+# 它自带身份门（app.product.consumer_auth），不等于 GEO 自己的产品门，也不受
+# GEO_PRODUCT_DOOR / GEO_AUTH_MODE 影响 —— 关掉产品门不会把这个面一起关掉，反之亦然。
+app.include_router(geo_consumer.router)
+
 # V2 is a product-owned strict path.  It has no legacy Store, tenant header,
 # or Kernel dependency, and only works in auth_context + postgres mode.
 app.include_router(product_monitor.router)
+
+
+@app.exception_handler(ConsumerAuthError)
+async def consumer_auth_failed(_request, exc: ConsumerAuthError):
+    """消费方的身份问题按它自己的状态码回答，不伪装成 500。"""
+    return JSONResponse(status_code=exc.status_code, content=err(exc.code, exc.message))
 
 
 @app.exception_handler(Exception)

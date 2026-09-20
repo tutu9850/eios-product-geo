@@ -99,6 +99,28 @@ export async function geoPatch<T>(path: string, body?: unknown): Promise<T> {
   return j.data as T
 }
 
+/**
+ * 下载二进制产物（周期报告 PDF）：走同一个 geoApiBase、同一张会话票。
+ *
+ * 为什么要看 content-type 而不是只看状态码：老 v1 的 PDF 路由在「暂无报告」时
+ * 是 **HTTP 200 + JSON** `{ok:false,error}`。只信状态码就会把那段 JSON 当成分存成
+ * `.pdf`，用户拿到一个打不开的文件还以为是报告。不是 `application/pdf` 就不是产物，
+ * 如实把原因说出来。
+ */
+export async function geoDownload(path: string): Promise<Blob> {
+  const r = await fetch(`${geoApiBase}${path}`, { headers: geoHeaders() })
+  const contentType = r.headers.get('content-type') ?? ''
+  if (r.ok && contentType.toLowerCase().includes('application/pdf')) {
+    return r.blob()
+  }
+  const j = await r.json().catch(() => null)
+  if (r.status === 401) onProductSessionExpired?.()
+  if (j?.error || j?.message || j?.detail) geoFail(r.status, j)
+  throw new Error(
+    `GEO 没有返回可下载的文件（HTTP ${r.status}，content-type=${contentType || '无'}）`,
+  )
+}
+
 /** PUT（素材更新/发布打点等，S4） */
 export async function geoPut<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(`${geoApiBase}${path}`, {
@@ -224,10 +246,26 @@ export interface GeoMaterial {
   published_url?: string // S4 打点：已发布 URL
 }
 
+export interface GeoKnowledgeReadiness {
+  source: string
+  authoritative: boolean
+  read_ever: boolean
+  snapshot_count: number
+  objects_seen: number
+  documents_seen: number
+  kinds: Record<string, number>
+  last_read_at: string | null
+  note: string
+}
+
 export interface GeoOnboardStatus {
   empty: boolean
   items: number
   questions: number
+  /** GEO 自己的素材库（geo_kb）条目数；不是监测对象数 */
+  materials?: number
+  /** 企业知识库读到的快照概况（GEO 只读知识库，读到的留在自己库里） */
+  knowledge?: GeoKnowledgeReadiness
 }
 
 export interface GeoDetectResult {
@@ -238,6 +276,11 @@ export interface GeoDetectResult {
   industry: string
   keywords: string[]
   empty: boolean
+  /** 读知识库失败时非空：「读不到」不等于「知识库是空的」 */
+  error?: string | null
+  /** llm = 模型归类；heuristic = 名称规则兜底（模型未配置时） */
+  classification_source?: string | null
+  hint?: string | null
 }
 
 export interface GeoDiscoverResult {

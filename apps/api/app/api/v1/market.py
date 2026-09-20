@@ -2,10 +2,12 @@
 
 - 关注列表：竞品域名/行业源 URL（type: website|news|zhihu，徽章区分）
 - 采集：复用 services/collector（httpx + bs4，raw 落盘 geo_collect_raw.json）
-- 信号状态机：raw → extracted（LLM 提取可核验事实）→ confirmed（write_candidate 写 Kernel，仅可核验事实）
-  → planned（记入内容计划）/ ignored
-- 三分法：可核验事实 → Kernel candidate（人工确认）；策略/行业信号 → 仅留 GEO；流水不落
-- 红线：只走既有 Kernel 接口（adapters/eios.py write_candidate）；反爬失败如实报错不编造
+- 信号状态机：raw → extracted（LLM 提取可核验事实）→ confirmed / planned（记入内容计划）/ ignored
+- 三分法：可核验事实 → 留 GEO 自己的库；策略/行业信号 → 仅留 GEO；流水不落
+- 红线（Owner 2026-09-20）：**GEO 不允许写知识库**。原来 confirmed 会调
+  adapters/eios.write_candidate 把事实写回企业知识库，那条路已经封死：本接口现在
+  明确回 AUTHORITY_WRITE_NOT_ALLOWED(403)，不再有写动作，也不再假装写过。
+- 反爬失败如实报错不编造
 """
 import json
 import uuid
@@ -15,7 +17,7 @@ from pathlib import Path
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.core.envelope import ok
+from app.core.envelope import err, ok
 
 router = APIRouter(prefix="/api/v1/market")
 
@@ -159,35 +161,22 @@ async def extract_facts(signal_id: str):
 
 @router.post("/signals/{signal_id}/confirm")
 async def confirm_signal(signal_id: str):
-    """人工确认 → 可核验事实 write_candidate 写 Kernel（永远 candidate）"""
-    from services.collector import _load_raw, set_signal_status
-    from adapters.eios import write_candidate
+    """人工确认信号 —— **不写知识库**（Owner 2026-09-20）。
+
+    外部情报属于 GEO 自己的材料，知识库只由它的治理链写。原来这个端点会把可核验事实
+    经 write_candidate 写回企业知识库，现在整条路封死：直接回 403，说清楚为什么，
+    并且不改信号状态（一半成功一半失败的假象比干脆拒绝更坏）。
+    """
+    from services.collector import _load_raw
 
     signal = next((s for s in _load_raw() if s.get("id") == signal_id), None)
     if not signal:
-        return ok({"error": "信号不存在"})
-    facts = signal.get("facts") or []
-    if not facts:
-        return ok({"error": "该信号还没有提取出事实（先点「提取事实」）"})
-    written = []
-    failed = []
-    for f in facts:
-        parts = [p.strip() for p in f.split("|")]
-        if len(parts) < 3:
-            failed.append({"fact": f, "error": "格式错误"})
-            continue
-        subject, predicate, value = parts[0], parts[1], "|".join(parts[2:])
-        try:
-            # 修复（审计 H4）：write_candidate 成功返回 data dict（无 "ok" 字段），失败抛 KernelError。
-            # 原代码 `resp.get("ok")` 在 data dict 上恒为 None → 所有事实误报 failed（error:"None"），
-            # 且信号永远无法流转到 confirmed。改为「无异常即成功」。
-            await write_candidate(canonical_name=subject[:80], predicate=predicate[:60], value=value[:500])
-            written.append(f)
-        except Exception as exc:  # noqa: BLE001
-            failed.append({"fact": f, "error": str(exc)[:100]})
-    if written:
-        set_signal_status(signal_id, "confirmed")
-    return ok({"written": written, "failed": failed, "signal_id": signal_id})
+        return err("signal_not_found", "信号不存在")
+    return err(
+        "AUTHORITY_WRITE_NOT_ALLOWED",
+        "GEO 不允许写企业知识库：外部情报只留在 GEO 自己的库里，"
+        "知识库由它自己的治理链写入。需要沉淀请走知识库的上传/治理入口。",
+    )
 
 
 @router.post("/signals/{signal_id}/to-plan")

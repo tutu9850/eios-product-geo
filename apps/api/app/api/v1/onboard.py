@@ -88,19 +88,18 @@ def _ent_evidence_count(e) -> int:
 
 
 async def _step_detect():
-    """Kernel 实体 → 按 object_type 分组 → LLM 语义分类（产品/服务/公司/行业/搜索词）
+    """企业知识库 → 候选名单 → LLM 归类（公司/产品/服务/行业/搜索词）
 
-    2026-08-11 改造（用户实测：自家公司识别不出、行业不对）：
-    旧实现把 549 个实体按创建时间截前 120 个让 LLM 猜——真正的公司实体
-    （object_type='company'，如「亚宇臻隆科技」引用 65 次）排在 300+ 位被截掉，
-    前 120 全是职位/外部工具/文件名噪声 → company 空、industry null。
-    新实现：
-    1. 直接用 Kernel 的 object_type 分类：company 类作公司候选，person/department/
-       project/policy 噪声类剔除；
-    2. 公司候选带引用频次（被文档引用最多 = 企业主体）；
-    3. 产品/服务候选 = material/procedure/supplier 等业务类高频实体；
-    4. LLM 顺带挖行业搜索词（keywords）→ create 时建 keyword 对象扩大监测面。
-    兜底：LLM 失败 → company=公司类频次最高，products=业务类高频特征词。
+    2026-09-20 改造（知识源从老 Kernel 换成 EIOS 知识库）：EIOS 的知识对象只有
+    ``entity`` / ``fact`` 两种 type，公司/产品/服务那套分类在 Semantic 不在 Knowledge。
+    所以「按 object_type 分组」这条老路在 EIOS 上恒为空 —— 之前的实现就是这么静默
+    变成「知识库暂无企业资料」的。现在：
+    1. 取企业知识对象（只读，含被引用频次）+ 企业文档标题；
+    2. 候选池 = 出现在文档标题里 / 带公司后缀的 → 公司候选，带产品服务特征词的 → 业务候选；
+    3. LLM 只做「从候选池里挑」，选不出就留空（不允许编造名单外的名字）；
+    4. LLM 顺带补 industry / keywords（见 ④）。
+    兜底：LLM 不可用 → company=公司候选前几名，products=业务候选前几名；
+    知识库确实没有资料 → 空候选 + 提示上传，不编造。
     """
     from adapters.eios import get_entities
 
@@ -108,57 +107,121 @@ async def _step_detect():
     try:
         entities = await get_entities() or []
     except Exception as e:  # noqa: BLE001
+        # 读不到 ≠ 知识库是空的。以前这里把两者混成同一句「知识库暂无企业资料」，
+        # 于是适配层拨空号 / 票签不出来 / 知识库 503 全被显示成「请去上传资料」。
         logger.warning("get_entities failed: %s", e)
+        return {
+            "company": [], "aliases": [], "products": [], "services": [],
+            "industry": None, "keywords": [], "empty": True,
+            "error": str(e)[:300],
+            "hint": f"企业知识库读不到（这不等于知识库是空的）：{str(e)[:200]}",
+        }
 
     if not entities:
         return {
             "company": [], "aliases": [], "products": [], "services": [],
             "industry": None, "keywords": [], "empty": True,
+            "error": None,
             "hint": "知识库暂无企业资料——请先在知识库上传产品说明/公司介绍后重试",
         }
 
-    # ① 按 Kernel 分类分组（entity 对象自带 object_type；None 归入业务候选）
-    company_ents = [e for e in entities if e.get("object_type") == "company"]
-    noise_kinds = {"person", "department", "project", "policy"}
-    biz_ents = [
-        e for e in entities
-        if e.get("object_type") not in noise_kinds and e.get("object_type") != "company"
-    ]
-    # 排序：引用频次降序（自家公司/核心产品被文档引用最多）
-    company_ents.sort(key=_ent_evidence_count, reverse=True)
-    biz_ents.sort(key=_ent_evidence_count, reverse=True)
+    # ① 候选池：EIOS 的知识对象只有 entity / fact 两种 type —— 公司/产品/服务那套分类在
+    #    Semantic，不在 Knowledge。所以这里不再假装按 object_type 分类（老 Kernel 有
+    #    company/product/service 字段，那条路在 EIOS 不存在），改成：
+    #    名称规则 + 被文档引用频次 → 候选池 → 交给 LLM 归类（见 ②）。
+    _COMPANY_SUFFIX = ("公司", "科技", "集团", "工作室", "有限", "研究院", "事务所", "厂", "店")
+    _BIZ_MARK = ("版", "Agent", "OS", "系统", "平台", "终端", "服务", "套餐", "方案", "课程", "产品")
 
-    # ② 候选清单（不再无脑截前 120：公司类全保留，业务类按频次取前 100）
-    company_cands = [_ent_name(e) for e in company_ents if _ent_name(e)][:30]
+    entities = [e for e in entities if e.get("status") != "deprecated"]
+    entities.sort(key=_ent_evidence_count, reverse=True)
+
+    doc_titles: list[str] = []
+    try:
+        from adapters.eios import list_documents
+
+        doc_titles = [str(d.get("title") or "") for d in (await list_documents(limit=50) or [])]
+    except Exception as e:  # noqa: BLE001 — 拿不到文档标题只是少一条公司判据
+        logger.warning("list_documents failed: %s", e)
+
+    def _appears_in_doc_title(name: str) -> bool:
+        # 至少 3 个字：「项目」「回款」「部门」这类通用两字词也出现在文档标题里
+        # （「14_项目信息表」），但它们不是公司名。
+        return bool(name) and len(name) >= 3 and any(name in t for t in doc_titles)
+
+    company_cands: list[str] = []
     biz_names: list[str] = []
-    seen = set()
-    for e in biz_ents:
+    seen: set[str] = set()
+    for e in entities:
+        # fact 对象是「成都演示间 负责 StoryClaw终端」这种整句陈述，不是名称：
+        # 放进候选名单会把句子当产品名显示出来（原来就这么显示的）。
+        if e.get("object_type") == "fact":
+            continue
         n = _ent_name(e)
-        if n and n not in seen and len(n) <= 30:
-            seen.add(n)
-            biz_names.append(n)
-        if len(biz_names) >= 100:
-            break
+        if not n or n in seen or len(n) > 30:
+            continue
+        seen.add(n)
+        # 出现在文档标题里（「08_薪酬制度_亚宇臻隆2026」）或带公司后缀 → 公司候选。
+        # 前者是这套数据里最强的自家公司信号：文档都是这家企业自己的。
+        if _appears_in_doc_title(n) or n.endswith(_COMPANY_SUFFIX):
+            if len(company_cands) < 30:
+                company_cands.append(n)
+            continue
+        if any(m in n for m in _BIZ_MARK) or _ent_evidence_count(e) >= 2:
+            if len(biz_names) < 100:
+                biz_names.append(n)
 
-    # ②.5 优先用 Kernel 的 object_type 分类（2026-08-21 用户拍板：LLM 猜 products/company 不可靠）
-    #     公司=object_type company；产品=object_type product；服务=object_type service（排除 deprecated）。
-    #     LLM 只负责补 industry/keywords（见 ④ 补全调用），不再让它重猜实体分类。
-    def _kind_names(kind: str) -> list[str]:
-        out: list[str] = []
-        for e in entities:
-            if e.get("object_type") == kind and e.get("status") != "deprecated":
-                n = _ent_name(e)
-                if n and n not in out:
-                    out.append(n)
-        return out
-
-    result = {
-        "company": _kind_names("company"),
-        "products": _kind_names("product"),
-        "services": _kind_names("service"),
+    # ② 让 LLM 只做「在给定候选里挑」这一件事 —— EIOS 不给分类，猜必须有边界：
+    #    prompt 里写明只能从名单里选，选不出就留空。失败就退回候选池本身（见下）。
+    result: dict = {
+        "company": company_cands[:10],
+        "products": [],
+        "services": [],
         "industry": None,
         "keywords": [],
+        # 分类是 LLM 挑的还是名称规则兜底的，如实报出来（LLM 未配置时 industry/keywords
+        # 只能是特征词兜底，页面上的数字要能看出这一点）。
+        "classification_source": "heuristic",
     }
+    pool = company_cands[:20] + biz_names[:60]
+    if pool:
+        try:
+            from adapters.llm import chat
+
+            text = await chat(
+                "以下是从这家企业的知识库里抽出来的候选名称（按被文档引用次数排序，"
+                "引用越多越可能是企业主体或核心业务）：\n"
+                f"公司候选：{'、'.join(company_cands[:20]) or '（无）'}\n"
+                f"业务候选：{'、'.join(biz_names[:60]) or '（无）'}\n\n"
+                "请判断并**只从上面的名单里选**（选不出就留空数组，不要编造新名字，不要选客户/竞品）：\n"
+                "- company：这家企业自己的公司名\n"
+                "- products：产品/软件/版本名（如「企业版Agent OS」「GEO+知识库版」）\n"
+                "- services：服务/课程类名\n"
+                '严格 JSON 输出：{"company": [...], "products": [...], "services": [...]}',
+                max_tokens=600,
+            )
+            blob = text.strip()
+            if not blob.startswith("{"):
+                import re as _re
+
+                m = _re.search(r"\{[\s\S]*\}", blob)
+                blob = m.group(0) if m else ""
+            picked = json.loads(blob) if blob else {}
+            allowed = set(pool)
+            for key in ("company", "products", "services"):
+                vals = [
+                    str(x).strip()
+                    for x in (picked.get(key) or [])
+                    if str(x).strip() in allowed
+                ]
+                if vals:
+                    result[key] = vals if key != "company" else vals[:5]
+                    result["classification_source"] = "llm"
+        except Exception as e:  # noqa: BLE001 — LLM 只是归类器，失败不阻塞检测
+            logger.warning("detect classify failed: %s", e)
+    # LLM 没给出产品时的兜底：业务候选里带产品/服务特征词的先上（候选池本身已经筛过）
+    if not result["products"]:
+        result["products"] = biz_names[:10]
+
 
     # 去重 + 跨类互斥 + 自家清洗
     def _dedup(lst):
@@ -232,6 +295,8 @@ async def _step_detect():
         "industry": result["industry"],
         "keywords": kws,
         "empty": not company and not prods and not svcs and not result["industry"],
+        "error": None,
+        "classification_source": result.get("classification_source"),
         "hint": None,
     }
 
@@ -694,13 +759,36 @@ async def _step_distill(cfg: AutoConfigIn):
 # ── 路由 ────────────────────────────────────────────────
 @router.get("/status")
 async def onboard_status():
-    """空态检测：items + questions 全空 → 显示「自动配置」按钮"""
+    """空态检测 + 三种「素材」各有多少（2026-09-20 修正标签错位）。
+
+    历史上这个接口只回 items/questions，前端就把 items（监测对象）当「知识素材」显示 ——
+    于是「企业资料 已就绪 / 知识素材 7 个」说的是监测对象，跟企业资料没关系。
+    现在分开如实报：
+
+    - ``items``        监测对象数（GEO 监测谁）
+    - ``questions``    客户问题池
+    - ``materials``    GEO 自己的素材库（geo_kb）
+    - ``knowledge``    企业知识库读到的快照概况（``app.services.knowledge_snapshot``）。
+      读本地快照表，不去打知识库；``read_ever=false`` 就是「还没读过知识库」，
+      不是「知识库是空的」。
+    """
     items = _load_items()
+    from app.services import knowledge_snapshot
     from app.services.store import get_store
 
-    questions = get_store().load("questions")
+    store = get_store()
+    questions = store.load("questions")
+    materials = store.load("kb")
     empty = len(items) == 0 and len(questions) == 0
-    return ok({"empty": empty, "items": len(items), "questions": len(questions)})
+    return ok(
+        {
+            "empty": empty,
+            "items": len(items),
+            "questions": len(questions),
+            "materials": len(materials),
+            "knowledge": knowledge_snapshot.summary(),
+        }
+    )
 
 
 @router.post("/auto-config")

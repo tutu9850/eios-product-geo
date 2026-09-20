@@ -4,7 +4,7 @@
 本文件由 `apps/api/app/product/door.py` 的冻结清单与实际 `app.openapi()` 路由机械比对生成，
 是「UI 调用 → 产品门 → 老 v1 use case」的唯一口径来源。
 
-## 1. 冻结清单（40 条，全部落在真实 v1 路由上）
+## 1. 冻结清单（41 条，全部落在真实 v1 路由上）
 
 产品门只做路径适配：`/api/product/geo/<rest>` → `/api/v1/<rest>`，业务语义、存储与
 `{ok,data,error}` envelope 完全由老 handler 决定。清单之外一律 404 `GEO_ROUTE_NOT_ALLOWED`，
@@ -52,24 +52,35 @@
 | 38 | `DELETE` | `/api/product/geo/distill/questions/[^/]+` | `/api/v1/distill/questions/{}` | 1 |
 | 39 | `DELETE` | `/api/product/geo/knowledge/materials/[^/]+` | `/api/v1/knowledge/materials/{}` | 1 |
 | 40 | `PUT` | `/api/product/geo/knowledge/materials/[^/]+` | `/api/v1/knowledge/materials/{}` | 1 |
+| 41 | `GET` | `/api/product/geo/intelligence/reports/latest/pdf` | `/api/v1/intelligence/reports/latest/pdf` | 1 |
 
-total: 40 allowlisted routes
+total: 41 allowlisted routes
+
+第 41 条是 2026-09-21 Owner 拍板「3加」加入的：打包 UI 的「导出 PDF 报告」要用它。
+它是本门**唯一**一条 200 响应不是 `{ok,data,error}` envelope 而是文档的路由
+（`eios-product-api` 侧用 `_GEO_DOCUMENT_ACTIONS` 单独声明，只放行 200 + PDF；
+GEO 侧 `_PRODUCT_ROUTES` 只是路径适配，字节原样由老 handler 决定）。
+没有报告时老 handler 回 **200 + JSON** `{ok:false,error}`，门如实透传它 —— 不编空 PDF。
 
 ## 2. 本轮实测结论
 
-- 40/40 条清单路径在 `app.openapi()` 中都能 fullmatch 到唯一一条 `/api/v1/*` 路由（本表 `v1 matches` 全为 1）。
+- 41/41 条清单路径在 `app.openapi()` 中都能 fullmatch 到唯一一条 `/api/v1/*` 路由（本表 `v1 matches` 全为 1）。
+  这条由 `tests/test_product_geo_door.py::test_every_allowlisted_route_maps_onto_a_real_legacy_route`
+  机械守住（门不许发明端点）。
 - 真服务实跑 parity：20 条读端点响应体（去掉 `request_id`）逐字相同；20 条写端点状态码与
   envelope 错误码相同；写闭环（door 建监测对象 → 老路由可见 → door 归档）通过。
 - 拒绝面：清单外路径 404 `GEO_ROUTE_NOT_ALLOWED`，老链 `/api/v1/*` 行为不变。
 
 ## 3. 已知差异与下一卡必须处理的事
 
-1. **product-api 的 GEO 白名单口径不一致（GEO-03 阻塞）**
-   `eios-product-api/app/main.py` 的 `_GEO_ACTIONS` 描述的是 P1 observation 面
-   （`monitor/objects`、`observation/*`、`capability/*`、`setup/*`），与本表这张老 v1 面**零交集**。
-   照现状，即使 GEO 产品门接上，product-api 也会对老 UI 的每一次调用回
-   `404 GEO_ROUTE_NOT_ALLOWED`。GEO-03 必须按本表重写该白名单并映射 method/path→scope。
-   本卡未改 product-api 一个字节。
+1. ~~**product-api 的 GEO 白名单口径不一致（GEO-03 阻塞）**~~ —— **2026-09-20 已修**。
+   `eios-product-api/app/main.py` 旧的 P1 observation 面（`monitor/objects`、`observation/*`、
+   `capability/*`、`setup/*`）已按本表重写为上面这张老 v1 面（读=read、跑=run、增删改=manage），
+   退休的 P1 路径改为 fail-closed，并由
+   `tests/test_geo_boundary.py::test_retired_p1_observation_routes_fail_closed` 钉住
+   （重新放行是合同决定，不是改一个正则）。2026-09-21 又按本表加了第 41 条 PDF 路由，
+   并加了 `_GEO_DOCUMENT_ACTIONS`：这是全门唯一一条「200 的答案是文档不是 envelope」的路由，
+   bytes 与 `Content-Disposition` 原样转发；GEO 回非 PDF 的故障时仍按 invalid response fail-closed。
 
 2. **标准页面在无 Host 握手时回落到老 BFF 基址**
    `geo-advisor/frontend/geo-api.ts` 默认 `geoApiBase = '/api/geo/api/v1'`，

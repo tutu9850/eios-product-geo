@@ -269,6 +269,38 @@ class GeoEnterpriseProfileEval(Base):
     created_at = Column(DateTime, nullable=False, default=now_utc)
 
 
+class GeoKnowledgeSnapshots(Base):
+    """GEO 读 EIOS 知识库的快照台账（Owner 2026-09-20 拍板）。
+
+    知识库那边的正本永远是知识库自己的；这里存的是「GEO 读到过什么、什么时候读的、
+    是哪一份契约给的」。用途有三：企业资料就绪度不必每次都去问知识库、缺口/认知判定
+    有可追溯的原材料、顾问来查时能拿到带来源与时间的快照。
+
+    同一份内容重复读到不新增行：payload_hash 相同就累加 read_count 并推进
+    last_read_at（哈希算的是稳定内容，丢掉 query_id / read_at 这类每次都变的字段），
+    所以这张表是「读到过哪些东西」的账，不是每次调用的流水。
+    """
+
+    __tablename__ = "geo_knowledge_snapshots"
+
+    id = Column(String(64), primary_key=True)
+    tenant_id = Column(String(64), nullable=False, default="tenant_corp_01", index=True)
+    kind = Column(String(32), nullable=False, index=True)  # search|objects|documents|relations
+    source = Column(String(64), nullable=False, default="eios-knowledge")
+    source_url = Column(String(256), nullable=False, default="")
+    contract = Column(String(64), nullable=True)
+    authoritative = Column(Integer, nullable=False, default=0)  # 恒 0：正本不在 GEO
+    payload_hash = Column(String(64), nullable=False, index=True)
+    read_count = Column(Integer, nullable=False, default=1)
+    first_read_at = Column(DateTime, nullable=False, default=now_utc)
+    last_read_at = Column(DateTime, nullable=False, default=now_utc)
+    data_json = Column(Text, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "kind", "payload_hash", name="uq_geo_knowledge_snapshot"),
+    )
+
+
 class GeoEnterpriseProfileKnowledge(Base):
     """企业资料总揽 · Kernel 全量知识持久化（2026-08-18）：
     entities/facts/relations 落库，进程重启后 items 详情不重拉 Kernel（秒开）。
@@ -297,6 +329,9 @@ TABLES = {
     "enterprise_profile_items": GeoEnterpriseProfileItems,
     "enterprise_profile_eval": GeoEnterpriseProfileEval,
     "enterprise_profile_knowledge": GeoEnterpriseProfileKnowledge,
+    # 知识库快照台账（2026-09-20）：随 reset_all 一起清；它不是知识库的正本，
+    # 清掉只意味着「GEO 忘了自己读过什么」，下次读会重新记。
+    "knowledge_snapshots": GeoKnowledgeSnapshots,
     "content_impacts": GeoContentImpacts,
     "media_files": MediaFiles,  # 修复（审计 H6）：表存在但未注册 → insert 静默不落库（file_id 恒 null）
 }

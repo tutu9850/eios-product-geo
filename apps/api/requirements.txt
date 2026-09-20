@@ -4,7 +4,6 @@ pydantic
 sqlalchemy
 alembic
 psycopg[binary]
-python-dotenv
 httpx
 APScheduler
 beautifulsoup4
@@ -17,3 +16,9 @@ python-docx>=1.1.0
 openpyxl>=3.1.0
 # 图片 OCR（2026-08-18）：PaddleOCR ONNX 轻量版，本地 CPU
 rapidocr_onnxruntime>=1.3.0
+
+# 出站 S2S 票的签名与入站票的验签走基座库 eios_auth（PYTHONPATH 复用 foundation，
+# 见 eios-dev/lib/wrappers/geo.sh）。这两个是它的依赖链：缺任何一个，知识适配层
+# 只会以 KNOWLEDGE_SIGNER_NOT_CONFIGURED(503) 明确失败，不会静默降级成无票调用。
+cryptography>=42
+jsonschema>=4

@@ -65,6 +65,7 @@ _PRODUCT_ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", r"/distill/plans"),
     ("GET", r"/distill/questions"),
     ("GET", r"/distill/cognition/profile"),
+    ("GET", r"/intelligence/reports/latest/pdf"),
     ("GET", r"/knowledge/materials"),
     ("GET", r"/knowledge/materials/search"),
     ("GET", r"/knowledge/materials/[^/]+"),

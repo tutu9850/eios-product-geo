@@ -1,6 +1,6 @@
 """GEO 存储层最小回归（2026-08-07：JSON → SQLite 后补齐）
 
-覆盖：store roundtrip / 迁移幂等 / 媒体上传 / Kernel adapter 契约。
+覆盖：store roundtrip / 迁移幂等 / 媒体上传 / EIOS 知识适配层契约。
 运行：cd ~/eios-geo && .venv/bin/python -m pytest apps/api/tests -v
 """
 import io
@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # apps/api
 import pytest
 from fastapi.testclient import TestClient
 
-os.environ.setdefault("GEO_DB_PATH", ":memory:")
 
 
 @pytest.fixture()
@@ -109,20 +108,29 @@ def test_list_tenant_ids_includes_all_cabinets(store):
     assert "dept_bbb" in ids
 
 
-def test_get_entities_sends_kernel_tenant(monkeypatch):
+def test_get_entities_reads_the_eios_object_catalog(monkeypatch):
+    """知识源从老 Kernel 换成 EIOS 知识库（2026-09-20）后的契约：
+
+    读的是 ``/api/v1/knowledge/objects``（active 对象），租户不再由调用方传 ——
+    租户在票上，由部署声明决定。
+    """
     import adapters.eios as eios
 
     captured = {}
 
     async def fake_request(method, path, **kwargs):
+        captured["method"] = method
+        captured["path"] = path
         captured["params"] = kwargs.get("params", {})
-        return {"ok": True, "data": {"entities": []}}
+        return {"items": [], "next_cursor": None}
 
     monkeypatch.setattr(eios, "_request", fake_request)
     import asyncio
 
     asyncio.run(eios.get_entities())
-    assert captured["params"].get("tenant_id") == "tenant_corp_01"
+    assert captured["path"] == "/api/v1/knowledge/objects"
+    assert captured["params"].get("status") == "active"
+    assert "tenant_id" not in captured["params"]
 
 
 def test_evidence_uses_current_geo_tenant(store):
@@ -179,19 +187,30 @@ def test_media_upload_read(client, tmp_path):
 # ── 4. Kernel adapter 契约（top_k 而非 limit）──────────────────
 
 
-def test_search_knowledge_uses_top_k(monkeypatch):
+def test_search_knowledge_speaks_the_knowledge_search_contract(monkeypatch):
+    """新契约：``eios.knowledge_search/v2``（contract + query + limit + layers）。
+
+    老 Kernel 的 ``top_k`` 已经在权威侧不存在了；``layers`` 取 material|governed，
+    ``include_candidates=False`` 必须真的只读 governed（否则「只读正式知识」是句空话）。
+    """
     import adapters.eios as eios
 
     captured = {}
 
     async def fake_request(method, path, **kwargs):
-        captured["json"] = kwargs.get("json", {})
-        return {"ok": True, "data": {"hits": []}}
+        captured["path"] = path
+        captured["body"] = kwargs.get("json_body", {})
+        return {"contract": "eios.knowledge_search_result/v2", "hits": [], "matched": False}
 
     monkeypatch.setattr(eios, "_request", fake_request)
 
     import asyncio
 
     asyncio.run(eios.search_knowledge("测试", top_k=7))
-    assert captured["json"]["top_k"] == 7
-    assert "limit" not in captured["json"]
+    assert captured["path"] == "/api/v1/knowledge/search"
+    assert captured["body"]["contract"] == "eios.knowledge_search/v2"
+    assert captured["body"]["query"] == "测试"
+    assert captured["body"]["limit"] == 7
+    assert captured["body"]["layers"] == ["governed", "material"]
+    assert "top_k" not in captured["body"]
+    assert "tenant_id" not in captured["body"]

@@ -266,7 +266,9 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
         detect?.empty ? (
           <>
             <p className="text-[12px] leading-relaxed text-[var(--yayu-muted)]">
-              知识库暂无企业资料，无法自动推断。请先上传产品/案例材料到知识库，再重新检测。
+              {detect?.error
+                ? `企业知识库读不到（这不等于知识库是空的）：${detect.error}`
+                : '知识库暂无企业资料，无法自动推断。请先上传产品/案例材料到知识库，再重新检测。'}
             </p>
             <GeoButtonRow>
               <Button size="sm" onClick={runDetect}>
