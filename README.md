@@ -3,8 +3,9 @@
 GEO 产品**自己的**仓：后端与自带界面都在这里，不再寄生在别的仓里。
 
 > 2026-09-20 从老 GEO 仓的干净提交 `5afbf48`（+ 产品门 `b8cbe3f` / `0bf2491`）原样导入，
-> 界面从老 Client 的 `geo-advisor/frontend` 原样搬入。**老仓的 git 历史没有带过来**，
-> 需要的话可以 `git remote add legacy <老仓> && git fetch legacy` 再接上。
+> 界面从老 Client 的 `geo-advisor/frontend` 原样搬入。`main` 仍是导入出来的一次性提交，
+> **历史在 `legacy/eios-geo/*` 这组冻结分支里**（见 `docs/LEGACY-REFS.md`）：老仓
+> `EIOS-ai/eios-geo` 已按 Owner 拍板退役，它的 10 个分支一个不少地搬到这里，`main` 不接那套历史。
 
 ## 布局
 
@@ -14,7 +15,7 @@ GEO 产品**自己的**仓：后端与自带界面都在这里，不再寄生在
 | `services/` `adapters/` | 采集 / 蒸馏 / 监测 / 内容 / 引擎适配。**必须留在仓根**：后端按 `services.x` / `adapters.y` import |
 | `packages/geo/` | GEO 自带界面（vite，公开路径 `/product/geo/`），产物 `packages/geo/dist` |
 | `packages/ui/` | 从老 yayu Client 原样搬来的 UI 套件（包名仍是 `@yayu/ui`）。只为让 GEO 的 15 个卡片一行不改 |
-| `docs/` | 契约、产品门矩阵、审计记录 |
+| `docs/` | 契约、产品门矩阵、审计记录；`LEGACY-REFS.md` 记录退役老仓的冻结分支 |
 
 **`apps/geo.db`** 是老仓带过来的**开发用**库（本机 demo 数据，dev 栈默认读它，见
 `eios-dev/lib/wrappers/geo.sh` 里的 `GEO_DB_PATH`）。它是 dev 夹具，**不是** canonical
