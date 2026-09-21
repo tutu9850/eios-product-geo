@@ -24,6 +24,7 @@ from app.api.v1 import (
     geo_consumer,
     health,
     intelligence,
+    kb_init,
     keywords,
     knowledge,
     links,
@@ -157,7 +158,9 @@ for r in (health.router, meta.router, monitor.router, collect.router,
           distill.router, links.router, stats.router, battle.router,
           diagnose.router, export.router, market.router, onboard.router,
           cognition.router,
-          intelligence.router, enterprise_profile.router):
+          intelligence.router, enterprise_profile.router,
+          # 内测：从企业知识库初始化「本公司资料」（Owner 2026-09-21）。
+          kb_init.router):
     app.include_router(r)
 
 # 只读交接面（Owner 2026-09-20）：别的产品（顾问）按验签过的 AuthContext 读 GEO 自己的库。

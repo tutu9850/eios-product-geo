@@ -285,7 +285,7 @@ class GeoKnowledgeSnapshots(Base):
 
     id = Column(String(64), primary_key=True)
     tenant_id = Column(String(64), nullable=False, default="tenant_corp_01", index=True)
-    kind = Column(String(32), nullable=False, index=True)  # search|objects|documents|relations
+    kind = Column(String(32), nullable=False, index=True)  # search|objects|documents|relations|kb_initialization
     source = Column(String(64), nullable=False, default="eios-knowledge")
     source_url = Column(String(256), nullable=False, default="")
     contract = Column(String(64), nullable=True)

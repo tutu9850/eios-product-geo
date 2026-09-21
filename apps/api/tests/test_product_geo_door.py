@@ -194,6 +194,15 @@ def test_report_pdf_route_is_admitted_and_owned_by_the_legacy_use_case(product_d
         assert through_door.json()["error"] == legacy.json()["error"]
 
 
+def test_kb_init_routes_are_admitted_and_owned_by_the_legacy_use_cases(product_door):
+    """内测「知识库初始化」两条路由：门只做路径适配，语义归老 v1 的 use case。"""
+    assert map_product_path("POST", "/kb-init/scan") == "/api/v1/kb-init/scan"
+    assert map_product_path("POST", "/kb-init/apply") == "/api/v1/kb-init/apply"
+    # 没进名单的邻居仍然被拒（放行是逐条的，不是前缀透传）
+    assert map_product_path("GET", "/kb-init/scan") is None
+    assert map_product_path("POST", "/kb-init/anything-else") is None
+
+
 def test_path_mapping_is_a_prefix_adapter():
     assert map_product_path("GET", "/monitor/items") == "/api/v1/monitor/items"
     assert map_product_path("post", "/distill/gaps") == "/api/v1/distill/gaps"

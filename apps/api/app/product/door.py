@@ -72,6 +72,11 @@ _PRODUCT_ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", r"/onboard/run-status"),
     ("GET", r"/onboard/status"),
     # write
+    # 内测：从企业知识库初始化「本公司资料」（Owner 2026-09-21「单独一个按钮，内测用」）。
+    # ``scan`` 只读知识库并把候选交给人点选；``apply`` 才改 GEO 自己那份快照。
+    # 知识库对 GEO 仍然是只读的 —— 这两条都不会往知识库写一个字。
+    ("POST", r"/kb-init/scan"),
+    ("POST", r"/kb-init/apply"),
     ("POST", r"/onboard/auto-config"),
     ("POST", r"/monitor/items"),
     ("POST", r"/monitor/items/preview"),

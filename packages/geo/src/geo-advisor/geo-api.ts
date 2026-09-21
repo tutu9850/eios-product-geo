@@ -285,6 +285,59 @@ export interface GeoDetectResult {
   hint?: string | null
 }
 
+/** POST /kb-init/scan：从企业知识库扫出来的候选（内测「知识库初始化」） */
+export interface GeoKbInitCandidate {
+  name: string
+  in_profile: boolean
+}
+
+export interface GeoKbInitDocument {
+  document_id: string
+  title: string
+  version?: number | string | null
+  in_profile: boolean
+}
+
+export interface GeoKbInitScan {
+  contract: string
+  initialized: boolean
+  revision: string | null
+  last_applied_at: string | null
+  existing: {
+    companies: string[]
+    products: string[]
+    documents: Array<{ document_id: string; title: string; version?: number | string | null }>
+  }
+  candidates: {
+    companies: GeoKbInitCandidate[]
+    products: GeoKbInitCandidate[]
+    documents: GeoKbInitDocument[]
+  }
+  classification_source?: string | null
+  industry?: string | null
+  empty: boolean
+  error?: string | null
+  hint?: string | null
+}
+
+/** POST /kb-init/apply：这份选择落进 GEO 自己的库（快照）之后的结果 */
+export interface GeoKbInitApply {
+  contract: string
+  first_time: boolean
+  added: {
+    companies: string[]
+    products: string[]
+    documents: Array<{ document_id: string; title: string; version?: number | string | null }>
+  }
+  kept: { companies: number; products: number; documents: number }
+  total: { companies: number; products: number; documents: number }
+  unknown_documents: string[]
+  recorded: boolean
+  revision: string | null
+  read_count?: number | null
+  note: string
+}
+
 export interface GeoDiscoverResult {
   competitors: Array<{ name: string; company?: string; reason?: string }>
   empty?: boolean

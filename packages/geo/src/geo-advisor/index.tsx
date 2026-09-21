@@ -4,6 +4,7 @@ import { GeoAssetsListCard } from './GeoAssetsListCard'
 import { GeoCognitionCard } from './GeoCognitionCard'
 import { GeoContentGenForm } from './GeoContentGenForm'
 import { GeoGapsListCard } from './GeoGapsListCard'
+import { GeoKnowledgeInitCard } from './GeoKnowledgeInitCard'
 import { GeoMonitorObjectsCard } from './GeoMonitorObjectsCard'
 import { GeoMonitorReportCard } from './GeoMonitorReportCard'
 import { GeoPlansListCard } from './GeoPlansListCard'
@@ -12,6 +13,7 @@ import { GeoReportCard } from './GeoReportCard'
 import { GeoCardErrorBoundary } from './shared'
 
 export type GeoFlowKind =
+  | 'kb-init'
   | 'auto-config'
   | 'monitor'
   | 'assets'
@@ -27,6 +29,8 @@ export type GeoFlowKind =
 export function matchGeoTrigger(text: string): GeoFlowKind | null {
   const t = text.trim()
   if (!t) return null
+  // 内测：知识库初始化（Owner 2026-09-21「单独一个按钮，内测用」）
+  if (/(知识库初始化|初始化知识库|从知识库导入|初始化我的资料|初始化本公司)/.test(t)) return 'kb-init'
   if (/(自动配置|开始配置|帮我配置好)/.test(t)) return 'auto-config'
   if (/(监测|定时任务)/.test(t)) return 'monitor'
   if (/(内容资产|素材库|素材)/.test(t)) return 'assets'
@@ -42,6 +46,8 @@ export function matchGeoTrigger(text: string): GeoFlowKind | null {
 
 /** GEO 功能菜单（上拉菜单列项：名字 + 图标，不写说明） */
 export const GEO_FLOW_MENU: Array<{ kind: GeoFlowKind; icon: string; label: string }> = [
+  // 内测：从知识库初始化本公司资料（独立按钮，Owner 2026-09-21 点名）
+  { kind: 'kb-init', icon: '🧪', label: '知识库初始化（内测）' },
   { kind: 'auto-config', icon: '⚙️', label: '自动配置' },
   { kind: 'monitor', icon: '📡', label: '监测' },
   { kind: 'questions', icon: '🗂', label: '问题池' },
@@ -57,6 +63,8 @@ export const GEO_FLOW_MENU: Array<{ kind: GeoFlowKind; icon: string; label: stri
 /** GEO 固定功能卡片路由器：按触发类型渲染对应组件 */
 export function GeoFlowRouter({ kind, onClose }: { kind: GeoFlowKind; onClose?: (kind: GeoFlowKind) => void }) {
   switch (kind) {
+    case 'kb-init':
+      return <GeoKnowledgeInitCard />
     case 'auto-config':
       return <AutoConfigFlow onClose={onClose ? () => onClose('auto-config') : undefined} />
     case 'monitor':
