@@ -164,6 +164,8 @@ export function GeoInsightWorkspace() {
     label: String(row.period ?? '').slice(5),
     value: Number(row.brands.find((b) => b.brand === selfSov?.brand)?.recommend_share ?? 0),
   }))
+  const evidenceTotal = Math.max(note?.total ?? 0, matrix?.evidence_count ?? 0, d.perception?.evidence_count ?? 0)
+  const hasInsightData = evidenceTotal > 0 || !!human?.headline?.main
 
   return (
     <div className="insight-console">
@@ -213,11 +215,18 @@ export function GeoInsightWorkspace() {
         </section>
       ) : null}
 
-      <div className="insight-grid">
+      {!loading && !hasInsightData ? (
+        <section className="insight-panel insight-start-empty">
+          <CircleAlert />
+          <div><h3>还没有足够的有效回答形成认知洞察</h3><p>先在“监测工作台”运行品牌、产品或竞品对象。模型成功返回回答并完成解析后，这里才会展示差距、优势、风险和行动建议。</p></div>
+        </section>
+      ) : null}
+
+      {hasInsightData ? <div className="insight-grid">
+        {matrix?.dimensions.length ? (
         <section className="insight-panel matrix">
           <div className="geo-subhead"><h3>认知差距矩阵</h3><small>按维度看谁被提到更多</small></div>
-          {matrix?.dimensions.length ? (
-            <div className="insight-list">
+          <div className="insight-list">
               {matrix.dimensions.slice(0, 10).map((row) => (
                 <button key={row.dimension} onClick={() => void openEvidence(row.dimension)}>
                   <span className="insight-band" data-tone={BAND_TONE[row.band] ?? 'warn'}>{row.band_label}</span>
@@ -226,16 +235,14 @@ export function GeoInsightWorkspace() {
                   <ArrowRight />
                 </button>
               ))}
-            </div>
-          ) : (
-            <div className="geo-empty">还没有正式维度（同一维度至少被提 2 次才进榜）。</div>
-          )}
+          </div>
         </section>
+        ) : null}
 
+        {factorGaps?.left.length ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>优先补齐</h3><small>竞品有 · 我方无</small></div>
-          {factorGaps?.left.length ? (
-            <div className="insight-list">
+          <div className="insight-list">
               {factorGaps.left.slice(0, 7).map((row) => (
                 <button key={row.factor} onClick={() => void openEvidence(row.factor)}>
                   <span className="insight-band" data-tone="bad">{row.competitor_mentions}</span>
@@ -244,16 +251,14 @@ export function GeoInsightWorkspace() {
                   <ArrowRight />
                 </button>
               ))}
-            </div>
-          ) : (
-            <div className="geo-empty">当前没有「竞品有、我方无」的因子。</div>
-          )}
+          </div>
         </section>
+        ) : null}
 
+        {factorGaps?.right.length ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>我方优势</h3><small>我方有 · 竞品无</small></div>
-          {factorGaps?.right.length ? (
-            <div className="insight-list">
+          <div className="insight-list">
               {factorGaps.right.slice(0, 7).map((row) => (
                 <button key={row.factor} onClick={() => void openEvidence(row.factor)}>
                   <span className="insight-band" data-tone="good">{row.self_mentions}</span>
@@ -262,16 +267,14 @@ export function GeoInsightWorkspace() {
                   <ArrowRight />
                 </button>
               ))}
-            </div>
-          ) : (
-            <div className="geo-empty">还没有识别出我方独有优势。</div>
-          )}
+          </div>
         </section>
+        ) : null}
 
+        {gapAnalysis && (gapAnalysis.knowledge_gaps.length || gapAnalysis.evidence_gaps.length) ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>知识缺口 vs 证据缺口</h3><small>两种缺口的处置方式不同</small></div>
-          {gapAnalysis && (gapAnalysis.knowledge_gaps.length || gapAnalysis.evidence_gaps.length) ? (
-            <>
+          <>
               {gapAnalysis.knowledge_gaps.length ? (
                 <>
                   <p className="geo-note">知识库没有这条能力记录 —— 要么补齐能力，要么放弃这个维度。</p>
@@ -292,16 +295,14 @@ export function GeoInsightWorkspace() {
                   />
                 </>
               ) : null}
-            </>
-          ) : (
-            <div className="geo-empty">没有分离出待处置的缺口。</div>
-          )}
+          </>
         </section>
+        ) : null}
 
+        {strategies.length ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>内容策略</h3><small>{d.strategies?.score_formula ?? '需求 × 差距 × 可改变性 × 证据强度 × 竞争重要性'}</small></div>
-          {strategies.length ? (
-            <div className="insight-list">
+          <div className="insight-list">
               {strategies.slice(0, 6).map((row) => (
                 <button key={row.dimension} onClick={() => void openEvidence(row.dimension)}>
                   <span className="insight-band" data-tone="warn">{row.priority}</span>
@@ -310,58 +311,52 @@ export function GeoInsightWorkspace() {
                   <ArrowRight />
                 </button>
               ))}
-            </div>
-          ) : (
-            <div className="geo-empty">暂无可执行的内容策略。</div>
-          )}
+          </div>
         </section>
+        ) : null}
 
+        {keywords.length ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>必备关键词</h3><small>内容生产该围绕的词</small></div>
           <GeoBars items={keywords.slice(0, 12).map((row) => ({ label: row.keyword, value: row.mentions, text: `${row.mentions} 次` }))} empty="还没有高频维度" />
         </section>
+        ) : null}
 
+        {tags.length ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>认知标签分布</h3><small>{d.perception?.evidence_count ?? 0} 条已解析回答</small></div>
-          {tags.length ? (
-            <>
+          <>
               <GeoBars items={tags.slice(0, 10).map((row) => ({ label: row.tag, value: row.count, text: `${row.count}` }))} />
               {d.perception?.self_tags?.length ? (
                 <p className="geo-note">其中直接描述我方的标签：{d.perception.self_tags.map((row) => `${row.tag}(${row.count})`).join('、')}</p>
               ) : null}
-            </>
-          ) : (
-            <div className="geo-empty">还没有解析出认知标签。</div>
-          )}
+          </>
         </section>
+        ) : null}
 
+        {factorGaps?.risk_notes?.length ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>AI 风险提示</h3><small>可转成信任建设素材</small></div>
-          {factorGaps?.risk_notes?.length ? (
-            factorGaps.risk_notes.slice(0, 5).map((row, index) => (
+          {factorGaps.risk_notes.slice(0, 5).map((row, index) => (
               <div key={index}>
                 <p className="geo-note">{row.factor}{row.brand ? ` · ${row.brand}` : ''}</p>
                 <GeoQuote>{row.quote ?? '（该条没有附原话）'}</GeoQuote>
               </div>
-            ))
-          ) : (
-            <div className="geo-empty">没有针对我方的风险性表述。</div>
-          )}
+            ))}
         </section>
+        ) : null}
 
+        {human?.actions.length ? (
         <section className="insight-panel">
           <div className="geo-subhead"><h3>现在能做什么</h3><small>按优先级排的行动清单</small></div>
-          {human?.actions.length ? (
-            <GeoTable
+          <GeoTable
               columns={['优先级', '做什么', '为什么']}
               template="58px minmax(0,1fr) minmax(0,1.3fr)"
               rows={human.actions.map((row) => [<b>{row.priority}</b>, <b>{row.what}</b>, <em>{row.why}</em>])}
-            />
-          ) : (
-            <div className="geo-empty">还没有生成行动建议。</div>
-          )}
+          />
         </section>
-      </div>
+        ) : null}
+      </div> : null}
 
       {loading && !human ? <div className="geo-empty"><LoaderCircle className="spin" />正在汇总认知结果…</div> : null}
       {trendPoints.length > 1 ? (

@@ -404,6 +404,8 @@
 .geo-formatted-answer ul,.geo-formatted-answer ol{display:flex;flex-direction:column;gap:4px;margin:0;padding-left:18px}
 .geo-formatted-answer ul{list-style:disc}.geo-formatted-answer ol{list-style:decimal}
 .geo-formatted-answer strong{color:#343a32;font-weight:650}.geo-formatted-answer code{border-radius:3px;background:#eef0eb;padding:1px 4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.insight-start-empty{display:flex;align-items:flex-start;gap:12px;padding:24px;max-width:760px}
+.insight-start-empty>svg{width:18px;height:18px;margin-top:2px;color:#8a927f}.insight-start-empty h3{margin:0 0 6px;font-size:15px}.insight-start-empty p{margin:0;max-width:650px;color:#7d8477;line-height:1.7}
 .geo-quote{padding:8px 10px;border-left:2px solid #c4d5a8;border-radius:0 6px 6px 0;background:#f7f8f5;color:#4f564c;font-size:11px;line-height:1.55}
 .geo-subhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:7px}
 .geo-subhead h3{margin:0;font-size:12.5px;font-weight:700}
