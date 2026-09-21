@@ -21,6 +21,7 @@ export function GeoAssetsListCard() {
   const [error, setError] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailText, setDetailText] = useState<string | null>(null)
+  const [detailChunks, setDetailChunks] = useState<number | null>(null)
   // S4 发布打点：素材 → 已发布 URL（监测引用对上 citation）
   const [urlDraft, setUrlDraft] = useState<Record<string, string>>({})
   const [savingUrl, setSavingUrl] = useState<string | null>(null)
@@ -64,13 +65,18 @@ export function GeoAssetsListCard() {
     if (detailId === id) {
       setDetailId(null)
       setDetailText(null)
+      setDetailChunks(null)
       return
     }
     setDetailId(id)
     setDetailText(null)
+    setDetailChunks(null)
     try {
-      const d = await geoGet<GeoMaterial>(`/knowledge/materials/${id}`)
-      setDetailText(d.content ?? '（无内容）')
+      // 接口返回的是 { item, effects }：以前这里读 d.content，永远是 undefined →
+      // 详情永远显示「（无内容）」（2026-09-21 修）。
+      const d = await geoGet<{ item: GeoMaterial }>(`/knowledge/materials/${id}`)
+      setDetailText(d.item?.content ?? '（无内容）')
+      setDetailChunks(d.item?.chunks ?? null)
     } catch (e) {
       setDetailText(`详情加载失败：${e instanceof Error ? e.message : '未知错误'}`)
     }
@@ -238,7 +244,12 @@ export function GeoAssetsListCard() {
                     onClick={() => void toggleDetail(id)}
                     className="min-w-0 flex-1 text-left"
                   >
-                    <span className="block text-[12px] leading-snug text-[var(--yayu-foreground)]">{m.title}</span>
+                    <span className="block text-[12px] leading-snug text-[var(--yayu-foreground)]">
+                      {m.title}
+                      {m.chunks ? (
+                        <span className="ml-1.5 text-[10.5px] text-[var(--yayu-muted)]">{m.chunks} 段</span>
+                      ) : null}
+                    </span>
                     {!active ? (
                       <span className="mt-0.5 block truncate text-[11px] text-[var(--yayu-muted)]">
                         {m.content?.slice(0, 60) ?? ''}
@@ -260,9 +271,16 @@ export function GeoAssetsListCard() {
                   </div>
                 </div>
                 {active ? (
-                  <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[var(--yayu-surface-raised)] p-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
-                    {detailText ?? '加载中…'}
-                  </div>
+                  <>
+                    <div className="mt-2 text-[10.5px] text-[var(--yayu-muted)]">
+                      {(detailChunks ?? m.chunks)
+                        ? `已切块 ${detailChunks ?? m.chunks} 段（切块与正文存在 GEO 自己的库；未向量化、不写企业知识库）`
+                        : '还没切块（正文为空或上传早于切块）'}
+                    </div>
+                    <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[var(--yayu-surface-raised)] p-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+                      {detailText ?? '加载中…'}
+                    </div>
+                  </>
                 ) : null}
                 {active ? (
                   <div className="mt-1.5 flex items-center gap-1.5">

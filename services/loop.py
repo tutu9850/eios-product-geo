@@ -13,6 +13,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from services.chunking import chunk_material
+
 logger = logging.getLogger("eios.geo.loop")
 
 
@@ -103,7 +105,7 @@ async def auto_production(limit: int = 5, tenant_id: str | None = None) -> Dict[
         # 存内容资产（source_type=generated，关联计划与覆盖问题）
         materials = _load_materials()
         mid = f"m_{uuid.uuid4().hex[:12]}"
-        materials.insert(0, {
+        item = {
             "id": mid,
             "title": result.get("title") or question[:40],
             "content": result.get("content", ""),
@@ -115,7 +117,9 @@ async def auto_production(limit: int = 5, tenant_id: str | None = None) -> Dict[
             "chunks": 0,
             "vectors": 0,
             "created_at": now,
-        })
+        }
+        chunk_material(item)  # 自动生产出来的素材同样切块（只切块，不向量化）
+        materials.insert(0, item)
         _save_materials(materials)
 
         # 计划 → produced（记录素材 id，供验证）

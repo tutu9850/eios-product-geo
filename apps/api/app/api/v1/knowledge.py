@@ -13,6 +13,7 @@ from fastapi import APIRouter, File, UploadFile
 from pydantic import BaseModel
 
 from app.core.envelope import ok
+from services.chunking import chunk_material
 
 router = APIRouter(prefix="/api/v1/knowledge")
 
@@ -167,6 +168,7 @@ async def add_material(payload: MaterialIn):
         "vectors": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    chunk_material(item)  # Owner 2026-09-21：自己这份资料也切块存（只切块）
     items = _load()
     items.insert(0, item)
     _save(items)
@@ -246,10 +248,13 @@ async def upload_material(file: UploadFile = File(...)):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "file_name": fname,
     }
+    # Owner 2026-09-21：「geo 上传资料这里也要切块存，只切块就行了」。
+    # 切块存进素材自己那一行（GEO 自己的库）；不向量化、不抽实体、不写知识库。
+    chunk_material(item)
     items = _load()
     items.insert(0, item)
     _save(items)
-    return ok({"item": item, "chars": len(text)})
+    return ok({"item": item, "chars": len(text), "chunks": item["chunks"]})
 
 
 # ── 媒体存储（2026-08-07）：图片/文件存 storage/media/，库存路径指针 ──
@@ -317,6 +322,7 @@ async def update_material(material_id: str, payload: MaterialPatchIn):
                 m["title"] = payload.title.strip() or m.get("title", "")
             if payload.content is not None:
                 m["content"] = payload.content
+                chunk_material(m)  # 正文变了就重切：切块不许和正文对不上
             if payload.source_type is not None:
                 m["source_type"] = payload.source_type
             if payload.coverage_questions is not None:

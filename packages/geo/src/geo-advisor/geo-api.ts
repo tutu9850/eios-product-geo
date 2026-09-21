@@ -285,6 +285,10 @@ export interface GeoMaterial {
   source?: string
   created_at?: string
   published_url?: string // S4 打点：已发布 URL
+  /** 上传/新建时切好的段数（存进 GEO 自己的库；0 = 没切块或正文为空） */
+  chunks?: number
+  /** 原文件名（上传的资料才有） */
+  file_name?: string
 }
 
 export interface GeoKnowledgeReadiness {
