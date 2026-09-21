@@ -183,7 +183,7 @@ export function GeoKnowledgeInitCard() {
     : null
 
   return (
-    <GeoCardShell title="🧪 知识库初始化（内测）">
+    <GeoCardShell title="企业事实源" className="geo-profile-workbench">
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void apply()} disabled={applying || pickedCount === 0}>
           <Database className="size-3.5" />
@@ -276,7 +276,7 @@ export function GeoKnowledgeInitCard() {
       {checkup ? (
         <div className="space-y-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-surface-raised)] px-2 py-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[11.5px] font-semibold text-[var(--yayu-foreground)]">🩺 顺手体检</span>
+            <span className="text-[11.5px] font-semibold text-[var(--yayu-foreground)]">企业资料体检</span>
             <span className="text-[11px] text-[var(--yayu-muted)]">
               企业资料总覆盖率{' '}
               <span className="font-medium text-[var(--yayu-foreground)]">

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check, Copy, Download } from 'lucide-react'
 import { Button, cn } from '@yayu/ui'
 import { geoGet, geoPost, type GeoPlan } from './geo-api'
-import { GeoButtonRow, GeoCardShell, GeoError, GeoLoading } from './shared'
+import { GeoButtonRow, GeoCardShell, GeoError, GeoLoading, useGeoNavParams } from './shared'
 
 const GOALS = ['提升AI推荐概率', '推广产品', '建立行业权威', '回答客户问题', '对抗竞品', '发布企业动态']
 const CONTENT_TYPES = ['企业介绍', '行业解决方案', 'FAQ问答', '对比文章', '客户案例', '新闻动态']
@@ -39,12 +39,15 @@ interface ScoreResult {
   suggestions: string[]
 }
 
+interface QualityResult { total?: number; score?: number; suggestions?: string[]; [key: string]: unknown }
+
 /**
  * 内容生成引导卡（对齐 Builder GeoContent）：
  * 第一步选内容主题（内容计划点选 / 手输）→ 目标 → 类型/风格 → 长度/平台 → 生成 → 结果。
  * 纯前端状态机，提交直接调 GEO 生成接口（不经大模型聊天）。
  */
 export function GeoContentGenForm() {
+  const { seed: navSeed, nonce: navNonce } = useGeoNavParams()
   const [step, setStep] = useState(1)
   // 第 1 步：内容主题（内容计划点选 + 手输）
   const [plans, setPlans] = useState<GeoPlan[]>([])
@@ -61,6 +64,15 @@ export function GeoContentGenForm() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [quality, setQuality] = useState<QualityResult | null>(null)
+  const [qualityLoading, setQualityLoading] = useState(false)
+
+  // 从内容计划 / 错误认知跳过来时，把带过来的主题直接填进第 1 步（2026-09-21）
+  useEffect(() => {
+    if (!navNonce || !navSeed) return
+    setTopic(navSeed)
+    setStep(1)
+  }, [navSeed, navNonce])
 
   // 拉取内容计划（status=planned 的可生成主题）
   useEffect(() => {
@@ -142,6 +154,14 @@ export function GeoContentGenForm() {
     URL.revokeObjectURL(url)
   }
 
+  const runQuality = async () => {
+    if (!result) return
+    setQualityLoading(true)
+    try { setQuality(await geoPost<QualityResult>('/content/quality', { content: result.content, question: topic })) }
+    catch (e) { setError(e instanceof Error ? e.message : 'AI 质检失败') }
+    finally { setQualityLoading(false) }
+  }
+
   const chipClass = (active: boolean) =>
     cn(
       'cursor-pointer rounded-full border px-2.5 py-0.5 text-[11.5px] transition-colors',
@@ -171,7 +191,7 @@ export function GeoContentGenForm() {
   )
 
   return (
-    <GeoCardShell title="✍️ 内容生成">
+    <GeoCardShell title="内容制作台" className="geo-content-workbench">
       <div className="flex items-center gap-1 text-[10px] text-[var(--yayu-faint)]">
         {['主题', '目标', '类型/风格', '长度/平台', '结果'].map((label, index) => (
           <span key={label} className="flex items-center gap-1">
@@ -331,12 +351,16 @@ export function GeoContentGenForm() {
               ) : null}
             </div>
           ) : null}
+          {quality ? <div className="content-quality"><b>AI 质量检测 · {Math.round(quality.total ?? quality.score ?? 0)} 分</b>{quality.suggestions?.slice(0,4).map((s,i)=><p key={i}>· {s}</p>)}</div> : null}
           <GeoButtonRow>
             <Button size="sm" onClick={() => void copyResult()}>
               <Copy className="size-3.5" /> {copied ? '已复制' : '复制'}
             </Button>
             <Button variant="secondary" size="sm" onClick={downloadResult}>
               <Download className="size-3.5" /> 下载
+            </Button>
+            <Button variant="secondary" size="sm" disabled={qualityLoading} onClick={() => void runQuality()}>
+              {qualityLoading ? 'AI 质检中…' : 'AI 质量检测'}
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setStep(1)}>
               再生成一篇

@@ -1,15 +1,53 @@
-import { useEffect, useState } from 'react'
-import { Play, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { BarChart3, Play, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoDelete, geoGet, geoPatch, geoPost, type GeoMonitorItem, type GeoTasks } from './geo-api'
 import { formatMonitorProductLine } from './monitor-item-label'
-import { GeoButtonRow, GeoCardShell, GeoError, GeoLoading, GeoRow } from './shared'
+import { GeoButtonRow, GeoCardShell, GeoError, GeoKpis, GeoLine, GeoLoading, GeoQuote, GeoRow, GeoTable, askGeoConfirm, monitorTypeText, shortDay, statusText } from './shared'
 
 type Schedule = 'daily' | 'weekly'
 
 interface TaskRunResult {
   summary?: { total_questions?: number; mentioned_questions?: number; score?: number }
 }
+
+/** 跨次趋势（GET /monitor/items/{id}/trend）：每次监测一个点，指标口径见 monitor.py */
+interface TrendPoint {
+  ts: string
+  visibility: number
+  mention: number
+  position: number | null
+  positive: number
+  negative: number
+  citation: number
+  snippet: string
+}
+interface TrendData {
+  monitor_id: string
+  entity: string | null
+  points: TrendPoint[]
+  count: number
+}
+/** 任务表现（GET /monitor/tasks/{id}/overview）：任务下每个对象的最新状态 + 最近一次运行汇总 */
+interface TaskOverview {
+  task: { name?: string; type?: string; status?: string; schedule?: string }
+  item_count: number
+  item_states: Array<{
+    monitor_id: string
+    type: string
+    entity: string
+    status: string
+    last_visibility: number | null
+    last_mentioned: number | null
+    last_run_at: string
+  }>
+  last_run_at: string
+  last_summary: { coverage_pct?: number; mentioned_questions?: number; total_questions?: number; rank_avg?: number } | null
+}
+
+type DetailPanel =
+  | { kind: 'trend'; title: string; data: TrendData | null; error?: string }
+  | { kind: 'task'; title: string; data: TaskOverview | null; error?: string }
 
 /** 监测对象 + 定时任务卡（拆自原监测卡前半）：对象勾选/运行/暂停/删除 + 任务开关/运行/归档/新建 */
 export function GeoMonitorObjectsCard() {
@@ -29,6 +67,7 @@ export function GeoMonitorObjectsCard() {
   const [msg, setMsg] = useState<string | null>(null)
   const [runningId, setRunningId] = useState<string | null>(null)
   const [compLabels, setCompLabels] = useState<Record<string, string>>({})
+  const [detailPanel, setDetailPanel] = useState<DetailPanel | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -121,6 +160,8 @@ export function GeoMonitorObjectsCard() {
   }
 
   const archiveItem = async (it: GeoMonitorItem) => {
+    // 这是软删除（后端 status → archived，历史趋势保留），文案不能写成「不能恢复」（2026-09-21 核过 monitor.py）
+    if (!(await askGeoConfirm(`确认删除监测对象「${it.entity}」？它会转为归档、不再参与监测；历史趋势会保留。`))) return
     try {
       await geoDelete(`/monitor/items/${it.monitor_id}`)
       await load()
@@ -144,6 +185,7 @@ export function GeoMonitorObjectsCard() {
   }
 
   const archiveTask = async (tid: string, name: string) => {
+    if (!(await askGeoConfirm(`归档任务「${name}」后，这个任务下的探针不再按计划运行。`, '确认归档'))) return
     try {
       await geoDelete(`/monitor/tasks/${tid}`)
       setMsg(`任务「${name}」已归档`)
@@ -163,6 +205,26 @@ export function GeoMonitorObjectsCard() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const showTrend = async (item: GeoMonitorItem) => {
+    setRunningId(`trend-${item.monitor_id}`)
+    try {
+      setDetailPanel({ kind: 'trend', title: `${item.entity} · 跨次趋势`, data: await geoGet<TrendData>(`/monitor/items/${item.monitor_id}/trend`) })
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : '趋势加载失败')
+      setDetailPanel({ kind: 'trend', title: `${item.entity} · 跨次趋势`, data: null, error: e instanceof Error ? e.message : '趋势加载失败' })
+    } finally { setRunningId(null) }
+  }
+
+  const showTaskOverview = async (taskId: string, name: string) => {
+    setRunningId(`overview-${taskId}`)
+    try {
+      setDetailPanel({ kind: 'task', title: `${name} · 任务表现`, data: await geoGet<TaskOverview>(`/monitor/tasks/${taskId}/overview`) })
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : '任务详情加载失败')
+      setDetailPanel({ kind: 'task', title: `${name} · 任务表现`, data: null, error: e instanceof Error ? e.message : '任务详情加载失败' })
+    } finally { setRunningId(null) }
   }
 
   // ── 新建监测对象（交互搬自 Builder GeoReport：类型 → 表单 → 探针预览 → 创建）──
@@ -336,7 +398,7 @@ export function GeoMonitorObjectsCard() {
                     ) : null}
                   </div>
                   <div className="truncate text-[10px] text-[var(--yayu-faint)]">
-                    {formatMonitorProductLine(i.config_json?.product, i.type)}
+                    {formatMonitorProductLine(i.config_json?.product, monitorTypeText(i.type))}
                   </div>
                 </div>
                 <span className="shrink-0 rounded bg-[var(--yayu-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--yayu-muted)]">
@@ -350,6 +412,7 @@ export function GeoMonitorObjectsCard() {
                 <Button variant="secondary" size="sm" onClick={() => void toggleItemStatus(i)}>
                   {i.status === 'active' ? '暂停' : '启用'}
                 </Button>
+                <Button variant="ghost" size="sm" onClick={() => void showTrend(i)}><BarChart3 className="size-3" />趋势</Button>
                 <Button variant="ghost" size="sm" onClick={() => void archiveItem(i)} aria-label="删除监测对象">
                   <Trash2 className="size-3" />
                 </Button>
@@ -391,6 +454,7 @@ export function GeoMonitorObjectsCard() {
                     <Button variant="ghost" size="sm" disabled={runningId === t.task_id} onClick={() => void runTask(t.task_id)}>
                       <Play className="size-3" />
                     </Button>
+                    <Button variant="ghost" size="sm" onClick={() => void showTaskOverview(t.task_id, t.name)} aria-label="查看任务表现"><BarChart3 className="size-3" /></Button>
                     <Button variant="ghost" size="sm" onClick={() => void archiveTask(t.task_id, t.name)} aria-label="归档任务">
                       <Trash2 className="size-3" />
                     </Button>
@@ -399,6 +463,16 @@ export function GeoMonitorObjectsCard() {
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {detailPanel ? (
+        <div className="monitor-detail-panel">
+          <header>
+            <b>{detailPanel.title}</b>
+            <button onClick={() => setDetailPanel(null)}>关闭</button>
+          </header>
+          <div className="detail-body"><DetailBody panel={detailPanel} /></div>
         </div>
       ) : null}
 
@@ -497,5 +571,115 @@ export function GeoMonitorObjectsCard() {
         </GeoButtonRow>
       )}
     </GeoCardShell>
+  )
+}
+
+/** 趋势 / 任务详情的正文：一律翻译成指标、趋势柱、明细表，不把接口字段名或 JSON 丢给用户 */
+function DetailBody({ panel }: { panel: DetailPanel }) {
+  if (panel.error) return <div className="geo-inline-error">{panel.error}</div>
+  if (!panel.data) return <div className="geo-empty">没有取到详情。</div>
+  if (panel.kind === 'trend') return <TrendDetail data={panel.data as TrendData} />
+  return <TaskDetail data={panel.data as TaskOverview} />
+}
+
+const TREND_RANGES: Array<[string, string]> = [
+  ['3', '最近 3 期'],
+  ['6', '最近 6 期'],
+  ['90', '最近 90 天'],
+  ['all', '全部'],
+]
+
+function TrendDetail({ data }: { data: TrendData }) {
+  // 周期筛选在本地做：/monitor/items/{id}/trend 没有区间参数，返回的就是全部点，
+  // 所以这里只筛「显示哪些」，筛选后把「显示 N / 共 M 期」如实写出来（2026-09-21）。
+  const [range, setRange] = useState<string>('all')
+  const all = data.points ?? []
+  const points = useMemo(() => {
+    if (range === 'all') return all
+    if (range === '90') {
+      const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000
+      const kept = all.filter((point) => Number(new Date(point.ts).getTime()) >= cutoff)
+      return kept.length ? kept : all
+    }
+    return all.slice(-Number(range))
+  }, [all, range])
+  if (!all.length) return <div className="geo-empty">这个对象还没有跨次记录，跑过一次监测后这里会出现趋势。</div>
+  const latest = points[points.length - 1]
+  const visibility = points.map((point) => Number(point.visibility ?? 0))
+  const first = points[0]
+  const direction =
+    points.length > 1
+      ? visibility[visibility.length - 1] - visibility[0] >= 0
+        ? `较首次 +${Math.round((visibility[visibility.length - 1] - visibility[0]) * 10) / 10} 个百分点`
+        : `较首次 ${Math.round((visibility[visibility.length - 1] - visibility[0]) * 10) / 10} 个百分点`
+      : '只有一期记录'
+  return (
+    <>
+      <GeoKpis
+        items={[
+          { label: '最新可见度', value: `${latest.visibility ?? '—'}%`, detail: direction, tone: visibility[visibility.length - 1] >= visibility[0] ? 'good' : 'warn' },
+          { label: '被提及', value: `${latest.mention ?? '—'} 条`, detail: '最近一次监测' },
+          { label: '正面 / 负面', value: `${latest.positive ?? 0} / ${latest.negative ?? 0}`, detail: '最近一次监测的回答倾向', tone: (latest.negative ?? 0) > (latest.positive ?? 0) ? 'bad' : 'good' },
+          { label: '监测期数', value: `${points.length} 期`, detail: `首次 ${shortDay(first.ts)}` },
+        ]}
+      />
+      <div className="geo-subhead">
+        <h3>可见度走势</h3>
+        <small>{range === 'all' ? `共 ${all.length} 期` : `显示 ${points.length} / 共 ${all.length} 期`}</small>
+      </div>
+      <div className="trend-range" role="group" aria-label="趋势周期">
+        {TREND_RANGES.map(([value, label]) => (
+          <button key={value} type="button" className={range === value ? 'active' : ''} onClick={() => setRange(value)}>{label}</button>
+        ))}
+      </div>
+      <GeoLine points={points.map((point) => ({ label: shortDay(point.ts).slice(5), value: Number(point.visibility ?? 0) }))} unit="%" />
+      <GeoTable
+        columns={['时间', '可见度', '提及', '正面', '负面', '引用']}
+        template="96px 74px 60px 60px 60px 60px"
+        rows={points.map((point) => [
+          <em>{shortDay(point.ts)}</em>,
+          <b>{`${point.visibility ?? '—'}%`}</b>,
+          <em>{point.mention ?? '—'}</em>,
+          <em>{point.positive ?? 0}</em>,
+          <em data-tone={(point.negative ?? 0) > 0 ? 'bad' : undefined}>{point.negative ?? 0}</em>,
+          <em>{point.citation ?? 0}</em>,
+        ])}
+      />
+      {latest.snippet ? (
+        <>
+          <div className="geo-subhead"><h3>最近一次 AI 回答片段</h3><small>{shortDay(latest.ts)}</small></div>
+          <GeoQuote>{latest.snippet}</GeoQuote>
+        </>
+      ) : null}
+    </>
+  )
+}
+
+function TaskDetail({ data }: { data: TaskOverview }) {
+  const states = data.item_states ?? []
+  const summary = data.last_summary
+  return (
+    <>
+      <GeoKpis
+        items={[
+          { label: '监测对象', value: `${data.item_count ?? states.length} 个`, detail: statusText(data.task?.status) },
+          { label: '最近运行', value: data.last_run_at ? shortDay(data.last_run_at) : '—', detail: data.last_run_at ? '任务最近一次执行' : '这个任务还没跑过' },
+          { label: '推荐度', value: summary?.coverage_pct == null ? '—' : `${summary.coverage_pct}%`, detail: summary ? `提及 ${summary.mentioned_questions ?? 0}/${summary.total_questions ?? 0} 个问题` : '还没有运行汇总' },
+          { label: '平均排名', value: summary?.rank_avg == null ? '—' : `${summary.rank_avg}`, detail: '企业名首次出现的位置' },
+        ]}
+      />
+      <GeoTable
+        columns={['对象', '类型', '状态', '可见度', '提及']}
+        template="minmax(0,1.5fr) 96px 76px 74px 60px"
+        rows={states.map((row) => [
+          <b>{row.entity || row.monitor_id}</b>,
+          <em>{monitorTypeText(row.type)}</em>,
+          <em>{statusText(row.status)}</em>,
+          <b>{row.last_visibility == null ? '—' : `${row.last_visibility}%`}</b>,
+          <em>{row.last_mentioned ?? '—'}</em>,
+        ])}
+        empty="这个任务下还没有监测对象。"
+      />
+    </>
   )
 }

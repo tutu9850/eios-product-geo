@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoDelete, geoGet, geoPost, geoPut, geoUpload, type GeoMaterial } from './geo-api'
-import { GeoCardShell, GeoError, GeoLoading } from './shared'
+import { GeoCardShell, GeoError, GeoLoading, askGeoConfirm } from './shared'
 
 /**
  * 老 v1 的软失败：HTTP 200、`ok:true`，原因写在 `data.error` 里（envelope.py 的 `ok()`）。
@@ -21,7 +21,6 @@ export function GeoAssetsListCard() {
   const [error, setError] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailText, setDetailText] = useState<string | null>(null)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
   // S4 发布打点：素材 → 已发布 URL（监测引用对上 citation）
   const [urlDraft, setUrlDraft] = useState<Record<string, string>>({})
   const [savingUrl, setSavingUrl] = useState<string | null>(null)
@@ -78,12 +77,7 @@ export function GeoAssetsListCard() {
   }
 
   const remove = async (id: string) => {
-    if (confirmId !== id) {
-      setConfirmId(id)
-      setTimeout(() => setConfirmId((cur) => (cur === id ? null : cur)), 3000)
-      return
-    }
-    setConfirmId(null)
+    if (!(await askGeoConfirm('删除后这份素材会从内容资产里移除，引用统计不再计入。'))) return
     setError(null)
     try {
       await geoDelete(`/knowledge/materials/${id}`)
@@ -156,7 +150,7 @@ export function GeoAssetsListCard() {
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
   return (
-    <GeoCardShell title={`📚 内容资产（${items?.length ?? 0} 个素材）`}>
+    <GeoCardShell title={`资产目录 · ${items?.length ?? 0} 个素材`} className="geo-assets-workbench">
       {/* 搜索 */}
       <form onSubmit={search} className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
@@ -260,9 +254,8 @@ export function GeoAssetsListCard() {
                       size="sm"
                       onClick={() => void remove(id)}
                       aria-label="删除素材"
-                      className={confirmId === id ? 'text-[var(--yayu-foreground)]' : ''}
                     >
-                      {confirmId === id ? '确认删除？' : <Trash2 className="size-3.5" />}
+                      <Trash2 className="size-3.5" />
                     </Button>
                   </div>
                 </div>

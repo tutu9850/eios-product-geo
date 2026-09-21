@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@yayu/ui'
-import { geoDelete, geoGet, type GeoQuestion } from './geo-api'
-import { GeoCardShell, GeoError, GeoLoading } from './shared'
+import { geoDelete, geoGet, geoPost, type GeoQuestion } from './geo-api'
+import { GeoCardShell, GeoError, GeoLoading, askGeoConfirm } from './shared'
 
 type Filter = 'all' | 'high' | 'unverified' | 'verified'
 
@@ -38,6 +38,8 @@ export function GeoQuestionsListCard() {
   const [error, setError] = useState<string | null>(null)
   const [platforms, setPlatforms] = useState<Record<string, Array<{ platform?: string; answer?: string; url?: string }>>>({})
   const [platformLoading, setPlatformLoading] = useState<string | null>(null)
+  const [seeds, setSeeds] = useState('')
+  const [generating, setGenerating] = useState(false)
 
   const load = useCallback(async (f: Filter = filter) => {
     setLoading(true)
@@ -89,6 +91,7 @@ export function GeoQuestionsListCard() {
   }
 
   const removeQuestion = async (qid: string) => {
+    if (!(await askGeoConfirm('删除后这个问题不会再进入内容计划，已生成的内容不受影响。'))) return
     setError(null)
     try {
       await geoDelete(`/distill/questions/${qid}`)
@@ -98,21 +101,21 @@ export function GeoQuestionsListCard() {
     }
   }
 
+  const generateQuestions = async () => {
+    setGenerating(true); setError(null)
+    try { await geoPost('/distill/questions', { seed_keywords: seeds.split(/[，,\n]/).map((x) => x.trim()).filter(Boolean), count: 10 }); setSeeds(''); await load() }
+    catch (e) { setError(e instanceof Error ? e.message : '问题生成失败') } finally { setGenerating(false) }
+  }
+
   if (loading) return <GeoLoading text="客户问题池加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
-  if (!items || items.length === 0)
-    return (
-      <GeoCardShell title="🗂 客户问题池">
-        <p className="text-[12px] text-[var(--yayu-muted)]">暂无问题，跑一次监测/蒸馏后自动生成。</p>
-      </GeoCardShell>
-    )
-
-  const sorted = [...items]
+  const sorted = [...(items ?? [])]
     .filter((q) => stageFilter === 'all' || stageOf(q.question) === stageFilter)
     .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
 
   return (
-    <GeoCardShell title="🗂 客户问题池">
+    <GeoCardShell title="客户问题池" className="geo-growth-workbench">
+      <div className="question-generator"><div><b>生成真实客户问法</b><span>输入种子词；留空时系统尝试从企业资料自动提取。</span></div><input value={seeds} onChange={(e)=>setSeeds(e.target.value)} placeholder="例如：GEO 服务，知识库搭建，AI 数字员工"/><Button size="sm" disabled={generating} onClick={()=>void generateQuestions()}><Sparkles className="size-3.5"/>{generating?'生成中…':'生成 10 个问题'}</Button></div>
       {/* 场景覆盖矩阵（决策链各阶段覆盖） */}
       {coverage && coverage.length > 0 ? (
         <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-1.5">
@@ -140,6 +143,7 @@ export function GeoQuestionsListCard() {
       ) : null}
 
       {/* 筛选按钮组（重新筛选 = 切换条件重拉） */}
+      {sorted.length === 0 ? <div className="market-empty">还没有客户问题，可以从种子词开始生成。</div> : null}
       <div className="flex flex-wrap gap-1.5">
         {FILTERS.map((f) => (
           <button

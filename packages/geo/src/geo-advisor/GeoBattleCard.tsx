@@ -39,7 +39,7 @@ export function GeoBattleCard() {
   }
 
   return (
-    <GeoCardShell title="⚔️ AI 对战">
+    <GeoCardShell title="AI 对战实验台" className="geo-battle-workbench">
       <p className="text-[11px] leading-snug text-[var(--yayu-muted)]">
         同一个问题问这个部署登记的每一个模型；多轮时后一轮带着前几轮的摘要继续辩，最后可选裁判点评。
       </p>

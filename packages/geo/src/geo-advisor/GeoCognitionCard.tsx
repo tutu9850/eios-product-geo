@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoGet, geoPost } from './geo-api'
-import { GeoButtonRow, GeoCardShell, GeoError, GeoLoading } from './shared'
+import { GeoError, GeoLoading, useGeoNav } from './shared'
 
 /** V2 认知评估结构（:3002 /distill/cognition/profile 返回） */
 interface CognitionV2 {
@@ -100,120 +100,21 @@ export function GeoCognitionCard() {
   if (loading) return <GeoLoading text="AI 认知加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
+  const go = useGeoNav()
   const total = health?.total ?? null
   const dims = health?.dims ?? []
 
-  return (
-    <GeoCardShell title="🧠 AI 认知（8 维度健康度 + 画像 + 官网分析）">
-      {/* 健康度总分 + 8 维度 */}
-      <div className="flex items-center gap-3">
-        <div
-          className="flex size-14 shrink-0 flex-col items-center justify-center rounded-full border-4"
-          style={{ borderColor: total !== null && total >= 70 ? 'var(--good)' : total !== null && total >= 40 ? 'var(--warn)' : 'var(--bad)' }}
-        >
-          <span className="text-base font-bold text-[var(--yayu-foreground)]">{total ?? '—'}</span>
-          <span className="text-[9px] text-[var(--yayu-faint)]">健康度</span>
-        </div>
-        <div className="min-w-0 flex-1 space-y-1">
-          {dims.map((d) => (
-            <div key={d.key} className="flex items-center gap-2" title={d.basis}>
-              <span className="w-14 shrink-0 text-[10.5px] text-[var(--yayu-muted)]">{d.label}</span>
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--yayu-surface-raised)]">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${Math.min(100, d.score)}%`, background: d.score >= 70 ? 'var(--good)' : d.score >= 40 ? 'var(--warn)' : 'var(--bad)' }}
-                />
-              </div>
-              <span className="w-8 shrink-0 text-right text-[10.5px] text-[var(--yayu-foreground)]">{d.score}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-      {health?.note ? <p className="pt-0.5 text-[9.5px] text-[var(--yayu-faint)]">{health.note}</p> : null}
-      {profile && profile.total === 0 ? (
-        <p className="text-[11px] text-[var(--yayu-faint)]">暂无评估——先跑一次监测，再点「运行 AI 认知评估」。</p>
-      ) : null}
-
-      {/* 认知画像：资料侧 vs AI 侧 + 偏差 */}
-      {portrait && portrait.items.length > 0 ? (
-        <div className="pt-1">
-          <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">认知画像（资料 vs AI）</div>
-          <div className="space-y-1">
-            {portrait.items.map((row) => (
-              <div key={row.key} className="flex items-center gap-2">
-                <span className="w-16 shrink-0 text-[11px] text-[var(--yayu-muted)]">{row.label}</span>
-                <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--yayu-foreground)]">{row.profile}</span>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${
-                  row.deviation === '一致'
-                    ? 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-muted)]'
-                    : row.deviation === '资料有但 AI 未认知'
-                      ? 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-foreground)]'
-                      : 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-faint)]'
-                }`}>
-                  {row.deviation}
-                </span>
-              </div>
-            ))}
-          </div>
-          {portrait.note ? <p className="pt-0.5 text-[9.5px] text-[var(--yayu-faint)]">{portrait.note}</p> : null}
-        </div>
-      ) : null}
-
-      {/* 维度矩阵 */}
-      {profile && profile.matrix.length > 0 ? (
-        <div className="pt-1">
-          <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">认知维度矩阵</div>
-          <div className="space-y-1">
-            {profile.matrix.map((row) => (
-              <div key={row.key} className="flex items-center gap-2">
-                <span className="w-16 shrink-0 text-[11px] text-[var(--yayu-muted)]">{row.label}</span>
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--yayu-surface-raised)]">
-                  <div className="flex h-full">
-                    <div className="bg-[var(--good)]" style={{ width: `${(row.grounded / Math.max(1, row.claims)) * 100}%` }} />
-                    <div className="bg-[var(--warn)]" style={{ width: `${(row.partial / Math.max(1, row.claims)) * 100}%` }} />
-                    <div className="bg-[var(--bad)]" style={{ width: `${(row.hallucination / Math.max(1, row.claims)) * 100}%` }} />
-                  </div>
-                </div>
-                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${row.status === '已理解' ? 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-foreground)]' : row.status === '幻觉风险' ? 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-muted)]' : 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-muted)]'}`}>
-                  {row.status}
-                </span>
-              </div>
-            ))}
-          </div>
-          <p className="pt-0.5 text-[9.5px] text-[var(--yayu-faint)]">绿=已理解 · 黄=部分理解 · 红=幻觉风险（占比按 claim 数）</p>
-        </div>
-      ) : null}
-
-      {/* 错误认知 */}
-      {profile && profile.errors.length > 0 ? (
-        <div className="pt-1">
-          <div className="mb-1 text-[12px] font-medium text-[var(--yayu-muted)]">错误认知（AI 说错的）</div>
-          <div className="space-y-1">
-            {profile.errors.slice(0, 4).map((e, i) => (
-              <div key={i} className="rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1">
-                <div className="text-[11px] text-[var(--yayu-foreground)]">{e.claim}</div>
-                <div className="text-[9.5px] text-[var(--yayu-faint)]">
-                  {e.type} · {e.engine} · {e.question}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {/* 官网分析（空态：客户提供官网资料后分析；无官网保留模块引导开发） */}
-      <div className="rounded-lg border border-dashed border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
-        <div className="text-[11px] font-medium text-[var(--yayu-muted)]">🌐 官网分析</div>
-        <p className="mt-0.5 text-[10.5px] leading-relaxed text-[var(--yayu-faint)]">
-          未提供官网资料，暂无法分析。上传官网介绍/页面资料后，可分析官网对 AI 认知的贡献（时效/缺失信息/影响维度）。
-        </p>
-      </div>
-
-      <GeoButtonRow>
-        <Button size="sm" disabled={evaluating} onClick={() => void runEvaluate()}>
-          <RefreshCw className={`size-3.5 ${evaluating ? 'animate-spin' : ''}`} /> {evaluating ? '评估中…' : '运行 AI 认知评估'}
-        </Button>
-      </GeoButtonRow>
-    </GeoCardShell>
-  )
+  const metricItems = [
+    ['品牌认知', profile?.metrics.awareness], ['理解准确', profile?.metrics.understanding],
+    ['推荐意愿', profile?.metrics.recommendation], ['幻觉风险', profile?.metrics.hallucination],
+  ] as const
+  return <div className="cognition-workbench">
+    <header className="cognition-head"><div><span>BRAND PERCEPTION</span><h1>AI 如何理解你的企业</h1><p>从国产大模型的真实回答中，识别稳定认知、缺失认知和错误认知。</p></div><Button disabled={evaluating} onClick={() => void runEvaluate()}><RefreshCw className={`size-3.5 ${evaluating ? 'animate-spin' : ''}`} />{evaluating ? '评估中…' : '重新评估'}</Button></header>
+    <section className="cognition-summary"><div className="health-score"><span>认知健康度</span><strong>{total ?? '—'}</strong><small>{total == null ? '等待监测数据' : total >= 70 ? '整体认知稳定' : total >= 40 ? '存在明显差距' : '需要优先治理'}</small></div>{metricItems.map(([label, value]) => <div className="cognition-kpi" key={label}><span>{label}</span><strong>{value == null ? '—' : `${Math.round(value)}%`}</strong><i><em style={{ width: `${value ?? 0}%` }} /></i></div>)}</section>
+    <div className="cognition-layout"><section className="cognition-panel dimension-panel"><header><div><h2>八维认知表现</h2><p>分数越低，越需要补充权威事实或公开证据</p></div><span className="cognition-legend">真实监测结果</span></header><div className="dimension-grid">{dims.map((d) => <article key={d.key}><div><span>{d.label}</span><strong>{d.score}</strong></div><i><em data-score={d.score >= 70 ? 'good' : d.score >= 40 ? 'mid' : 'low'} style={{ width: `${Math.min(100,d.score)}%` }} /></i><p>{d.basis}</p></article>)}</div></section>
+      <aside className="cognition-panel verdict-panel"><header><div><h2>本期判断</h2><p>给业务团队的直接结论</p></div></header><div className="verdict"><ShieldCheck /><div><b>{total !== null && total >= 70 ? '核心定位已形成稳定认知' : '核心认知尚未完全建立'}</b><p>{health?.note ?? '持续监测并补齐低分维度的事实与证据。'}</p></div></div><div className="verdict"><AlertTriangle /><div><b>{profile?.errors.length ?? 0} 条错误认知待处理</b><p>优先修正影响购买决策或企业可信度的错误信息。</p></div></div></aside>
+    </div>
+    <section className="cognition-panel portrait-panel"><header><div><h2>企业资料与 AI 认知偏差</h2><p>资料中已经明确表达，但模型仍未正确理解的内容</p></div></header><div className="portrait-table"><div className="portrait-row portrait-header"><span>认知维度</span><span>企业正式资料</span><span>AI 当前状态</span><span>判断</span></div>{portrait?.items.map((row) => <div className="portrait-row" key={row.key}><b>{row.label}</b><span>{row.profile || '暂无正式资料'}</span><span>{row.ai_status} · {row.ai_grounded}/{row.ai_claims}</span><em data-ok={row.deviation === '一致'}>{row.deviation === '一致' ? <CheckCircle2 /> : <AlertTriangle />}{row.deviation}</em></div>)}</div></section>
+    <div className="cognition-layout bottom"><section className="cognition-panel matrix-panel"><header><div><h2>认知证据构成</h2><p>正确、部分正确与幻觉内容的占比</p></div></header>{profile?.matrix.map((row) => <div className="matrix-row" key={row.key}><span>{row.label}</span><i><em className="grounded" style={{ width: `${row.grounded/Math.max(1,row.claims)*100}%` }} /><em className="partial" style={{ width: `${row.partial/Math.max(1,row.claims)*100}%` }} /><em className="hallucination" style={{ width: `${row.hallucination/Math.max(1,row.claims)*100}%` }} /></i><b>{row.status}</b></div>)}</section><section className="cognition-panel errors-panel"><header><div><h2>错误认知</h2><p>点一条直接带进内容生成，主题就是这句要纠正的说法</p></div></header>{profile?.errors.length ? profile.errors.slice(0,4).map((item,index) => <button key={index} onClick={()=>go?.('content',{seed:item.claim})} title="用它作为主题去生成纠正内容"><span>{item.claim}</span><small>{item.engine} · {item.question}</small><ArrowRight /></button>) : <div className="cognition-empty"><CheckCircle2 />当前没有检测到明确错误认知</div>}</section></div>
+  </div>
 }

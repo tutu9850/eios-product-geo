@@ -144,7 +144,7 @@ export function GeoMonitorReportCard() {
           {/* 推荐理由/证据链（AI 为什么提到我们） */}
           {reasons && (reasons.reasons.length > 0 || reasons.missing_evidence.length > 0) ? (
             <div className="mb-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-1.5">
-              <div className="mb-1 text-[11px] font-medium text-[var(--yayu-muted)]">🧠 AI 为什么提到你（真实回答样本）</div>
+              <div className="mb-2 text-[11px] font-semibold text-[var(--yayu-foreground)]">AI 为什么提到你 <span className="font-normal text-[var(--yayu-muted)]">· 真实回答样本</span></div>
               {reasons.reasons.length > 0 ? (
                 <div className="space-y-1">
                   {reasons.reasons.slice(0, 3).map((r, i) => (

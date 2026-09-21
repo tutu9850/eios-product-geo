@@ -79,7 +79,7 @@ export function GeoActionPlanCard() {
   ]
 
   return (
-    <GeoCardShell title="📋 行动计划（30 天 · P0/P1/P2）">
+    <GeoCardShell title="30 天行动计划" className="geo-growth-workbench">
       {!actions || actions.length === 0 ? (
         <p className="text-[12px] text-[var(--yayu-muted)]">暂无行动项——先跑蒸馏（生成缺口与内容计划），行动会自动生成。</p>
       ) : (

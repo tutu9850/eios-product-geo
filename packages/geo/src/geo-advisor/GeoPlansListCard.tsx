@@ -1,20 +1,26 @@
 import { useCallback, useEffect, useState } from 'react'
-import { RefreshCw, Trash2 } from 'lucide-react'
+import { CheckCircle2, Plus, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoDelete, geoGet, geoPost, type GeoPlan } from './geo-api'
-import { GeoCardShell, GeoError, GeoLoading } from './shared'
+import { GeoCardShell, GeoError, GeoLoading, askGeoConfirm, useGeoNav, useGeoNavParams } from './shared'
 
 type Sort = 'priority' | 'created_at'
 
 /** 内容计划卡：列表/排序/删除 + 从缺口一键生成（交互对齐 Builder GeoDistill 计划区） */
 export function GeoPlansListCard() {
   const [items, setItems] = useState<GeoPlan[] | null>(null)
+  const go = useGeoNav()
+  const { focus: navFocus, nonce: navNonce } = useGeoNavParams()
   const [sort, setSort] = useState<Sort>('priority')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [genMsg, setGenMsg] = useState<string | null>(null)
-  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [runningId, setRunningId] = useState<string | null>(null)
+  const [impact, setImpact] = useState<Record<string, string>>({})
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualTopic, setManualTopic] = useState('')
+  const [manualQuestion, setManualQuestion] = useState('')
 
   const load = useCallback(async (s: Sort = sort) => {
     setLoading(true)
@@ -68,13 +74,18 @@ export function GeoPlansListCard() {
     }
   }
 
+  // 从市场信号跳过来时：先刷新（那条计划是刚建的），再高亮滚过去（2026-09-21）
+  useEffect(() => {
+    if (!navNonce) return
+    void load().then(() => {
+      if (!navFocus) return
+      const target = document.querySelector<HTMLElement>('[data-nav-focus="on"]')
+      target?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    })
+  }, [navNonce])
+
   const removePlan = async (pid: string) => {
-    if (confirmId !== pid) {
-      setConfirmId(pid)
-      setTimeout(() => setConfirmId((cur) => (cur === pid ? null : cur)), 3000)
-      return
-    }
-    setConfirmId(null)
+    if (!(await askGeoConfirm('删除后这条内容计划与其用例不再保留；已经生成并存进素材库的内容不受影响。'))) return
     try {
       await geoDelete(`/distill/plans/${pid}`)
       await load()
@@ -83,11 +94,35 @@ export function GeoPlansListCard() {
     }
   }
 
+  const publishPlan = async (pid: string) => {
+    setRunningId(pid)
+    try {
+      const d = await geoPost<{ published?: boolean; error?: string }>('/distill/content-publish', { plan_id: pid })
+      setGenMsg(d.error || '已登记为发布；GEO 只记录发布，不会自动上线。')
+      await load()
+    } catch (e) { setError(e instanceof Error ? e.message : '发布登记失败') } finally { setRunningId(null) }
+  }
+
+  const recheckPlan = async (pid: string) => {
+    setRunningId(pid)
+    try {
+      const d = await geoPost<{ impact?: { level?: string; note?: string; delta?: number | null }; error?: string }>('/distill/content-recheck', { plan_id: pid })
+      setImpact((current) => ({ ...current, [pid]: d.error || d.impact?.note || `复测完成${d.impact?.delta == null ? '' : `，变化 ${d.impact.delta}`}` }))
+    } catch (e) { setError(e instanceof Error ? e.message : '复测失败') } finally { setRunningId(null) }
+  }
+
+  const addManualPlan = async () => {
+    if (!manualTopic.trim()) return
+    setGenerating(true)
+    try { const d = await geoPost<{ added?: boolean; dup?: boolean; error?: string }>('/distill/plans/manual', { topic: manualTopic.trim(), target_question: manualQuestion.trim(), reason: '用户手动创建', recommended_content_type: 'FAQ+案例文章', priority: 60 }); setGenMsg(d.error || (d.dup ? '已有相同计划，未重复添加' : '计划已创建')); setManualTopic(''); setManualQuestion(''); setManualOpen(false); await load() }
+    catch (e) { setError(e instanceof Error ? e.message : '创建计划失败') } finally { setGenerating(false) }
+  }
+
   if (loading) return <GeoLoading text="内容计划加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
   return (
-    <GeoCardShell title={`📝 内容计划（${items?.length ?? 0} 条）`}>
+    <GeoCardShell title={`内容计划 · ${items?.length ?? 0} 条`} className="geo-growth-workbench">
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void generateByAlgorithm()} disabled={generating}>
           <RefreshCw className={`size-3.5 ${generating ? 'animate-spin' : ''}`} />
@@ -96,6 +131,7 @@ export function GeoPlansListCard() {
         <Button size="sm" variant="secondary" onClick={() => void generateFromGaps()} disabled={generating}>
           从缺口生成计划
         </Button>
+        <Button size="sm" variant="secondary" onClick={() => setManualOpen(!manualOpen)}><Plus className="size-3.5" />手动新建</Button>
         <div className="flex gap-1.5">
           {(
             [
@@ -120,6 +156,8 @@ export function GeoPlansListCard() {
         {genMsg ? <span className="text-[11px] text-[var(--yayu-muted)]">{genMsg}</span> : null}
       </div>
 
+      {manualOpen ? <div className="manual-plan"><input value={manualTopic} onChange={(e)=>setManualTopic(e.target.value)} placeholder="计划主题（必填）"/><input value={manualQuestion} onChange={(e)=>setManualQuestion(e.target.value)} placeholder="要回答的客户问题（可选）"/><Button size="sm" disabled={!manualTopic.trim()||generating} onClick={()=>void addManualPlan()}>创建计划</Button></div> : null}
+
       {/* 算法公式说明（2026-08-19：公式可见性） */}
       <div className="mt-1 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-1.5 text-[10px] leading-relaxed text-[var(--yayu-muted)]">
         <span className="text-[var(--yayu-foreground)]">算法：</span>
@@ -135,7 +173,11 @@ export function GeoPlansListCard() {
       ) : (
         <div className="space-y-1.5">
           {items.map((p) => (
-            <div key={p.id ?? p.topic} className="rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1">
+            <div
+              key={p.id ?? p.topic}
+              data-nav-focus={navFocus && p.topic === navFocus ? 'on' : undefined}
+              className={`rounded-md border px-2 py-1 ${navFocus && p.topic === navFocus ? 'border-[var(--yayu-foreground)] bg-[var(--yayu-surface-raised)]' : 'border-[var(--yayu-border)] bg-[var(--yayu-input)]'}`}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="text-[12px] leading-snug text-[var(--yayu-foreground)]">{p.topic}</div>
@@ -163,17 +205,19 @@ export function GeoPlansListCard() {
                   <span className="rounded bg-[var(--yayu-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--yayu-muted)]">
                     优先级 {p.priority}
                   </span>
+                  <Button variant="secondary" size="sm" onClick={() => go?.('content', { seed: p.topic })} disabled={!go}>进入内容生成</Button>
+                  {p.status === 'published' || p.state === '已发布' ? <Button variant="secondary" size="sm" disabled={runningId === p.id} onClick={() => void recheckPlan(p.id)}><RotateCcw className="size-3.5" />复测</Button> : <Button variant="secondary" size="sm" disabled={runningId === p.id} onClick={() => void publishPlan(p.id)}><CheckCircle2 className="size-3.5" />登记发布</Button>}
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => void removePlan(p.id)}
                     aria-label="删除计划"
-                    className={confirmId === p.id ? 'text-[var(--yayu-foreground)]' : ''}
                   >
-                    {confirmId === p.id ? '确认删除？' : <Trash2 className="size-3.5" />}
+                    <Trash2 className="size-3.5" />
                   </Button>
                 </div>
               </div>
+              {impact[p.id] ? <div className="plan-impact">复测结论：{impact[p.id]}</div> : null}
             </div>
           ))}
         </div>

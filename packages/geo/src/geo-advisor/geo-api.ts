@@ -121,6 +121,17 @@ export async function geoDownload(path: string): Promise<Blob> {
   )
 }
 
+/** 下载由 GEO 生成的非 PDF 文件（例如企业资料 Word）。 */
+export async function geoDownloadFile(path: string): Promise<Blob> {
+  const r = await fetch(`${geoApiBase}${path}`, { headers: geoHeaders() })
+  const contentType = r.headers.get('content-type') ?? ''
+  if (r.ok && !contentType.toLowerCase().includes('application/json')) return r.blob()
+  const j = await r.json().catch(() => null)
+  if (r.status === 401) onProductSessionExpired?.()
+  if (j?.error || j?.message || j?.detail) geoFail(r.status, j)
+  throw new Error(`GEO 没有返回可下载的文件（HTTP ${r.status}）`)
+}
+
 /** PUT（素材更新/发布打点等，S4） */
 export async function geoPut<T>(path: string, body?: unknown): Promise<T> {
   const r = await fetch(`${geoApiBase}${path}`, {

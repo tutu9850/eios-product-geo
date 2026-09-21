@@ -58,7 +58,7 @@ export function GeoGapsListCard() {
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
   return (
-    <GeoCardShell title="🧩 知识缺口（回答客户问题缺的资料）">
+    <GeoCardShell title="知识缺口" className="geo-growth-workbench">
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void regenerate()} disabled={regenerating}>
           <RefreshCw className={`size-3.5 ${regenerating ? 'animate-spin' : ''}`} /> {regenerating ? '分析中…' : '重新筛选'}

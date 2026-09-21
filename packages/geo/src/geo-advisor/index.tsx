@@ -11,6 +11,11 @@ import { GeoMonitorReportCard } from './GeoMonitorReportCard'
 import { GeoPlansListCard } from './GeoPlansListCard'
 import { GeoQuestionsListCard } from './GeoQuestionsListCard'
 import { GeoReportCard } from './GeoReportCard'
+import { GeoInsightWorkspace } from './GeoInsightWorkspace'
+import { GeoProfileWorkspace } from './GeoProfileWorkspace'
+import { GeoMonitorAnalytics } from './GeoMonitorAnalytics'
+import { GeoFaqWorkspace } from './GeoFaqWorkspace'
+import { GeoCognitionMap } from './GeoCognitionMap'
 import { GeoCardErrorBoundary } from './shared'
 
 export type GeoFlowKind =
@@ -26,6 +31,11 @@ export type GeoFlowKind =
   | 'report'
   | 'plans'
   | 'action-plan'
+  | 'insight-overview'
+  | 'profile-overview'
+  | 'monitor-analysis'
+  | 'faq'
+  | 'cognition-map'
 
 /** 触发词 → GEO 功能（前端硬匹配，命中即出固定卡片，不发给 agent） */
 export function matchGeoTrigger(text: string): GeoFlowKind | null {
@@ -74,7 +84,7 @@ export function GeoFlowRouter({ kind, onClose }: { kind: GeoFlowKind; onClose?: 
     case 'monitor':
       // 监测 = 两卡并排：监测对象+定时任务 ｜ 监测报告
       return (
-        <div className="flex flex-wrap gap-2">
+        <div className="geo-monitor-workspace">
           <GeoCardErrorBoundary label="监测对象">
             <GeoMonitorObjectsCard />
           </GeoCardErrorBoundary>
@@ -101,5 +111,15 @@ export function GeoFlowRouter({ kind, onClose }: { kind: GeoFlowKind; onClose?: 
       return <GeoActionPlanCard />
     case 'plans':
       return <GeoPlansListCard />
+    case 'insight-overview':
+      return <GeoInsightWorkspace />
+    case 'profile-overview':
+      return <GeoProfileWorkspace />
+    case 'monitor-analysis':
+      return <GeoMonitorAnalytics />
+    case 'faq':
+      return <GeoFaqWorkspace />
+    case 'cognition-map':
+      return <GeoCognitionMap />
   }
 }
