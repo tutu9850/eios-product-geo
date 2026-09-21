@@ -28,7 +28,17 @@ from app.models.geo_models import (
     init_db,
 )
 
+from services._db import current_tenant_or_default
+
 DEFAULT_TENANT = "tenant_corp_01"
+
+
+def _resolve_tenant(tenant: str | None) -> str:
+    """没显式传租户时用**当前请求的柜**（账号分柜，Owner 2026-09-22）。
+
+    显式传进来的租户一律照用 —— 脚本和后台任务靠这个跑指定柜，不能被悄悄改道。
+    """
+    return tenant or current_tenant_or_default()
 
 
 def _new_id(prefix: str) -> str:
@@ -80,7 +90,8 @@ def upsert_evidence(ev: dict) -> tuple[dict, bool]:
         return _row_to_dict(row), True
 
 
-def get_evidence(evidence_id: str, tenant_id: str = DEFAULT_TENANT) -> dict | None:
+def get_evidence(evidence_id: str, tenant_id: str | None = None) -> dict | None:
+    tenant_id = _resolve_tenant(tenant_id)
     with SessionLocal() as db:
         row = (
             db.query(GeoEvidence)
@@ -90,11 +101,12 @@ def get_evidence(evidence_id: str, tenant_id: str = DEFAULT_TENANT) -> dict | No
         return _row_to_dict(row) if row else None
 
 
-def list_evidence_pending(tenant_id: str = DEFAULT_TENANT) -> list[dict]:
+def list_evidence_pending(tenant_id: str | None = None) -> list[dict]:
     """无 succeeded extraction 的 evidence（启动重扫 / 补跑用）。
 
     排除最新为 failed 的：失败需手动指定重跑，避免 recover 死循环烧 token。
     """
+    tenant_id = _resolve_tenant(tenant_id)
     init_tables()
     with SessionLocal() as db:
         # 每 evidence 取最新版本（row_number 窗口，多版本时 DISTINCT(evidence_id,status) 会带出旧行）
@@ -238,7 +250,8 @@ def insert_mentions(mentions: list[dict]) -> int:
     return n
 
 
-def list_mentions(evidence_id: str | None = None, brand_name: str | None = None, tenant_id: str = DEFAULT_TENANT) -> list[dict]:
+def list_mentions(evidence_id: str | None = None, brand_name: str | None = None, tenant_id: str | None = None) -> list[dict]:
+    tenant_id = _resolve_tenant(tenant_id)
     with SessionLocal() as db:
         q = db.query(BrandMention)
         if evidence_id:
@@ -281,8 +294,9 @@ def latest_report(company_name: str | None = None) -> dict | None:
         return _row_to_dict(row) if row else None
 
 
-def list_synonyms(tenant_id: str = DEFAULT_TENANT) -> dict[str, str]:
+def list_synonyms(tenant_id: str | None = None) -> dict[str, str]:
     """alias → canonical 映射（聚合层合并用）。"""
+    tenant_id = _resolve_tenant(tenant_id)
     with SessionLocal() as db:
         rows = db.query(GeoDimensionSynonyms).all()
         return {r.alias: r.canonical for r in rows}

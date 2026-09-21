@@ -6,6 +6,8 @@ and signed session verification are introduced behind this seam in a later slice
 """
 from __future__ import annotations
 
+import hashlib
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -79,3 +81,33 @@ def bind_product_session(session: ProductSession) -> Iterator[ProductSession]:
         yield session
     finally:
         _current.reset(token)
+
+
+# ── 账号分柜（Owner 2026-09-22 拍板）─────────────────────────────────────────
+#
+# 「这个产品注册一个人就开一份存储空间」—— Owner 原话。一个人做亚宇臻隆的 GEO 内容，
+# 另一个人只做笔革家居的，两个人的资料不许互相看见、不许串。
+#
+# 柜号从**已验证会话**的 principal 推出来，不从 HTTP 头推 —— 头是调用方给的，
+# 那等于让调用方自己挑柜子。本部署是单企业部署（``EIOS_ENTERPRISE_ID`` 一个值），
+# 所以柜号只用 principal；**若以后一个 GEO 部署服务多企业，柜号必须把 enterprise 加进去**，
+# 否则两个企业里同名的 ``alice`` 会落进同一个柜。
+CABINET_PREFIX = "acct_"
+#: 柜号会被写进 ``tenant_id`` 列，必须落在旧约束 ``^[A-Za-z0-9_-]{1,64}$`` 内。
+_CABINET_SAFE = re.compile(r"[^A-Za-z0-9_-]+")
+_CABINET_MAX_SLUG = 48
+
+
+def cabinet_for_session(session: ProductSession) -> str:
+    """这个账号的柜号（稳定、可读、只由已验证主体决定）。
+
+    ``human:alice`` → ``acct_human_alice``。主体里没有可用的 ASCII 片段时
+    （纯中文、符号、空）退化成哈希，**不回落默认柜** —— 回落等于把「分不清是谁」
+    变成「大家一起用」。
+    """
+    raw = (session.principal_id or "").strip()
+    slug = _CABINET_SAFE.sub("_", raw).strip("_")[:_CABINET_MAX_SLUG]
+    if slug:
+        return f"{CABINET_PREFIX}{slug}"
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"{CABINET_PREFIX}{digest}"

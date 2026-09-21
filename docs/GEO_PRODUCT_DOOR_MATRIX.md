@@ -224,16 +224,32 @@ fail-closed 成 invalid response，绝不把一页错误页当文件递给浏览
 
 ## 3. 已知差异与下一卡必须处理的事
 
-1. **标准页面在无 Host 握手时回落到老 BFF 基址**
+1. **标准页面在无 Host 握手时回落到老 BFF 基址**（2026-09-22 复核，仍成立）
    `geo-advisor/frontend/geo-api.ts` 默认 `geoApiBase = '/api/geo/api/v1'`，
    只有收到 `eios.product_host/v1` 的 `host.session`/`host.hello` 才切到 `/api/product/geo`。
-   独立页（无 iframe Host、无握手）会去请求老 BFF 并 404。产品正式入口经 Product Host 加载不受影响，
-   但 GEO-02 需要决定：产品构建是否应显式声明「必须 Host 会话」，而不是回落到 yayu BFF。
 
-2. **健康契约与身份模式**
-   `/api/product/geo/health` 返回扁平 `product.geo_health/v1` 契约（不是老 envelope），
-   `status` 只有在 `GEO_AUTH_MODE=auth_context` 且 `GEO_PRODUCT_STORAGE_MODE=postgres` 时才为 `ok`。
-   未迁移前固定为 `compatibility`，因此 EIOS availability 不会在老租户口径上变绿。
+   2026-09-22 用浏览器实测（不是推断）：**顶层直开** `http://127.0.0.1:4173/product/geo/`
+   （没有 iframe Host、没有握手），页面发的就是
+   `/api/geo/api/v1/monitor/overview`、`/stats/overview`、`/distill/overview` —— 老 BFF 基址。
+   这些路径在 Client 同源上被 SPA 兜成 **HTTP 200 + HTML**，前端把 HTML 当 JSON 解析失败，
+   于是显示成「GEO 请求失败（200）」—— 症状像后端 500，其实是**没有 Host 就用错了基址**。
+
+   **不要再把这件事归因成「构建产物旧了」**：`npm run build:ui` 重建后产物哈希一字未变
+   （`index-CTdzbI4k.js`，md5 `45e0d71b06bb6829550ef00b264e2a49`）。
+
+   **经 Product Host 加载（`http://127.0.0.1:4173/app/geo`）不受影响**：同一轮实测该页面的
+   网络请求只有 `/api/product/geo/*`（`knowledge/materials`、`enterprise-profile/*`），全部 200。
+
+   GEO-02 需要决定：产品构建是否应显式声明「必须 Host 会话」，而不是回落到 yayu BFF。
+
+2. **健康契约与身份模式**（2026-09-22 改动，**产品可见字段变了**）
+   `/api/product/geo/health` 返回扁平 `product.geo_health/v1` 契约（不是老 envelope）。
+   2026-09-22 账号分柜起，payload 多一个 `cabinet_mode`（`account` / `none`），
+   `status` 的判据改成 `identity_mode=auth_context` **且** `cabinet_mode=account` 即为 `ok`
+   （不再要求 `GEO_PRODUCT_STORAGE_MODE=postgres`；本部署的身份落在 GEO 自己的库上，
+   不等 P2）。旧的 `migrated` / `acknowledged` 两条判据原样保留。
+
+   契约与边界见 `docs/GEO_ACCOUNT_CABINET.md`。
 
 3. **`knowledge/reset` 拿到了票，但没有界面入口**
    它随整面放行进了表（`manage`）。它只清 GEO 自己的库/媒体/向量，且必须显式 `confirm=true` 才动手，

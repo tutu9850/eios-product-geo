@@ -126,10 +126,15 @@ def _pick_number_facts(facts: list[dict], top_n: int = 5) -> list[dict]:
 
 async def build_company_profile(
     company_name: str,
-    tenant_id: str = "tenant_corp_01",
+    tenant_id: str | None = None,
     top_facts: int = 20,
 ) -> dict:
     """组装企业画像（知识库正式事实 + 检索对象 + 关系 + 本地问题池/资产）。"""
+    if not tenant_id:
+        # 账号分柜（Owner 2026-09-22）：没显式指定就跟当前请求的柜走。
+        from app.services.store import current_tenant
+
+        tenant_id = current_tenant() or "tenant_corp_01"
     # 空企业名直接返回空画像（防 "" in blob 恒 True 放过全部命中——审计 P0-2）
     if not company_name.strip():
         return {

@@ -51,6 +51,31 @@ def test_roundtrip_save_load(store):
     assert items[0]["question"] == "只有这条"
 
 
+def test_reset_all_defaults_to_the_current_cabinet(store):
+    """Owner 2026-09-22：账号分柜后，「重置」必须清**当前柜**。
+
+    原实现留空固定清 ``tenant_corp_01``：登录账号点重置，会清掉所有人共用的那个柜，
+    而自己的柜一点没动 —— 分柜之后这是个真错。
+    """
+    from app.services.store import reset_all, set_tenant
+
+    # 用**合成柜名**，不许碰真实账号的柜（acct_human_*）——测试产物不进真柜
+    set_tenant("acct_test_alice")
+    store.save("kb", [{"title": "alice 的资料", "source_type": "file"}])
+    set_tenant("acct_test_carol")
+    store.save("kb", [{"title": "carol 的资料", "source_type": "file"}])
+
+    set_tenant("acct_test_alice")
+    reset_all()  # 不给租户 = 当前柜
+
+    assert store.load("kb") == []
+    set_tenant("acct_test_carol")
+    assert [item["title"] for item in store.load("kb")] == ["carol 的资料"]
+    set_tenant("acct_test_carol")
+    reset_all()  # 测完自己清掉，不留测试产物
+    set_tenant("")
+
+
 def test_insert_delete(store):
     rec = store.insert("gaps", {"question": "缺口X", "impact": "高"})
     assert rec["id"].startswith("gaps_")

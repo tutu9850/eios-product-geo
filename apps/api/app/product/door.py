@@ -32,6 +32,7 @@ from app.core.envelope import err
 from app.product.http_auth import (
     ProductAuthenticationError,
     auth_context_mode_enabled,
+    cabinet_mode,
     product_storage_ready,
     resolve_http_product_session,
 )
@@ -245,15 +246,23 @@ def product_health_payload() -> dict[str, Any]:
     """
     identity_mode = "auth_context" if auth_context_mode_enabled() else "legacy"
     storage_mode = "postgres" if product_storage_ready() else "legacy"
+    #: 数据按什么分柜。``account`` = 每个登录账号一份（Owner 2026-09-22），
+    #: 只在身份真被验过签时才成立 —— 没验签就分不出「这个账号是谁」。
+    cabinets = cabinet_mode()
     migrated = identity_mode == "auth_context" and storage_mode == "postgres"
     acknowledged = identity_mode == "legacy" and identity_acknowledged()
+    # Owner 2026-09-22：「先把 GEO 自己的柜做对」——身份已验证 + 按账号分柜时，
+    # 产品面就真的在服务「这个账号自己的数据」，即使底层仍是 GEO 自己的 SQLite
+    # （``storage_mode=legacy``）。所以可用性看的是那两件事，不再要求 postgres。
+    served_on_verified_account = identity_mode == "auth_context" and cabinets == "account"
     return {
         "contract": HEALTH_CONTRACT,
-        "status": "ok" if (migrated or acknowledged) else "compatibility",
+        "status": "ok" if (served_on_verified_account or migrated or acknowledged) else "compatibility",
         "product_id": PRODUCT_ID,
         "identity_mode": identity_mode,
         "identity_acknowledged": acknowledged,
         "storage_mode": storage_mode,
+        "cabinet_mode": cabinets,
         "door": "path-adapter",
     }
 

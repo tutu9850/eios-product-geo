@@ -168,7 +168,12 @@ def _report_findings() -> list[dict]:
     return findings
 
 
-async def build_market_signals(question: str = "", tenant_id: str = "tenant_corp_01") -> dict:
+async def build_market_signals(question: str = "", tenant_id: str | None = None) -> dict:
+    """市场现状信号（只读本柜）。没显式给租户时读**当前请求的柜**（账号分柜）。"""
+    if not tenant_id:
+        from app.services.store import current_tenant
+
+        tenant_id = current_tenant() or "tenant_corp_01"
     """聚合「生成内容前应该看的市场现状」。
 
     返回 {ai_answers, citations, hallucinations, competitor_edges, report_findings, available}

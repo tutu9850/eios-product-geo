@@ -28,10 +28,20 @@ from app.models.geo_models import (
 )
 
 from services.intelligence import repo
+from services._db import current_tenant_or_default
 
 logger = logging.getLogger("eios.intelligence.aggregator")
 
 DEFAULT_TENANT = "tenant_corp_01"
+
+
+def _resolve_tenant(tenant: str | None) -> str:
+    """没显式传租户时用**当前请求的柜**（账号分柜，Owner 2026-09-22）。
+
+    显式传进来的租户一律照用 —— 脚本和后台任务靠这个跑指定柜，不能被悄悄改道。
+    """
+    return tenant or current_tenant_or_default()
+
 
 # 企业名后缀剥离（与 monitor 规则一致）
 _COMPANY_SUFFIXES = (
@@ -205,9 +215,10 @@ def matrix(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
 ) -> dict:
     """差距矩阵（S1：维度提及聚合 + 三色；gap_type 留 S2 企业知识库对照）。"""
+    tenant = _resolve_tenant(tenant)
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = _succeeded_evidence_ids(since_dt, company, source_type, tenant)
     mentions = _load_mentions(ev_ids, tenant)
@@ -358,7 +369,7 @@ def brand_overview(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
     mode: str = "all",
 ) -> dict:
     """品牌提及概览：每个主体（我方+他方）被提及的 evidence 数 + 提及率%。
@@ -369,6 +380,7 @@ def brand_overview(
       我方与竞品在同一场景下公平比较
     提及率 = 提及该主体的 evidence 数（去重） / 对应分母。
     """
+    tenant = _resolve_tenant(tenant)
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = _succeeded_evidence_ids(since_dt, company, source_type, tenant)
     if mode == "comparison" and ev_ids:
@@ -408,7 +420,7 @@ def share_of_voice(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
 ) -> dict:
     """SOV 声量份额（2026-08-15 新增，汇报第一指标）。
 
@@ -420,6 +432,7 @@ def share_of_voice(
     - 趋势：按周窗口的推荐份额变化（≥2 周才有趋势）
     返回按推荐份额降序的品牌列表 + 我方标记 + 汇总。
     """
+    tenant = _resolve_tenant(tenant)
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = _succeeded_evidence_ids(since_dt, company, source_type, tenant)
     mentions = _load_mentions(ev_ids, tenant)
@@ -495,7 +508,7 @@ def trend_delta(
     company: str | None = None,
     days: int | None = 60,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
     window_days: int = 7,
 ) -> dict:
     """推荐率趋势变化（2026-08-15 新增）：对比相邻周期（默认 7 天）的品牌推荐变化。
@@ -507,6 +520,7 @@ def trend_delta(
     - rising / falling：推荐数升/降的品牌（含幅度）
     无 ≥2 周期时返回空变化（诚实：数据不足不编造）。
     """
+    tenant = _resolve_tenant(tenant)
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = _succeeded_evidence_ids(since_dt, company, source_type, tenant)
     mentions = _load_mentions(ev_ids, tenant)
@@ -572,10 +586,11 @@ def keywords(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
     top_n: int = 20,
 ) -> list[dict]:
     """必备关键词：高频维度（正式+观察区）按提及数排序，供下次内容生产围绕。"""
+    tenant = _resolve_tenant(tenant)
     m = matrix(company=company, days=days, source_type=source_type, tenant=tenant)
     out = []
     for d in m["dimensions"]:
@@ -589,9 +604,10 @@ def perception(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
 ) -> dict:
     """认知标签分布：扫最新 succeeded extraction 的 analysis_json.perception_tags。"""
+    tenant = _resolve_tenant(tenant)
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = _succeeded_evidence_ids(since_dt, company, source_type, tenant)
     if not ev_ids:

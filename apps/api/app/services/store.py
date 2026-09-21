@@ -258,7 +258,7 @@ def get_store() -> Store:
     return Store(SessionLocal())
 
 
-def reset_all(tenant_id: str = "tenant_corp_01") -> dict[str, int]:
+def reset_all(tenant_id: str | None = None) -> dict[str, int]:
     """重置 GEO 数据库：清空全部业务表（保留表结构）+ 解析层仅清 GEO 来源（ai_answer）。
 
     供「重置 GEO 数据」按钮使用——删除所有客户生成/添加的内容（问题池/缺口/
@@ -267,7 +267,13 @@ def reset_all(tenant_id: str = "tenant_corp_01") -> dict[str, int]:
     **其他来源（website/xiaohongshu/comment/video 等）的解析数据保留**；
     周期报告（geo_insight_reports，公司级聚合）V1 全清（无来源标签，未来加 source 字段再按来源）。
     注意：媒体文件与 Qdrant 向量由调用方（reset 接口）一并清理。
+
+    ``tenant_id`` 留空 = 重置**当前请求的柜**（账号分柜，Owner 2026-09-22）。原实现留空时
+    固定清 ``tenant_corp_01``：那等于「登录账号点重置，把所有人共用的那个柜清了、自己的
+    一点没动」—— 分柜之后这是个真错，所以默认值改成当前柜。
     """
+    if tenant_id is None:
+        tenant_id = current_tenant()
     tenant_id = normalize_tenant(tenant_id)
     db = SessionLocal()
     stats: dict[str, int] = {}

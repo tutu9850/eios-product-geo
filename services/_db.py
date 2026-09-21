@@ -17,7 +17,31 @@ import os as _os
 
 DB_PATH = Path(_os.environ.get("GEO_DB_PATH", str(_GEO_ROOT / "apps" / "geo.db")))
 
-TENANT = "tenant_corp_01"
+#: 默认柜。旧调用方（脚本 / 后台任务 / 没带任何身份的请求）落这里。
+#:
+#: Owner 2026-09-22 拍板「登录账号分柜」后，柜号不再写死：请求走 API 时由
+#: ``app.product.session.cabinet_for_session`` 按已验证账号分配，经 store 的 contextvar
+#: 传下来（见 ``_tenant()``）。这里保留的默认值只服务「没有请求上下文」的那几种调用。
+DEFAULT_TENANT = "tenant_corp_01"
+
+
+def _tenant() -> str:
+    """当前柜号：优先读 API 层的当前租户，读不到才回落默认柜。
+
+    本模块刻意不依赖 ``app.*``（见文件头），所以用延迟 import + 兜底的方式取同一个值，
+    而不是再定义一份租户状态 —— 两份状态会各自漂移，那就成了第二个 store。
+    """
+    try:
+        from app.services.store import current_tenant
+
+        return current_tenant() or DEFAULT_TENANT
+    except Exception:  # noqa: BLE001 — 独立脚本 / 后台线程没有 API 层上下文
+        return DEFAULT_TENANT
+
+
+def current_tenant_or_default() -> str:
+    """当前柜号（没有请求上下文时是默认柜）。给别的 services 模块共用同一套解析。"""
+    return _tenant()
 
 
 def _conn():
@@ -32,7 +56,7 @@ def load_table(table: str) -> list[dict]:
     try:
         rows = conn.execute(
             f"SELECT id, data_json FROM {table} WHERE tenant_id=? ORDER BY created_at ASC",
-            (TENANT,),
+            (_tenant(),),
         ).fetchall()
         out = []
         for r in rows:
@@ -51,7 +75,8 @@ def save_table(table: str, items: list[dict]) -> None:
     """整表替换（事务原子）。"""
     conn = _conn()
     try:
-        conn.execute(f"DELETE FROM {table} WHERE tenant_id=?", (TENANT,))
+        tenant = _tenant()
+        conn.execute(f"DELETE FROM {table} WHERE tenant_id=?", (tenant,))
         now = datetime.now(timezone.utc).isoformat()
         for it in items:
             row_id = it.get("id") or f"{table}_{uuid.uuid4().hex[:12]}"
@@ -59,7 +84,7 @@ def save_table(table: str, items: list[dict]) -> None:
             payload.pop("id", None)
             conn.execute(
                 f"INSERT INTO {table} (id, data_json, tenant_id, created_at) VALUES (?,?,?,?)",
-                (row_id, json.dumps(payload, ensure_ascii=False), TENANT, now),
+                (row_id, json.dumps(payload, ensure_ascii=False), tenant, now),
             )
         conn.commit()
     finally:

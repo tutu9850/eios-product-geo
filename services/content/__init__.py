@@ -87,7 +87,9 @@ _DEFAULT_GENERATE_PROMPT = """你是一个专业的{platform}内容创作者，�
 内容类型：{typeLine}
 用户问题/主题：{question}
 
-## 企业信息
+{topicRule}
+
+## 企业资料（用来支撑上面的题目，不是文章主角）
 {companyBlock}
 
 ## 输出格式
@@ -133,7 +135,9 @@ _SEO_GENERATE_PROMPT = """你是一个专业的SEO内容优化专家，擅长撰
 内容目标：{goalLine}
 用户问题/主题：{question}
 
-## 企业信息
+{topicRule}
+
+## 企业资料（用来支撑上面的题目，不是文章主角）
 {companyBlock}
 
 ## 输出格式
@@ -532,6 +536,37 @@ def _asset_excerpt(question: str, asset: dict, limit: int) -> dict:
     return {"text": chunk_text[:limit], "chunk_id": chunk.get("id"), "chunk_ordinal": chunk.get("ordinal")}
 
 
+TOPIC_RULE_HEADER = "## 主题纪律（最高优先级）"
+
+
+def topic_rule(question: str, company_name: str | None) -> str:
+    """主题纪律块：题目是文章的主角，企业资料只是支撑（Owner 2026-09-22）。
+
+    为什么单独立一条规则：提示词里原本只有「企业事实（唯一事实来源）」，没有一句说
+    「题目才是要写的东西」。实测结果是模型把用户输入的题目改写成那家企业的介绍 ——
+    问「笔革家居整套全屋定制要多久」，正文通篇是另一家公司。规则把这件事写在最前面。
+    """
+    topic = (question or "").strip()
+    if not topic:
+        return ""
+    lines = [
+        TOPIC_RULE_HEADER,
+        f"- 这篇文章的题目就是「{topic}」，整篇围绕它写，标题也照它写。",
+        "- 下面的企业资料只用来支撑这个题目：提供事实、口径与细节，**它本身不是文章的主题**。",
+        "- 除非题目本身就是在介绍这家企业，否则不要写「X 是一家……」这类企业介绍式开头，",
+        "  也不要把与题目无关的企业信息写进正文。",
+        "- **不得把资料里的事实安到题目问的另一个对象身上**：资料讲的是哪家/哪个产品，就只能"
+        "挂在哪家/哪个产品上。",
+        "- 题目问到的事资料里没有，就如实写「资料中没有」，不用别的资料顶替，也不编造。",
+    ]
+    if company_name:
+        lines.append(
+            f"- 上面的「企业资料」来自「{company_name}」；如果题目问的不是它，就以题目问的对象为准，"
+            f"「{company_name}」的资料只能当参考，不得拿来回答另一个对象。"
+        )
+    return "\n".join(lines)
+
+
 def _asset_source_item(question: str, asset: dict, limit: int) -> dict:
     """来源面板里的一条素材：注入的是哪一段，就如实报哪一段。"""
     excerpt = _asset_excerpt(question, asset, limit)
@@ -544,23 +579,53 @@ def _asset_source_item(question: str, asset: dict, limit: int) -> dict:
     }
 
 
-async def _official_fact_lines(limit: int = 30) -> list[str]:
+#: 主题相关时最多注入多少条正式事实（原实现是「库里前 30 条」）。
+_MAX_TOPIC_FACTS = 8
+#: 事实进上下文的最低相关分（与 ``_relevance_order`` 同一套 n-gram 口径）。
+_FACT_MIN_SCORE = 2.0
+
+
+async def _official_fact_lines(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> list[str]:
     """正式企业事实（Knowledge ``type=fact`` 的 active 对象）→ 生成用的一行一句。
 
     为什么必须单独拉：事实的 ``canonical_name`` 是一句三元组，通常不含企业名，
     用企业名检索永远搜不到（实测 77 条 fact 里 0 条含企业名），只能走对象目录。
     读不到就返回空 —— 由 ``context_sources`` 如实体现「这轮没有正式事实」，
     绝不用通用话术顶替。GEO 不创建、不改写这些事实（Owner 2026-09-21）。
+
+    **按主题选，不按库里的顺序取前 N 条**（Owner 2026-09-22「我输入的什么主题，就是什么主题，
+    不能根据公司名字来回答」）。原实现是 ``[:30]`` —— 一次内容生成把库里前 30 条企业事实
+    整包塞进 prompt，模型看到「唯一事实来源」全是这家公司，于是把用户问的另一个主题改写成
+    了这家公司的介绍（实测：问「笔革家居整套全屋定制要多久」，正文通篇 亚宇臻隆）。
+    与主题无关的事实不是「更多材料」，是**另一个题目的材料**，进来只会把文章拽走，所以不进。
+    主题为空时（用户没给题目）没有可对照的主题，仍按目录顺序取前 ``limit`` 条。
     """
     try:
         from adapters.eios import list_enterprise_facts
 
-        lines: list[str] = []
-        for f in (await list_enterprise_facts())[:limit]:
-            name = str(f.get("canonical_name") or "").strip()
-            if name:
-                lines.append(f"- [正式事实] {name}")
-        return lines
+        facts = [str(f.get("canonical_name") or "").strip() for f in await list_enterprise_facts()]
+        facts = [name for name in facts if name]
+        if not facts:
+            return []
+
+        topic = (question or "").strip()
+        if not topic:
+            return [f"- [正式事实] {name}" for name in facts[:limit]]
+
+        try:
+            from services.embed import n_gram_scores
+
+            docs = [{"id": str(i), "title": name, "content": name} for i, name in enumerate(facts)]
+            scores = n_gram_scores(topic, docs, title_key="title", content_key="content")
+        except Exception:  # noqa: BLE001 — 打分不可用时不猜相关性，宁可一条不给
+            logging.getLogger("eios.geo.content").warning("事实相关性打分不可用，本轮不注入正式事实")
+            return []
+
+        ranked = sorted(
+            ((scores.get(str(i), 0.0), name) for i, name in enumerate(facts)),
+            key=lambda pair: -pair[0],
+        )
+        return [f"- [正式事实] {name}" for score, name in ranked if score >= _FACT_MIN_SCORE][:limit]
     except Exception as e:  # noqa: BLE001 — 读不到 ≠ 没有事实，由来源面板如实体现
         logging.getLogger("eios.geo.content").warning("正式事实读取失败: %s", e)
         return []
@@ -570,7 +635,7 @@ async def build_context(
     *,
     question: str = "",
     company_name: str | None = None,
-    tenant_id: str = "tenant_corp_01",
+    tenant_id: str | None = None,
     max_faq: int = 3,
     max_assets: int = 2,
     max_pool: int = 5,  # 问题池串联（认知编译器）：相关性排序取前 N，按类型分组
@@ -584,12 +649,17 @@ async def build_context(
 
     返回 {"company_name", "materials", "faq_assets", "other_assets", "pool_questions", "context_sources"}
     """
+    # 账号分柜（Owner 2026-09-22）：没显式指定就跟随**当前请求的柜**，不写死默认柜。
+    if not tenant_id:
+        from app.services.store import current_tenant
+
+        tenant_id = current_tenant() or "tenant_corp_01"
     auto_name: str | None = company_name
     chunk_lines: list[str] = []
     entity_names: list[str] = []
     # 正式企业事实（Knowledge 的 active fact）：Owner 2026-09-21 拍板「fact 接进内容生成」。
     # 原样注入、排在切块之前 —— 事实是权威给的句子，GEO 不改写。
-    official_facts = await _official_fact_lines()
+    official_facts = await _official_fact_lines(question)
     if company_name:
         # 2026-08-19 用户拍板：GEO 消息来源含部门库浅抽深抽的 candidate（未发布也算），
         # 显式包含候选——此前写死 False 导致候选知识读不到
@@ -650,7 +720,7 @@ async def build_context(
                    "report_findings": [], "available": False}
 
     context_sources = [
-        {"kind": "enterprise_fact", "label": "正式企业事实（知识库已发布事实）", "items": [
+        {"kind": "enterprise_fact", "label": "正式企业事实（与主题相关的部分）", "items": [
             {"fact": line.lstrip("- ").strip()} for line in official_facts[:30]
         ]},
         {"kind": "document_chunk", "label": "知识库文档切块（原文）", "items": [
@@ -698,7 +768,7 @@ async def generate(
     industry: str | None = None,
     platform: str | None = None,  # 平台 id（zhihu/seo_article/...），空 = 通用
     seo: dict | None = None,  # SEO 配置 {target_keywords, long_tail_keywords, keyword_density, content_tone, target_audience}
-    tenant_id: str = "tenant_corp_01",
+    tenant_id: str | None = None,
     mode: str = "creative",  # Fact Gate 模式：strict（严谨）/ creative（创作，默认）/ draft（草稿）
     structure: str = "free",  # 认知编译器：free（自由长文，默认）/ geo（可抽取结构模板）
     materials_extra: list[dict] | None = None,  # H19：外部个人素材并入生成上下文
@@ -716,6 +786,10 @@ async def generate(
             "unverified_facts": fg["unverified"],
         }
     # 1) Content Context Builder：聚合 正式事实/文档切块/实体 + FAQ 资产 + 历史素材 + 问题池
+    if not tenant_id:
+        from app.services.store import current_tenant
+
+        tenant_id = current_tenant() or "tenant_corp_01"
     ctx = await build_context(question=question, company_name=company_name, tenant_id=tenant_id)
     auto_name = ctx["company_name"]
     materials = ctx["materials"]
@@ -823,6 +897,7 @@ async def generate(
                 wordCount=word_count,
                 goalLine=goal_line,
                 question=question or "（未提供具体问题，按内容类型自行组织）",
+                topicRule=topic_rule(question, auto_name),
                 companyBlock=company_block,
             )
         else:
@@ -836,10 +911,12 @@ async def generate(
                 goalLine=goal_line,
                 typeLine=type_line,
                 question=question or "（未提供具体问题，按内容类型自行组织）",
+                topicRule=topic_rule(question, auto_name),
                 companyBlock=company_block,
             )
     else:
         # 通用（无平台）：保留原逻辑
+        topic_rule_text = topic_rule(question, auto_name)
         prompt = f"""请基于以下信息生成一篇 GEO（生成式引擎优化）内容草稿。
 
 ## 内容目标
@@ -851,7 +928,9 @@ async def generate(
 ## 用户问题 / 主题
 {question or "（未提供具体问题，按内容目标与类型自行组织）"}
 
-## 企业信息
+{topic_rule_text}
+
+## 企业资料（用来支撑上面的题目，不是文章主角）
 {company_block}
 
 ## 风格

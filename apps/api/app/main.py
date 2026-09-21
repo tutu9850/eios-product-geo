@@ -41,12 +41,31 @@ from app.product.door import ProductDoorMiddleware
 from app.product.http_auth import (
     ProductAuthenticationError,
     auth_context_mode_enabled,
-    product_storage_ready,
+    default_auth_context_verifier,
     resolve_http_product_session,
 )
-from app.product.session import bind_product_session
+from app.product.session import bind_product_session, cabinet_for_session
 
 app = FastAPI(title="EIOS GEO Service", version="0.1.0", docs_url="/docs", openapi_url="/openapi.json")
+
+# 宿主身份门的验签器（GEO-03，2026-09-21）：进程一起来就装好，只有这一处选验签实现。
+# 缺信任钥 / 钥文件不在 / 基座库不在时它自己 fail-closed 成 503，不降级成放行；
+# 测试仍然可以覆盖 app.state.auth_context_verifier 注入自己的验签器。
+app.state.auth_context_verifier = default_auth_context_verifier()
+
+
+#: 不参加「宿主身份门」的路径 —— 只有产品之间的只读交接面
+#: ``/api/v1/geo/consumer/*``。它自带身份门（``app.product.consumer_auth`` 验自己的票、
+#: 自己判 PDP），那道门与宿主门不是同一道：拿宿主票在这里开柜子会读错柜。Owner
+#: 2026-09-21「顾问先不考虑查 GEO 数据」，所以这一面保持原样（默认柜），等顾问真的接入
+#: 读 GEO 数据时再单独定它读哪个柜。其余路径（含 ``/api/v1/health``）保持既有契约：
+#: auth_context 模式下都要票，未变。
+_PRODUCT_IDENTITY_EXEMPT_PREFIXES: tuple[str, ...] = ("/api/v1/geo/consumer/",)
+
+
+def _product_identity_required(request) -> bool:
+    """这个请求要不要过宿主身份门 + 分柜。"""
+    return not request.url.path.startswith(_PRODUCT_IDENTITY_EXEMPT_PREFIXES)
 
 
 @app.middleware("http")
@@ -57,20 +76,27 @@ async def _tenant_context(request, call_next):
     - 后台任务（scheduler/监测 run）无请求上下文：asyncio.create_task 快照发起时 context，
       从请求发起的任务自动继承租户；独立线程任务需显式传 tenant_id（见各调用点注释）
     """
-    if auth_context_mode_enabled():
+    if auth_context_mode_enabled() and _product_identity_required(request):
         try:
             session = await resolve_http_product_session(request)
         except ProductAuthenticationError as exc:
             return JSONResponse(status_code=exc.status_code, content=err(exc.code, exc.message))
         request.state.product_session = session
-        # P1 refuses to bind formal identity to the legacy SQLite tenant column.
-        # P2 may enable this mode only once product-owned PostgreSQL is live.
-        if request.url.path != "/api/v1/health" and not product_storage_ready():
-            return JSONResponse(
-                status_code=503,
-                content=err("PRODUCT_STORAGE_NOT_READY", "product PostgreSQL ownership is not active"),
-            )
+        # 账号分柜（Owner 2026-09-22 拍板）。
+        #
+        # 这里原先是一条 P1 拒绑：身份只在 P2 的 product-owned PostgreSQL 上才允许落地，
+        # 旧 SQLite 的 tenant 列一律拒绝，所以 auth_context 模式下业务面直接 503
+        # PRODUCT_STORAGE_NOT_READY。Owner 2026-09-22 明确改判：「登录账号分柜、清掉旧柜、
+        # 知识库层暂不动，先把 GEO 自己的柜做对」——即身份**现在**就落在 GEO 自己的库上，
+        # 不等 P2。于是这条拒绑换成一次真实的按账号分配：柜号由已验证会话的 principal
+        # 推出（cabinet_for_session），调用方给的头不再参与。
+        #
+        # 这不是「放宽 fail-closed」：没票仍然是 401，票无效仍然是 401，验签器缺失仍然是 503。
+        # 变的只是「验过之后数据放哪个柜」，而这件事以前根本没有发生。
         with bind_product_session(session):
+            from app.services.store import set_tenant
+
+            set_tenant(cabinet_for_session(session))
             return await call_next(request)
 
     from app.services.store import set_tenant

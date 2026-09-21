@@ -75,24 +75,67 @@ def test_http_product_session_classifies_invalid_and_unavailable_verifiers():
         raise AssertionError("unavailable verifier must fail closed")
 
 
-def test_strict_http_mode_fails_closed_until_product_storage_is_ready(monkeypatch):
-    from app.main import app
+class _SignedContext:
+    deployment_id = "dep_test"
+    enterprise_id = "enterprise_test"
+    subject = "human:alice"
+    service_id = "eios-geo"
 
-    class Context:
-        deployment_id = "dep_test"
-        enterprise_id = "enterprise_test"
-        subject = "human:alice"
-        service_id = "eios-geo"
+
+def test_auth_context_mode_serves_the_callers_own_cabinet(monkeypatch):
+    """Owner 2026-09-22：「登录账号分柜、清掉旧柜、先把 GEO 自己的柜做对」。
+
+    改判之前，auth_context 模式下业务面直接 503 ``PRODUCT_STORAGE_NOT_READY``
+    （P1 拒绝把正式身份绑到旧 SQLite 的 tenant 列）。现在验过签之后业务面照常服务，
+    只是落在**这个账号自己的柜**上：柜号由已验证的 principal 推出，调用方给的头不参与。
+    """
+    from fastapi import Request
+
+    from app.main import app
+    from app.services.store import current_tenant
 
     monkeypatch.setenv("GEO_RUNTIME_MODE", "baseline")
     monkeypatch.setenv("GEO_AUTH_MODE", "auth_context")
     monkeypatch.setenv("GEO_PRODUCT_STORAGE_MODE", "legacy")
-    monkeypatch.setattr(app.state, "auth_context_verifier", lambda _: Context(), raising=False)
+    monkeypatch.setattr(app.state, "auth_context_verifier", lambda _: _SignedContext(), raising=False)
+
+    @app.get("/__test/cabinet")
+    async def _cabinet_probe(request: Request):  # pragma: no cover - 只被这个测试调用
+        return {"cabinet": current_tenant(), "principal": request.state.product_session.principal_id}
+
+    try:
+        with TestClient(app) as client:
+            assert client.get("/api/v1/health").status_code == 401
+            assert client.get("/api/v1/health", headers={"Authorization": "Bearer signed"}).status_code == 200
+            served = client.get("/__test/cabinet", headers={"Authorization": "Bearer signed"})
+            # 调用方自己给的柜号不许生效，柜由已验证身份决定
+            spoofed = client.get(
+                "/__test/cabinet",
+                headers={"Authorization": "Bearer signed", "X-Tenant-Id": "tenant_someone_else"},
+            )
+    finally:
+        app.router.routes = [r for r in app.router.routes if getattr(r, "path", "") != "/__test/cabinet"]
+
+    assert served.status_code == 200, served.text
+    assert served.json() == {"cabinet": "acct_human_alice", "principal": "human:alice"}
+    assert spoofed.json()["cabinet"] == "acct_human_alice"
+
+
+def test_consumer_face_keeps_its_own_identity_seam(monkeypatch):
+    """顾问读 GEO 的交接面自带身份门，不属于宿主门，也不因为 auth_context 模式被套上宿主票。
+
+    两边都可能回 401 ``AUTH_CONTEXT_REQUIRED``（错误码撞名），所以这里看**文案**：
+    回答的是消费面那道门（它要 ``EIOS-Auth-Context`` 头），不是宿主门（那条要 bearer）。
+    """
+    from app.main import app
+
+    monkeypatch.setenv("GEO_AUTH_MODE", "auth_context")
+    monkeypatch.setattr(app.state, "auth_context_verifier", lambda _: _SignedContext(), raising=False)
 
     with TestClient(app) as client:
-        assert client.get("/api/v1/health").status_code == 401
-        assert client.get("/api/v1/health", headers={"Authorization": "Bearer signed"}).status_code == 200
-        blocked = client.get("/api/v1/meta/engines", headers={"Authorization": "Bearer signed"})
+        response = client.get("/api/v1/geo/consumer/summary")
 
-    assert blocked.status_code == 503
-    assert blocked.json()["error"]["code"] == "PRODUCT_STORAGE_NOT_READY"
+    body = response.json()
+    assert response.status_code == 401
+    assert body["error"]["code"] == "AUTH_CONTEXT_REQUIRED"
+    assert "EIOS-Auth-Context" in body["error"]["message"]

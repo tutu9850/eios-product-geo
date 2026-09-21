@@ -18,10 +18,20 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from services.intelligence import aggregator, repo
+from services._db import current_tenant_or_default
 
 logger = logging.getLogger("eios.intelligence.cognition")
 
 DEFAULT_TENANT = "tenant_corp_01"
+
+
+def _resolve_tenant(tenant: str | None) -> str:
+    """没显式传租户时用**当前请求的柜**（账号分柜，Owner 2026-09-22）。
+
+    显式传进来的租户一律照用 —— 脚本和后台任务靠这个跑指定柜，不能被悄悄改道。
+    """
+    return tenant or current_tenant_or_default()
+
 
 # ── Raw Factor → Semantic Factor + Dimension（可配置映射表）────────────────
 # 每行：{ raw_factor -> {"semantic": str, "dimension": str} }
@@ -281,13 +291,14 @@ def compare(
     days: int | None = 30,
     source_type: str = "ai_answer",
     min_level: str = "mention",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
 ) -> dict:
     """认知总表：维度 × 主体 × 认知层级 × 认知状态 + 证据引用。
 
     参数：
     - min_level：统计的最浅认知层级（"mention" = 全部，"recommended" = 只看被推荐）
     """
+    tenant = _resolve_tenant(tenant)
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = aggregator._succeeded_evidence_ids(since_dt, company, source_type, tenant)
     mentions = aggregator._load_mentions(ev_ids, tenant)
@@ -556,7 +567,7 @@ def strategies(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
     knowledge_probe: bool = True,
 ) -> dict:
     """内容策略（GEO Action Score，纯规则无 LLM）。
@@ -569,6 +580,7 @@ def strategies(
     - 证据强度(0-1)：竞品原话含具体证据（数字/案例/认证）1.0，否则 0.5
     - 竞争重要性(0-10)：竞品在该维度的提及占竞品总提及比例
     """
+    tenant = _resolve_tenant(tenant)
     c = compare(company=company, days=days, source_type=source_type, tenant=tenant)
     stats = _dimension_stats(c)
     if not stats:
@@ -686,7 +698,7 @@ def gap_analysis(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
     knowledge_probe: bool = True,
 ) -> dict:
     """知识缺口两种分离（方案 V2 §八）：
@@ -698,6 +710,7 @@ def gap_analysis(
 
     诚实红线：不编造"真实能力"——Knowledge Gap 一律标注"需人工确认"。
     """
+    tenant = _resolve_tenant(tenant)
     c = compare(company=company, days=days, source_type=source_type, tenant=tenant)
     stats = _dimension_stats(c)
 
@@ -756,7 +769,7 @@ def factor_gaps(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
 ) -> dict:
     """因子级左右对比（低维度，海尔冰箱例子：竞品优点 vs 我方缺点）。
 
@@ -765,6 +778,7 @@ def factor_gaps(
     - both（双方都有）：同因子双方都被提——竞争焦点
     每个因子带原话证据 + 传播强度，可下钻到证据链。
     """
+    tenant = _resolve_tenant(tenant)
     c = compare(company=company, days=days, source_type=source_type, tenant=tenant)
     left: list[dict] = []
     right: list[dict] = []
@@ -847,7 +861,7 @@ def humanize(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
 ) -> dict:
     """商业化翻译层：把 compare/strategies/factor-gaps 翻译成老板能看的人话。
 
@@ -858,6 +872,7 @@ def humanize(
     - actions：行动清单人话（优先级 + 干什么 + 为什么）
     - risk_notes：AI 风险提示（可转信任建设素材）
     """
+    tenant = _resolve_tenant(tenant)
     c = compare(company=company, days=days, source_type=source_type, tenant=tenant)
     s = strategies(company=company, days=days, source_type=source_type, tenant=tenant, knowledge_probe=False)
     f = factor_gaps(company=company, days=days, source_type=source_type, tenant=tenant)
@@ -971,7 +986,7 @@ def evidence_chain(
     company: str | None = None,
     days: int | None = 30,
     source_type: str = "ai_answer",
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
     limit: int = 10,
 ) -> dict:
     """证据链：某因子被 AI 提到的所有原话 + 传播强度 + 关联因子。
@@ -980,6 +995,7 @@ def evidence_chain(
     - 来源 = 每条 evidence 的平台/引擎 + 时间
     - 关联因子 = 同一维度下的其他因子
     """
+    tenant = _resolve_tenant(tenant)
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = aggregator._succeeded_evidence_ids(since_dt, company, source_type, tenant)
     mentions = aggregator._load_mentions(ev_ids, tenant)

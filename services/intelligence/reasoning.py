@@ -19,10 +19,19 @@ from adapters.llm import LLMNotConfiguredError, chat
 from services.intelligence import aggregator, repo
 from services.intelligence.extractor import _parse_json
 from services.intelligence.prompts import PROMPT_VERSION, REASONING_PROMPT, REASONING_SYSTEM
+from services._db import current_tenant_or_default
 
 logger = logging.getLogger("eios.intelligence.reasoning")
 
 DEFAULT_TENANT = "tenant_corp_01"
+
+
+def _resolve_tenant(tenant: str | None) -> str:
+    """没显式传租户时用**当前请求的柜**（账号分柜，Owner 2026-09-22）。
+
+    显式传进来的租户一律照用 —— 脚本和后台任务靠这个跑指定柜，不能被悄悄改道。
+    """
+    return tenant or current_tenant_or_default()
 
 
 async def _knowledge_has(dimension: str) -> bool | None:
@@ -92,9 +101,10 @@ def _aggregate_text(m: dict, p: dict) -> str:
 async def generate_report(
     company: str | None = None,
     days: int = 30,
-    tenant: str = DEFAULT_TENANT,
+    tenant: str | None = None,
 ) -> dict:
     """生成一份周期报告并入库。返回报告 dict。"""
+    tenant = _resolve_tenant(tenant)
     m = aggregator.matrix(company=company, days=days, tenant=tenant)
     p = aggregator.perception(company=company, days=days, tenant=tenant)
     overview = aggregator.brand_overview(company=company, days=days, tenant=tenant)
