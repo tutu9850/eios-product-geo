@@ -866,13 +866,24 @@ def humanize(
     self_b = next((b for b in c.get("brands") or [] if b["is_self"]), None)
     exposure = (self_b or {}).get("exposure_rate", 0.0)
     recommend = (self_b or {}).get("recommendation_rate", 0.0)
+    # 2026-09-21 口径修正（Owner：「输出正常但不正确」）：`all_ev = 0` 时
+    # exposure_rate 落在 0.0 是「分母没有」，不是「AI 没提到我们」。旧实现直接走
+    # `elif exposure == 0` 分支，页面就会断言一句没发生过的结论：
+    # 「AI 回答里还没提到过你」——而监测里明明 6/17 条回答提到了我方。
+    sample_total = int((c.get("sample_note") or {}).get("total") or 0)
     left = f.get("left") or []
     risk = f.get("risk_notes") or []
     strategies_list = s.get("strategies") or []
 
     # ── ① 一句话结论（按优先级选最扎心的真实事实）──
     headline: dict = {"main": "", "sub": "", "tone": "danger"}
-    if len(left) > 0 and recommend == 0:
+    if sample_total == 0:
+        headline = {
+            "main": "还没有可判断的解析样本",
+            "sub": "先把监测回答做一轮解析，认知洞察才有依据；样本为 0 不代表 AI 没提到你",
+            "tone": "warning",
+        }
+    elif len(left) > 0 and recommend == 0:
         top = left[0]
         headline = {
             "main": f"推荐/对比类回答中，我方有 {len(left)} 个表达因子未出现",
@@ -903,8 +914,9 @@ def humanize(
 
     # ── ② 三数字 ──
     metrics = {
-        "exposure_rate": exposure,
-        "recommendation_rate": recommend,
+        # 0 样本时给 null（前端显示「—」）：0% 会被读成「回答里一次都没出现」。
+        "exposure_rate": None if sample_total == 0 else exposure,
+        "recommendation_rate": None if sample_total == 0 else recommend,
         "gap_count": len(left),
         "gap_dimensions": sorted({x["dimension"] for x in left}),
     }

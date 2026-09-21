@@ -18,7 +18,7 @@ import { GeoBars, GeoKpis, GeoLine, GeoQuote, GeoTable } from './shared'
 
 interface SampleNote { total: number; reliability: string; note: string }
 interface Headline { main: string; sub: string; tone: string }
-interface HumanizeMetrics { exposure_rate: number; recommendation_rate: number; gap_count: number; gap_dimensions: Array<{ dimension?: string }> }
+interface HumanizeMetrics { exposure_rate: number | null; recommendation_rate: number | null; gap_count: number; gap_dimensions: Array<{ dimension?: string }> }
 interface FactorRow {
   factor: string
   dimension: string

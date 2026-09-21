@@ -1134,7 +1134,15 @@ async def competitor():
                             "s_comp": (subj or {}).get("competitor", {}).get("sentiment") if subj else None,
                         }
                     )
+        # 2026-09-21 口径修正（Owner：「输出正常但不正确」）：分母只算**真作答**的回答行。
+        # 没配 key / 调用失败的引擎在 history 里也留一条 engine_detail（answer 空、mentioned None），
+        # 把它算进分母，页面上就会出现「共 96 条回答 · 我方 9% vs 竞品 10%」这种假数字
+        # （真实是 16 条回答 · 56% vs 63%）；胜负桶里 92 条 "none" 也不是「AI 没选我们」，
+        # 而是「压根没回答」。与 monitor P0-5 口径一致：**没问到 ≠ 没被提及**。
+        probe_rows = len(recs)
+        recs = [r for r in recs if r.get("answer")]
         total = len(recs)
+        unanswered = probe_rows - total
         # 多竞品：每个竞品独立一行（胜负/提及/矩阵各自统计），samples/归因共享回答池
         for comp in comps:
             if total == 0:
@@ -1142,7 +1150,8 @@ async def competitor():
                     {
                         "monitor_id": mid, "target": target, "competitor": comp,
                         "competitors": [comp] if comp else [],
-                        "total": 0, "target_mentioned": 0, "target_pct": 0,
+                        "total": 0, "unanswered": unanswered,
+                        "target_mentioned": 0, "target_pct": 0,
                         "comp_mentioned": 0, "comp_pct": 0,
                         "same_entity": 0, "same_entity_pct": 0,
                         "win": {"company": 0, "competitor": 0, "none": 0, "same_entity": 0},
@@ -1364,6 +1373,7 @@ async def competitor():
                     "competitor": comp,
                     "competitors": [comp] if comp else [],
                     "total": total,
+                    "unanswered": unanswered,
                     "target_mentioned": target_mentioned,
                     "target_pct": round(target_mentioned / total * 100) if total else 0,
                     "comp_mentioned": comp_mentioned,
@@ -2878,6 +2888,7 @@ async def fact_check():
             "affected_questions": affected_questions,
             "affected_sources": affected_sources,
             "total_checked": len(checked_ok),       # 真的跑完检查的回答数（不含超时/无文本）
+            "claim_checked": len(claim_checked),    # 其中**真的有企业断言**、比对过知识库的条数
             "candidate_total": len(base["records"]),  # 本轮拉到多少条候选回答（受上限截断）
             "no_claim_count": len(no_claim),        # 有回答但没有任何可核验断言（不计命中也不计失真）
             "kernel_ok": all(r.get("kernel_ok", True) for r in results) if results else True,

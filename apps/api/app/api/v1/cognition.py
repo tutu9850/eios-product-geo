@@ -56,6 +56,9 @@ def _flat_answers(limit: int = 100) -> list[dict]:
                     "query": q.get("query") or q.get("question") or "",
                     "engine": ed.get("engine_name") or "",
                     "mentioned": ed.get("mentioned"),
+                    # 真作答标记：调用失败的引擎在 history 里也留一条（mentioned None、answer 空）。
+                    # 统计分母只认这个标记，否则「没问到」会被当成「没被提及」拉低所有比率。
+                    "answered": ed.get("mentioned") is not None,
                     "rank_est": ed.get("rank_est"),
                     "sentiment": ed.get("sentiment"),
                     "snippet": ed.get("snippet") or "",
@@ -76,29 +79,37 @@ async def coverage():
     for q in questions:
         s = _stage_of(str(q.get("question", "")))
         q_count[s] = q_count.get(s, 0) + 1
-    a_total: dict[str, int] = {}
+    # 2026-09-21 口径修正（Owner：「输出正常但不正确」）：分母 = **真作答**的回答条数。
+    # 旧实现把「没配 key / 调用失败」的引擎记录也算进分母，于是「认知 7% / 搜索 0%」
+    # 这种数字有一大半是「没人问过」而不是「AI 没提我们」——answered_count 也跟着报错。
+    a_probe: dict[str, int] = {}
+    a_answered: dict[str, int] = {}
     a_mentioned: dict[str, int] = {}
     for a in answers_list:
         s = _stage_of(str(a.get("query", "")))
-        a_total[s] = a_total.get(s, 0) + 1
+        a_probe[s] = a_probe.get(s, 0) + 1
+        if not a.get("answered"):
+            continue
+        a_answered[s] = a_answered.get(s, 0) + 1
         if a.get("mentioned"):
             a_mentioned[s] = a_mentioned.get(s, 0) + 1
     stages = []
     for s in STAGES:
-        total = a_total.get(s["key"], 0)
+        answered = a_answered.get(s["key"], 0)
         mentioned = a_mentioned.get(s["key"], 0)
-        cov = round(mentioned / total * 100) if total > 0 else None
+        cov = round(mentioned / answered * 100) if answered > 0 else None
         stages.append({
             "key": s["key"],
             "label": s["label"],
             "question_count": q_count.get(s["key"], 0),
             "coverage": cov,
             "decision_coverage": cov,
-            "answered_count": total,
+            "answered_count": answered,
+            "probe_count": a_probe.get(s["key"], 0),
         })
     return ok({
         "stages": stages,
-        "note": "数据口径：阶段分类基于问题关键词规则；我方覆盖 = 该阶段监测回答中被提及占比；问题数来自客户问题池。",
+        "note": "数据口径：阶段分类基于问题关键词规则；我方覆盖 = 该阶段**已回答**的回答里被提及占比（没作答的引擎不计入分母）；answered_count = 真作答条数，probe_count = 探针记录条数（含没作答的）；问题数来自客户问题池。",
     })
 
 
@@ -255,17 +266,23 @@ async def health():
 
     metrics = profile_v2.get("metrics") or {}
     answers_list = _flat_answers(100)
-    mentioned_count = sum(1 for a in answers_list if a.get("mentioned"))
-    mention_rate = round(mentioned_count / len(answers_list) * 100) if answers_list else None
+    # 2026-09-21 口径修正：分母只算**真作答**的回答（没作答的引擎不是「没提到」）。
+    answered_list = [a for a in answers_list if a.get("answered")]
+    mentioned_count = sum(1 for a in answered_list if a.get("mentioned"))
+    mention_rate = round(mentioned_count / len(answered_list) * 100) if answered_list else None
 
     trust_g, sec_g = grounded_pct("organization"), grounded_pct("security")
     trust = round((trust_g + sec_g) / 2) if trust_g is not None and sec_g is not None else trust_g or sec_g or None
     dims = [
         {"key": "brand", "label": "品牌认知", "score": metrics.get("awareness") or mention_rate or None,
-         "basis": f"AI 认识程度 {metrics.get('awareness')}%（主动提到企业占比）" if metrics.get("awareness") is not None else f"监测回答提及率 {mention_rate or 0}%"},
+         "basis": (
+             f"AI 认识程度 {metrics.get('awareness')}%（主动提到企业占比）"
+             if metrics.get("awareness") is not None
+             else (f"已回答 {len(answered_list)} 条中 {mentioned_count} 条提到我方（{mention_rate}%）" if mention_rate is not None else "暂无已回答的监测回答")
+         )},
         {"key": "product", "label": "产品认知", "score": grounded_pct("product"), "basis": "产品能力 claim 已理解占比（AI 评估）"},
         {"key": "scene", "label": "场景覆盖", "score": mention_rate or None,
-         "basis": f"监测回答被提及占比（{mentioned_count}/{len(answers_list)} 问）" if answers_list else "暂无监测回答"},
+         "basis": f"已回答 {len(answered_list)} 条中被提及占比（{mentioned_count}/{len(answered_list)} 条）" if answered_list else "暂无监测回答"},
         {"key": "trust", "label": "信任证据", "score": trust, "basis": "组织/安全合规 claim 已理解占比均值"},
         {"key": "case", "label": "案例覆盖", "score": grounded_pct("customer"), "basis": "客户案例 claim 已理解占比（AI 评估）"},
         {"key": "price", "label": "价格透明度", "score": grounded_pct("finance"), "basis": "价格信息 claim 已理解占比（AI 评估）"},

@@ -60,6 +60,7 @@ interface FactCheck {
     affected_questions: number
     affected_sources: number
     total_checked: number
+    claim_checked?: number
     /** 本轮拉到的候选回答数（受上限截断），用来解释「已核验」为什么比总回答少 */
     candidate_total?: number
     /** 有回答但没有任何可核验断言（不计命中也不计失真） */
@@ -77,6 +78,7 @@ interface Competitor {
     target: string
     competitor: string
     total: number
+    unanswered?: number
     target_mentioned: number
     target_pct: number
     comp_mentioned: number
@@ -283,7 +285,14 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
           // 2026-09-21 口径修正：原来「已核验回答」算的是送检条数（超时/无文本也算），
           // 「知识库命中」把「没有任何事实断言」的回答也算成命中。现在两个数都只算真跑完检查、
           // 且真的有断言可比对的回答；没有断言的条数单独如实写出来。
-          { label: '已核验回答', value: `${truth.total_checked}`, detail: `共拉到 ${truth.candidate_total ?? truth.total_checked} 条回答（超时/空回答不计入）` },
+          // 2026-09-21 二次校正：`total_checked` 里仍包含「跑完检查但没有企业断言」的回答，
+          // 拿它当「已核验回答」会读成「10 条都验过了」。真正的核验数改成 claim_checked，
+          // 跑完检查的总数挪到小字里。
+          {
+            label: '已核验回答',
+            value: `${truth.claim_checked ?? truth.total_checked}`,
+            detail: `有企业断言并比对过（共 ${truth.total_checked} 条跑完检查，拉到 ${truth.candidate_total ?? truth.total_checked} 条）`,
+          },
           { label: '知识库命中', value: `${truth.hit_kb}`, detail: '断言能在企业知识库对上', tone: truth.kernel_ok ? 'good' : 'bad' },
           { label: '疑似失真', value: `${truth.abnormal_count}`, detail: `影响 ${truth.affected_questions} 个问题 / ${truth.affected_sources} 个平台`, tone: truth.abnormal_count ? 'warn' : 'good' },
         ]}
@@ -337,7 +346,10 @@ function CompetitorView({ data }: { data: Competitor | null }) {
             <h3>
               {pair.target} vs {pair.competitor}
             </h3>
-            <small>共 {pair.total} 条回答</small>
+            <small>
+              共 {pair.total} 条回答
+              {pair.unanswered ? `（另 ${pair.unanswered} 条没作答，不计入百分比）` : ''}
+            </small>
           </div>
           <GeoBars
             items={[

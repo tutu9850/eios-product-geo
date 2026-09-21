@@ -670,13 +670,13 @@ async def profile_overview():
     partial = [a for a in assessed if a["level"] == "部分"]
     too_little = [a for a in assessed if a["level"] == "太少"]
     # 总体覆盖率 = 全部有效问题中可被支撑的比例（跨子项去重问题）
-    all_questions = questions
+    # 2026-09-21 修正：分母只数**真的参与判定**的问题。旧实现把没有正文的问题也留在分母里
+    # （循环里 continue 掉、却仍除以 len(questions)），覆盖率会被莫名拉低。
+    all_questions = [q for q in questions if (q.get("question") or "").strip()]
     if all_questions:
         total_w = 0.0
         for q in all_questions:
-            qt = q.get("question") or ""
-            if not qt:
-                continue
+            qt = q.get("question")
             kc = await _cached_knowledge_check(qt, q.get("related_entities") or [], q.get("intent") or None)
             st = kc.get("status", "UNRELATED")
             total_w += 1.0 if st == "COVERED" else (0.5 if st == "PARTIAL" else 0.0)

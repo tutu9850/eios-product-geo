@@ -278,7 +278,8 @@ async def list_questions(status: str | None = None, limit: int = 100, validated:
         hist = get_store().load("monitor_history")
     except Exception:  # noqa: BLE001
         hist = []
-    q_count: dict[str, int] = {}
+    q_count: dict[str, int] = {}       # 这个问法在历史批次里被问到的次数
+    q_answered: dict[str, int] = {}    # 真作答的回答条数（没配 key / 失败的引擎不算）
     q_mentioned: dict[str, int] = {}
     for h in hist:
         for q in h.get("questions") or []:
@@ -287,14 +288,22 @@ async def list_questions(status: str | None = None, limit: int = 100, validated:
                 continue
             q_count[qt] = q_count.get(qt, 0) + 1
             for ed in q.get("engine_detail") or []:
+                # 2026-09-21 口径修正（Owner：「输出正常但不正确」）：
+                # 旧实现把「批次号」当回答数、把「引擎条数」当分子 —— monitor_count 写着
+                # 「真实监测回答数」其实是批次数；ai_visibility = 引擎条数 ÷ 批次数，
+                # 一个问法在 2 个批次里被 6 个引擎提到就是 300%。没作答的引擎同样进了分母。
+                if ed.get("mentioned") is None:
+                    continue
+                q_answered[qt] = q_answered.get(qt, 0) + 1
                 if ed.get("mentioned"):
                     q_mentioned[qt] = q_mentioned.get(qt, 0) + 1
     # evidence_level → 企业覆盖（grounded 80 / partial 50 / none 20 / 未判定 null）
     _cov_map = {"grounded": 80, "partial": 50, "none": 20}
     for q in items:
         qt = q.get("question") or ""
-        freq = q_count.get(qt, 0)
-        vis = round(q_mentioned.get(qt, 0) / freq * 100) if freq else None
+        freq = q_count.get(qt, 0)          # 被问到的批次次数
+        answered = q_answered.get(qt, 0)   # 真作答条数
+        vis = round(q_mentioned.get(qt, 0) / answered * 100) if answered else None
         cov = _cov_map.get(q.get("evidence_level"))
         # 审计 B2：attention 以前兜底 50 —— 数据缺了就写 0 分是编造。没填 priority 就是 None。
         att = q.get("priority")
@@ -305,15 +314,16 @@ async def list_questions(status: str | None = None, limit: int = 100, validated:
         q["opportunity"] = opp
         q["frequency"] = freq
         q["score_source"] = "rule"
-        # V1.1 可信字段：monitor_count = 真实监测回答数；validated = 有监测即验证
-        q["monitor_count"] = freq
+        # V1.1 可信字段：monitor_count = 真实监测回答条数（没作答的引擎不计）；
+        # validated = 这个问法被真实监测过（不是「答案已验证」）；frequency = 被问到的批次次数。
+        q["monitor_count"] = answered
         q["validated"] = freq > 0
         if freq > 0:
             q["source_type"] = "monitor_verified"
         else:
             q.setdefault("source_type", "ai_generated")
         q.setdefault("confidence", 0.65)
-    return ok({"items": items, "total": len(items), "note": "评分为规则估算（优先级/监测词频/Kernel 依据），非 LLM 精判；monitor_count = 真实监测回答数，validated = 这个问题被真实监测过（不是「答案已验证」）"})
+    return ok({"items": items, "total": len(items), "note": "评分为规则估算（优先级/监测词频/Kernel 依据），非 LLM 精判；monitor_count = 真实监测回答条数（没作答的引擎不计入），frequency = 该问法被问到的批次次数，ai_visibility = 真作答条数里被提及占比，validated = 这个问题被真实监测过（不是「答案已验证」）"})
 
 
 @router.delete("/questions/{qid}")
