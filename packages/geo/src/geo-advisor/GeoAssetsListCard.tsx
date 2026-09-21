@@ -13,7 +13,57 @@ function softError(data: { error?: unknown } | null): string | null {
   return typeof message === 'string' && message ? message : null
 }
 
-/** 内容资产卡：搜索 + 详情展开 + 删除（交互对齐 Builder GeoKb） */
+/** 内容资产全库统计（文件管理器顶部那行） */
+type AssetStats = { files?: number; chunks?: number; chars?: number; uploaded_files?: number }
+
+/** 素材来源标签（文件管理器里给用户看的，不暴露接口字段名） */
+const SOURCE_LABELS: Record<string, string> = {
+  file: '上传文件',
+  text: '手写素材',
+  generated: '生成内容',
+  faq: 'FAQ',
+  url: '链接收录',
+}
+const SOURCE_FILTERS = [
+  { id: 'all', label: '全部' },
+  { id: 'file', label: '上传文件' },
+  { id: 'text', label: '手写素材' },
+  { id: 'generated', label: '生成内容' },
+  { id: 'faq', label: 'FAQ' },
+]
+
+function sourceLabel(value?: string) {
+  return SOURCE_LABELS[value ?? ''] ?? '素材'
+}
+
+function shortTime(value?: string) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+function formatChars(n?: number) {
+  const v = Number(n ?? 0)
+  if (!v) return '0 字'
+  if (v >= 10000) return `${(v / 10000).toFixed(1)} 万字`
+  return `${v} 字`
+}
+
+/**
+ * 内容资产 · 文件管理系统（Owner 2026-09-22）
+ *
+ * 「就一个文件管理系统，能看到上传什么了，可以删除，删除的时候就连着处理的切块一起删除，
+ *  这里是 GEO 的数据，不是知识库半毛钱关系没有。」
+ *
+ * 所以这一页只读/只删 **GEO 自己的素材库**（`store.kb`，含每份素材切好的段）：
+ * - 列表能看出：来源类型、原文件名、字数、切了几段、什么时候进库的；
+ * - 删除 = 正文 + 它切好的段一起删（后端同一个库里一行记录，删了就都没了），删完如实报删了几段；
+ * - 不写企业知识库、不向量化（向量只是 GEO 库里的检索索引，删素材时一并清掉）。
+ *
+ * 诚实说明：上传的原始文件本身**不入库**，这里存的是解析出来的正文与切块 ——
+ * 所以删除只能删这份文本与切块，原始文件请自行留存。
+ */
 export function GeoAssetsListCard() {
   const [items, setItems] = useState<GeoMaterial[] | null>(null)
   const [query, setQuery] = useState('')
@@ -22,6 +72,10 @@ export function GeoAssetsListCard() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailText, setDetailText] = useState<string | null>(null)
   const [detailChunks, setDetailChunks] = useState<number | null>(null)
+  // 文件管理器：按来源筛选 + 全库统计 + 删除后的如实回执
+  const [filter, setFilter] = useState('all')
+  const [stats, setStats] = useState<AssetStats | null>(null)
+  const [note, setNote] = useState<string | null>(null)
   // S4 发布打点：素材 → 已发布 URL（监测引用对上 citation）
   const [urlDraft, setUrlDraft] = useState<Record<string, string>>({})
   const [savingUrl, setSavingUrl] = useState<string | null>(null)
@@ -37,9 +91,13 @@ export function GeoAssetsListCard() {
     setError(null)
     try {
       const d = q
-        ? await geoGet<{ items: GeoMaterial[] }>(`/knowledge/materials/search?q=${encodeURIComponent(q)}&top_k=8`)
-        : await geoGet<{ items: GeoMaterial[] }>('/knowledge/materials')
+        ? await geoGet<{ items: GeoMaterial[]; stats?: AssetStats }>(
+            `/knowledge/materials/search?q=${encodeURIComponent(q)}&top_k=8`,
+          )
+        : await geoGet<{ items: GeoMaterial[]; stats?: AssetStats }>('/knowledge/materials')
       setItems(d.items)
+      // 检索结果没有全库统计（那是搜索命中，不是文件列表），保留上一次的统计别清空
+      if (!q && d.stats) setStats(d.stats)
     } catch (e) {
       setError(e instanceof Error ? e.message : '内容资产加载失败')
     } finally {
@@ -82,11 +140,24 @@ export function GeoAssetsListCard() {
     }
   }
 
-  const remove = async (id: string) => {
-    if (!(await askGeoConfirm('删除后这份素材会从内容资产里移除，引用统计不再计入。'))) return
+  const remove = async (title: string, id: string, chunks?: number) => {
+    const chunkText = chunks ? `，连同它切好的 ${chunks} 段也一起删掉` : ''
+    if (
+      !(await askGeoConfirm(
+        `删除后「${title}」会从 GEO 的内容资产里移除${chunkText}（正文与切块都在 GEO 自己的库里，删了不可恢复）。`,
+      ))
+    )
+      return
     setError(null)
+    setNote(null)
     try {
-      await geoDelete(`/knowledge/materials/${id}`)
+      const d = await geoDelete<{ chunks_removed?: number }>(`/knowledge/materials/${id}`)
+      setNote(`已删除「${title}」，一并清掉 ${d?.chunks_removed ?? chunks ?? 0} 段切块。`)
+      if (detailId === id) {
+        setDetailId(null)
+        setDetailText(null)
+        setDetailChunks(null)
+      }
       await load(query)
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败')
@@ -152,11 +223,26 @@ export function GeoAssetsListCard() {
     }
   }
 
+  const visibleItems = (items ?? []).filter((m) => filter === 'all' || (m.source_type ?? '') === filter)
+
   if (loading) return <GeoLoading text="内容资产加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
   return (
-    <GeoCardShell title={`资产目录 · ${items?.length ?? 0} 个素材`} className="geo-assets-workbench">
+    <GeoCardShell title="内容资产 · 文件管理" className="geo-assets-workbench">
+      {/* 全库统计：这是 GEO 自己的库，跟企业知识库没关系 */}
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-[var(--yayu-muted)]">
+        <span className="text-[12px] text-[var(--yayu-foreground)]">
+          {stats?.files ?? items?.length ?? 0} 份素材
+        </span>
+        <span>其中上传文件 {stats?.uploaded_files ?? 0} 份</span>
+        <span>共 {stats?.chunks ?? 0} 段切块</span>
+        <span>{formatChars(stats?.chars)}</span>
+        <span className="text-[10.5px]">存在 GEO 自己的库里；原始文件不入库，只存解析出的正文与切块</span>
+      </div>
+
+      {note ? <p className="text-[11px] text-[var(--yayu-muted)]">{note}</p> : null}
+
       {/* 搜索 */}
       <form onSubmit={search} className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
@@ -179,6 +265,25 @@ export function GeoAssetsListCard() {
           ) : null}
         </div>
       </form>
+
+      {/* 按来源筛选（文件 / 手写 / 生成 / FAQ） */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {SOURCE_FILTERS.map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFilter(f.id)}
+            aria-pressed={filter === f.id}
+            className={`rounded-md border px-2 py-0.5 text-[11px] ${
+              filter === f.id
+                ? 'border-[var(--yayu-muted)] text-[var(--yayu-foreground)]'
+                : 'border-[var(--yayu-border)] text-[var(--yayu-muted)]'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
 
       {/* 新建 / 上传：直接存进 GEO 自己的素材库（不走企业知识库的治理链） */}
       <div className="flex flex-wrap items-center gap-1.5">
@@ -230,10 +335,14 @@ export function GeoAssetsListCard() {
       ) : null}
 
       {!items || items.length === 0 ? (
-        <p className="text-[12px] text-[var(--yayu-muted)]">暂无素材，先上传知识材料。</p>
+        <p className="text-[12px] text-[var(--yayu-muted)]">
+          还没有内容资产。上传公司资料/文章，或先「新建素材」写一份 —— 生成内容只吃这里的材料。
+        </p>
+      ) : visibleItems.length === 0 ? (
+        <p className="text-[12px] text-[var(--yayu-muted)]">这个来源下没有素材，换个筛选看看。</p>
       ) : (
         <div className="space-y-1.5">
-          {items.map((m) => {
+          {visibleItems.map((m) => {
             const id = m.material_id ?? m.id ?? m.title
             const active = detailId === id
             return (
@@ -246,14 +355,18 @@ export function GeoAssetsListCard() {
                   >
                     <span className="block text-[12px] leading-snug text-[var(--yayu-foreground)]">
                       {m.title}
-                      {m.chunks ? (
-                        <span className="ml-1.5 text-[10.5px] text-[var(--yayu-muted)]">{m.chunks} 段</span>
-                      ) : null}
                       {typeof m.chunk_ordinal === 'number' ? (
                         <span className="ml-1.5 text-[10.5px] text-[var(--yayu-muted)]">
                           命中第 {m.chunk_ordinal + 1} 段
                         </span>
                       ) : null}
+                    </span>
+                    <span className="mt-0.5 block text-[10.5px] text-[var(--yayu-muted)]">
+                      {sourceLabel(m.source_type)}
+                      {m.file_name ? ` · ${m.file_name}` : ''}
+                      {` · ${formatChars(m.chars ?? m.content?.length)}`}
+                      {` · ${m.chunks ?? 0} 段切块`}
+                      {shortTime(m.created_at) ? ` · ${shortTime(m.created_at)}` : ''}
                     </span>
                     {!active ? (
                       <span className="mt-0.5 block truncate text-[11px] text-[var(--yayu-muted)]">
@@ -269,8 +382,8 @@ export function GeoAssetsListCard() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => void remove(id)}
-                      aria-label="删除素材"
+                      onClick={() => void remove(m.title, id, m.chunks)}
+                      aria-label="删除素材及其切块"
                     >
                       <Trash2 className="size-3.5" />
                     </Button>

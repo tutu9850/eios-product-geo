@@ -116,7 +116,252 @@ def _ent_evidence_count(e) -> int:
     return len(ev) if isinstance(ev, list) else 0
 
 
-async def _step_detect():
+#: 公司名尾巴 / 业务特征词（候选池的粗筛规则，真正的归类交给 LLM，见 ``_classify_*``）
+_COMPANY_SUFFIX = ("公司", "科技", "集团", "工作室", "有限", "研究院", "事务所", "厂", "店")
+_BIZ_MARK = ("版", "Agent", "OS", "系统", "平台", "终端", "服务", "套餐", "方案", "课程", "产品")
+#: 素材标题里带这些词 = 内部文档/流程/制度，不是「产品名」。素材标题做业务候选时要过掉。
+_MATERIAL_TITLE_NOISE = (
+    "制度", "流程", "计划", "报告", "清单", "模板", "白皮书", "目录", "手册", "指南", "规范",
+    "表格", "合同", "通知", "会议", "记录", "预算", "薪酬", "排班", "对账",
+)
+
+
+def _dedup_list(values) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values or []:
+        x = str(raw).strip()
+        if x and x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+async def _finalize_detect(result: dict, *, biz_fallback: list[str]) -> dict:
+    """LLM 挑完之后的收口：去重 / 跨类互斥 / industry + keywords 补全 / 最后兜底。
+
+    知识库那一档和内容资产那一档**共用这一段** —— 换的只是候选池从哪来，
+    归类口径与兜底顺序不许出现两套。
+    """
+    if not result["products"]:
+        # LLM 没给出产品时的兜底：候选池里带产品/服务特征词的先上（池子本身已经筛过）
+        result["products"] = list(biz_fallback)[:10]
+
+    prods = _dedup_list(result["products"])
+    svcs = _dedup_list(result["services"])
+    prods = [p for p in prods if p not in svcs]
+    svcs = [s for s in svcs if s not in prods]
+    company = _dedup_list(result["company"])
+    kws = _dedup_list(result["keywords"])
+
+    # ④ 补全调用：LLM 第一次分类常漏 industry/keywords（实测两次全漏）——
+    # 基于已确认的公司/产品/服务再聚焦问一次（比从几百个噪声里猜准得多）
+    if (not result["industry"] or not kws) and (company or prods or svcs):
+        try:
+            from adapters.llm import chat
+
+            parts = []
+            if company:
+                parts.append(f"公司：{'、'.join(company[:3])}")
+            if prods:
+                parts.append(f"产品：{'、'.join(prods[:8])}")
+            if svcs:
+                parts.append(f"服务：{'、'.join(svcs[:5])}")
+            focus = "；".join(parts)
+            text = await chat(
+                f"以下是一家企业的信息：{focus}\n"
+                "请回答：\n"
+                "- industry：所属行业（一句话，如「AI数字员工与自媒体获客服务」）\n"
+                "- keywords：普通用户找这类服务时会搜索的行业词/痛点词/场景词 6-10 个"
+                "（如「AI数字员工」「自媒体代运营」「AI获客」；不要公司名、不要品牌名）\n"
+                '严格 JSON 输出：{"industry": "...", "keywords": ["..."]}',
+                max_tokens=400,
+            )
+            m = json.loads(text) if text.strip().startswith("{") else None
+            if m:
+                if not result["industry"]:
+                    result["industry"] = str(m.get("industry") or "").strip() or None
+                if not kws:
+                    kws = _dedup_list([str(x).strip() for x in (m.get("keywords") or []) if str(x).strip()])[:10]
+        except Exception as e:  # noqa: BLE001
+            logger.warning("industry/keywords fill failed: %s", e)
+
+    # ⑤ 最后兜底：industry 仍空 → 从产品/服务名拆行业线索词；keywords 仍空 → industry 顶上
+    if not result["industry"]:
+        for n in [*prods, *svcs]:
+            if "Agent" in n or "AI" in n:
+                result["industry"] = "AI数字员工服务"
+                break
+            if "自媒体" in n or "矩阵" in n or "获客" in n:
+                result["industry"] = "自媒体获客服务"
+                break
+    if not kws and result["industry"]:
+        kws = [result["industry"]]
+    # keywords 不与公司/产品重名
+    own_all = set(company) | set(prods) | set(svcs)
+    kws = [
+        k
+        for k in kws
+        if k not in own_all and not any(o and (o in k or k in o) for o in company if len(o) >= 3)
+    ][:10]
+
+    return {
+        "company": company,
+        "aliases": company[1:],
+        "products": prods[:10],
+        "services": svcs[:8],
+        "industry": result["industry"],
+        "keywords": kws,
+        "empty": not company and not prods and not svcs and not result["industry"],
+        "error": None,
+        "classification_source": result.get("classification_source"),
+        "hint": None,
+    }
+
+
+# ── step 1（档 A）：从 GEO 自己的内容资产自动配置 ────────────
+async def _step_detect_from_materials():
+    """内容资产（GEO 自己的素材库）→ 候选名单 → LLM 归类（Owner 2026-09-22）。
+
+    Owner 原话：「自动配置这里，要从内容资产里面的文章去自动配置」。素材就是用户自己
+    上传/新建的公司资料与文章，指向性强，所以：
+
+    1. 公司候选：从素材标题与正文里按公司名特征**猜**（``services.company_identity``
+       那套规则，比知识库那档放松 —— 见那边的注释）；
+    2. 业务候选：把素材标题当材料交给 LLM 读，让它认出产品/服务/行业/关键词，
+       **不把整条标题当产品名**喂回去；
+    3. 一条素材都没有 → 空候选 + 提示先上传内容资产（或先做知识库同步），不编造；
+    4. 全程不打知识库（GEO 运行时不许实时读知识库，Owner 2026-09-22）。
+    """
+    from app.services.store import get_store
+    from services.company_identity import company_candidates_from_materials
+
+    try:
+        materials = get_store().load("kb") or []
+    except Exception as e:  # noqa: BLE001 — 读自己的库失败要如实报，不假装「还没有素材」
+        logger.warning("detect(materials): load kb failed: %s", e)
+        return {
+            "company": [], "aliases": [], "products": [], "services": [],
+            "industry": None, "keywords": [], "empty": True,
+            "error": str(e)[:300],
+            "classification_source": None,
+            "hint": f"读取 GEO 自己的内容资产失败：{str(e)[:200]}",
+        }
+
+    if not materials:
+        return {
+            "company": [], "aliases": [], "products": [], "services": [],
+            "industry": None, "keywords": [], "empty": True,
+            "error": None,
+            "classification_source": None,
+            "hint": "还没有内容资产——先在「内容资产」上传公司资料/文章，或先做一次「知识库同步」，再来自动配置",
+        }
+
+    company_cands = company_candidates_from_materials(materials)
+    corpus = _material_corpus(materials)
+    titles = [
+        str(m.get("title") or "").strip()
+        for m in materials
+        if str(m.get("title") or "").strip()
+    ][:30]
+    result: dict = {
+        "company": company_cands[:5],
+        "products": [],
+        "services": [],
+        "industry": None,
+        "keywords": [],
+        "classification_source": "heuristic",
+    }
+    # 素材很小（没上传东西、或只有几条）时不必麻烦 LLM，规则给的候选已经够用。
+    if titles:
+        try:
+            from adapters.llm import chat
+
+            text = await chat(
+                "以下是一家企业自己上传的内容资产标题（新上传的排前面）：\n"
+                + "\n".join(f"- {t}" for t in titles)
+                + "\n\n请据此判断这家企业自己是谁、在卖什么（**只依据上面的材料，看不出来就留空，"
+                "不要编造名单外的名字**）：\n"
+                "- company：这家企业自己的公司名（材料里出现过才算）\n"
+                "- products：材料里出现过的产品/软件/版本名（如「企业版Agent OS」「GEO+知识库版」）\n"
+                "- services：材料里出现过的服务/课程类名\n"
+                "- industry：所属行业（一句话）\n"
+                "- keywords：普通用户找这类服务会搜的行业词/痛点词 6-10 个（不要公司名/品牌名）\n"
+                '严格 JSON 输出：{"company": [...], "products": [...], "services": [...], '
+                '"industry": "...", "keywords": ["..."]}',
+                max_tokens=800,
+            )
+            blob = text.strip()
+            if not blob.startswith("{"):
+                import re as _re
+
+                m = _re.search(r"\{[\s\S]*\}", blob)
+                blob = m.group(0) if m else ""
+            picked = json.loads(blob) if blob else {}
+            allowed = set(company_cands) | set(titles)
+            title_set = set(titles)
+            for key in ("company", "products", "services"):
+                # 材料里出现过的名字才收。**素材标题本身不算产品名**：标题是「这份材料叫什么」，
+                # 不是「企业在卖什么」（实测模型会把标题原样列进产品候选）。
+                vals = [
+                    str(x).strip()
+                    for x in (picked.get(key) or [])
+                    if str(x).strip()
+                    and (
+                        str(x).strip() in company_cands
+                        or (
+                            str(x).strip() not in title_set
+                            and _grounded_in_materials(str(x).strip(), corpus, allowed)
+                        )
+                    )
+                ]
+                if vals:
+                    result[key] = vals if key != "company" else vals[:5]
+                    result["classification_source"] = "llm"
+            if picked.get("industry"):
+                result["industry"] = str(picked["industry"]).strip() or None
+                result["classification_source"] = "llm"
+            if picked.get("keywords"):
+                result["keywords"] = [str(x).strip() for x in picked["keywords"] if str(x).strip()]
+        except Exception as e:  # noqa: BLE001 — LLM 只是归类器，失败不阻塞检测
+            logger.warning("detect(materials) classify failed: %s", e)
+
+    # 业务候选（规则兜底）：素材标题里不带「制度/流程/报告」这类噪声的，当候选
+    biz_fallback = [
+        t for t in titles if len(t) <= 24 and not any(w in t for w in _MATERIAL_TITLE_NOISE)
+    ]
+    return await _finalize_detect(result, biz_fallback=biz_fallback)
+
+
+def _material_corpus(materials: list[dict], *, per_material: int = 4000) -> str:
+    """素材标题 + 正文拼成一份文本，用来核对「模型说的名字材料里确实出现过」。"""
+    parts = []
+    for m in materials or []:
+        title = str(m.get("title") or "").strip()
+        body = str(m.get("content") or "")[:per_material]
+        parts.append(f"{title}\n{body}")
+    return "\n".join(parts)
+
+
+def _grounded_in_materials(name: str, corpus: str, pool: set[str]) -> bool:
+    """这个名字有没有依据 —— 出现在素材标题/候选里，或它的 3 字片段出现在素材正文里。
+
+    为什么要核：Owner 2026-09-22 要的是「从内容资产里面的文章去自动配置」，
+    模型顺口编一个名单外的新产品就成了假的自动配置。看不出来就留空（宁缺毋造）。
+    """
+    if not name:
+        return False
+    if name in pool or any(len(name) >= 3 and (name in p or p in name) for p in pool):
+        return True
+    if name in corpus:
+        return True
+    if len(name) >= 3:
+        return any(name[i : i + 3] in corpus for i in range(len(name) - 2))
+    return False
+
+
+# ── step 1（档 B）：从企业知识库检测（只有「知识库同步」用这一档） ──
+async def _step_detect_from_knowledge():
     """企业知识库 → 候选名单 → LLM 归类（公司/产品/服务/行业/搜索词）
 
     2026-09-20 改造（知识源从换知识源前的老适配器换成 EIOS 知识库）：EIOS 的知识对象只有
@@ -129,6 +374,9 @@ async def _step_detect():
     4. LLM 顺带补 industry / keywords（见 ④）。
     兜底：LLM 不可用 → company=公司候选前几名，products=业务候选前几名；
     知识库确实没有资料 → 空候选 + 提示上传，不编造。
+
+    **调用方必须先开门**（``adapters.eios.knowledge_read_grant``）：这一档会实时读知识库，
+    目前只有 ``/api/v1/kb-init/scan``（页面上的「知识库同步」按钮）有资格。
     """
     from adapters.eios import get_entities
 
@@ -143,6 +391,7 @@ async def _step_detect():
             "company": [], "aliases": [], "products": [], "services": [],
             "industry": None, "keywords": [], "empty": True,
             "error": str(e)[:300],
+            "classification_source": None,
             "hint": f"企业知识库读不到（这不等于知识库是空的）：{str(e)[:200]}",
         }
 
@@ -151,6 +400,7 @@ async def _step_detect():
             "company": [], "aliases": [], "products": [], "services": [],
             "industry": None, "keywords": [], "empty": True,
             "error": None,
+            "classification_source": None,
             "hint": "知识库暂无企业资料——请先在知识库上传产品说明/公司介绍后重试",
         }
 
@@ -158,9 +408,6 @@ async def _step_detect():
     #    Semantic，不在 Knowledge。所以这里不再假装按 object_type 分类（换知识源前的老适配器有
     #    company/product/service 字段，那条路在 EIOS 不存在），改成：
     #    名称规则 + 被文档引用频次 → 候选池 → 交给 LLM 归类（见 ②）。
-    _COMPANY_SUFFIX = ("公司", "科技", "集团", "工作室", "有限", "研究院", "事务所", "厂", "店")
-    _BIZ_MARK = ("版", "Agent", "OS", "系统", "平台", "终端", "服务", "套餐", "方案", "课程", "产品")
-
     entities = [e for e in entities if e.get("status") != "deprecated"]
     entities.sort(key=_ent_evidence_count, reverse=True)
 
@@ -247,87 +494,8 @@ async def _step_detect():
                     result["classification_source"] = "llm"
         except Exception as e:  # noqa: BLE001 — LLM 只是归类器，失败不阻塞检测
             logger.warning("detect classify failed: %s", e)
-    # LLM 没给出产品时的兜底：业务候选里带产品/服务特征词的先上（候选池本身已经筛过）
-    if not result["products"]:
-        result["products"] = biz_names[:10]
 
-
-    # 去重 + 跨类互斥 + 自家清洗
-    def _dedup(lst):
-        out, seen = [], set()
-        for x in lst:
-            x = str(x).strip()
-            if x and x not in seen:
-                seen.add(x)
-                out.append(x)
-        return out
-
-    prods = _dedup(result["products"])
-    svcs = _dedup(result["services"])
-    prods = [p for p in prods if p not in svcs]
-    svcs = [s for s in svcs if s not in prods]
-    company = _dedup(result["company"])
-    kws = _dedup(result["keywords"])
-
-    # ④ 补全调用：LLM 第一次分类常漏 industry/keywords（实测两次全漏）——
-    # 基于已确认的公司/产品/服务再聚焦问一次（比从 549 个噪声里猜准得多）
-    if (not result["industry"] or not kws) and (company or prods or svcs):
-        try:
-            from adapters.llm import chat
-
-            parts = []
-            if company:
-                parts.append(f"公司：{'、'.join(company[:3])}")
-            if prods:
-                parts.append(f"产品：{'、'.join(prods[:8])}")
-            if svcs:
-                parts.append(f"服务：{'、'.join(svcs[:5])}")
-            focus = "；".join(parts)
-            text = await chat(
-                f"以下是一家企业的信息：{focus}\n"
-                "请回答：\n"
-                "- industry：所属行业（一句话，如「AI数字员工与自媒体获客服务」）\n"
-                "- keywords：普通用户找这类服务时会搜索的行业词/痛点词/场景词 6-10 个"
-                "（如「AI数字员工」「自媒体代运营」「AI获客」；不要公司名、不要品牌名）\n"
-                '严格 JSON 输出：{"industry": "...", "keywords": ["..."]}',
-                max_tokens=400,
-            )
-            m = json.loads(text) if text.strip().startswith("{") else None
-            if m:
-                if not result["industry"]:
-                    result["industry"] = str(m.get("industry") or "").strip() or None
-                if not kws:
-                    kws = _dedup([str(x).strip() for x in (m.get("keywords") or []) if str(x).strip()])[:10]
-        except Exception as e:  # noqa: BLE001
-            logger.warning("industry/keywords fill failed: %s", e)
-
-    # ⑤ 最后兜底：industry 仍空 → 从产品/服务名拆行业线索词；keywords 仍空 → industry 顶上
-    if not result["industry"]:
-        for n in [*prods, *svcs]:
-            if "Agent" in n or "AI" in n:
-                result["industry"] = "AI数字员工服务"
-                break
-            if "自媒体" in n or "矩阵" in n or "获客" in n:
-                result["industry"] = "自媒体获客服务"
-                break
-    if not kws and result["industry"]:
-        kws = [result["industry"]]
-    # keywords 不与公司/产品重名
-    own_all = set(company) | set(prods) | set(svcs)
-    kws = [k for k in kws if k not in own_all and not any(o and (o in k or k in o) for o in company if len(o) >= 3)][:10]
-
-    return {
-        "company": company,
-        "aliases": company[1:],
-        "products": prods[:10],
-        "services": svcs[:8],
-        "industry": result["industry"],
-        "keywords": kws,
-        "empty": not company and not prods and not svcs and not result["industry"],
-        "error": None,
-        "classification_source": result.get("classification_source"),
-        "hint": None,
-    }
+    return await _finalize_detect(result, biz_fallback=biz_names[:10])
 
 
 # ── step 2：竞品发现 ────────────────────────────────────
@@ -906,7 +1074,7 @@ async def _step_distill(cfg: AutoConfigIn):
                         break
             if not seeds:
                 try:
-                    det = await _step_detect()
+                    det = await _step_detect_from_materials()
                     seeds = [s for s in (det.get("products") or []) if s] + ([det.get("industry")] if det.get("industry") else [])
                 except Exception:  # noqa: BLE001
                     seeds = []
@@ -970,7 +1138,8 @@ async def auto_config(payload: AutoConfigIn):
     step = (payload.step or "").strip()
     try:
         if step == "detect":
-            return ok(await _step_detect())
+            # Owner 2026-09-22：自动配置从 GEO 自己的内容资产来（不再实时读知识库）
+            return ok(await _step_detect_from_materials())
         if step == "discover":
             return ok(
                 await _step_discover(

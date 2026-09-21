@@ -108,13 +108,23 @@ async def get_company_profile(company_name: str = "", tenant_id: str = "tenant_c
 
 @router.get("/materials")
 async def list_materials():
+    """内容资产文件管理（Owner 2026-09-22）：看得见传了什么、多大、切了几段、什么时候传的。
+
+    ``chars`` 是这份素材正文字符数（文件管理器要显示「多大」；正文本身仍然带在 ``content``
+    里，详情/来源面板还要用）。
+    """
     items = _load()
-    total_chars = sum(len(i.get("content") or "") for i in items)
+    for item in items:
+        item["chars"] = len(str(item.get("content") or ""))
+    total_chars = sum(i["chars"] for i in items)
     stats = {
         "files": len(items),
         "chunks": sum(i.get("chunks", 0) for i in items),
         "vectors": sum(i.get("vectors", 0) for i in items),
+        "chars": total_chars,
         "storage_mb": round(total_chars / 1024 / 1024, 2),
+        # 上传的文件单独数一份：文件管理器里「文件」和「手写素材」是两种来源。
+        "uploaded_files": sum(1 for i in items if i.get("source_type") == "file"),
     }
     return ok({"items": items, "stats": stats})
 
@@ -339,10 +349,27 @@ async def update_material(material_id: str, payload: MaterialPatchIn):
 
 @router.delete("/materials/{material_id}")
 async def delete_material(material_id: str):
-    items = [i for i in _load() if i.get("id") != material_id]
+    """删一份内容资产：**连它切好的段一起删**（Owner 2026-09-22）。
+
+    切块（``text_chunks`` / ``chunks``）本来就存在这条素材记录里、在 GEO 自己的库中，
+    所以删掉这条记录 = 切块一并没了；这里把「删了几段」如实报出来，免得界面以为只删了列表项。
+    同时按既有审计 H5 级联清理 Qdrant/内存向量，避免孤儿点残留。
+    """
+    all_items = _load()
+    target = next((i for i in all_items if i.get("id") == material_id), None)
+    if target is None:
+        return ok({"error": "素材不存在", "deleted": None})
+    chunks_removed = len(target.get("text_chunks") or [])
+    items = [i for i in all_items if i.get("id") != material_id]
     _save(items)
-    # 修复（审计 H5）：级联清理 Qdrant/内存向量，避免孤儿点残留
     from services.embed import delete_vectors
 
     qdrant_cleaned = await delete_vectors(material_id)
-    return ok({"deleted": material_id, "vectors_cleaned": qdrant_cleaned})
+    return ok(
+        {
+            "deleted": material_id,
+            "title": target.get("title"),
+            "chunks_removed": chunks_removed,
+            "vectors_cleaned": qdrant_cleaned,
+        }
+    )

@@ -289,6 +289,10 @@ export interface GeoMaterial {
   chunks?: number
   /** 原文件名（上传的资料才有） */
   file_name?: string
+  /** 来源类型：file（上传文件）/ text（手写）/ generated（生成）/ faq / url */
+  source_type?: string
+  /** 正文长度（文件管理器显示「多大」用；列表接口才有） */
+  chars?: number
   /** 检索命中定位到的那一段的片段（素材检索接口返回；列表接口没有） */
   snippet?: string
   /** 命中在第几段（0 起；没切块或没命中为 null） */

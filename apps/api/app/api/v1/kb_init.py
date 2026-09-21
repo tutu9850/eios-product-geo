@@ -3,6 +3,10 @@
 Owner 原话：「先搜知识库，筛选里面的公司和产品和相关文档，就是自动配置，让用户点击
 选择，单独一个按钮，内测用，后面就第一次 增量刷新，快照」。
 
+**这是全 GEO 唯一允许实时读企业知识库的地方**（Owner 2026-09-22：「除了手动的知识库同步
+以外，不让 GEO 去知识库里找东西」）。别的面运行时只读 GEO 自己柜里的快照；这里因为是人
+明确点了「同步」按钮，才用 ``adapters.eios.knowledge_read_grant("kb_sync")`` 开一次门。
+
 所以这个面只有三件事：
 
 1. **扫**知识库（只读 —— GEO 永不写知识库，Owner 2026-09-20）→ 三桶候选：
@@ -102,6 +106,98 @@ def _current_profile() -> dict:
     }
 
 
+class KnowledgeUnreadable(RuntimeError):
+    """放行块里读知识库核对文档失败（调用方转成 ``knowledge_unreadable``）。"""
+
+
+async def _capture_enterprise_knowledge(company_names: list[str]) -> dict:
+    """把这次同步读到的**企业知识对象 / 正式事实 / 本公司关系**一并落进 GEO 自己的柜。
+
+    为什么必须在同步这一步做：运行时（企业画像 / 蒸馏 / 监测 / 内容生成）已经不许实时读
+    知识库了，它们读的是「GEO 自己柜里的快照」。同步时不多带一份回去，那边就只能是空的
+    —— 那就不是「读自己的柜」，是「没数据」。
+
+    读失败不抛：如实把 ``error`` 报出来，让页面知道这次同步少带了什么。
+    """
+    captured: dict = {"objects": 0, "facts": 0, "relations": 0, "error": None}
+    try:
+        from adapters.eios import get_entities
+
+        captured["objects"] = len(await get_entities() or [])
+    except Exception as exc:  # noqa: BLE001
+        captured["error"] = f"读企业知识对象失败：{str(exc)[:160]}"
+    try:
+        from adapters.eios import list_enterprise_facts
+
+        captured["facts"] = len(await list_enterprise_facts() or [])
+    except Exception as exc:  # noqa: BLE001
+        captured["error"] = f"读正式事实失败：{str(exc)[:160]}"
+    try:
+        from adapters.eios import search_relations
+
+        total = 0
+        for name in [c for c in company_names if c][:3]:
+            total += len(await search_relations(name) or [])
+        captured["relations"] = total
+    except Exception as exc:  # noqa: BLE001 — 关系只是补充，读不到不影响这次同步
+        logger.warning("kb-init scan: relations failed: %s", exc)
+    return captured
+
+
+async def _pull_documents(wanted_ids: list[str], list_documents, list_document_chunks):
+    """在放行块里核对文档标题并拉回切块（只被 ``/apply`` 调用，调用方负责开门）。
+
+    返回 ``(documents, unknown, chunks_pulled)``：
+    - ``documents``：核对上的文档（id/标题/版本）；
+    - ``unknown``：知识库里核不到的 id（如实列出来，不静默丢）；
+    - ``chunks_pulled``：每份文档这次带回了几个切块（翻页到上限时标 ``truncated``）。
+    """
+    documents: list[dict] = []
+    unknown: list[str] = []
+    chunks_pulled: list[dict] = []
+    if not wanted_ids:
+        return documents, unknown, chunks_pulled
+    try:
+        known = {str(d.get("document_id") or ""): d for d in (await list_documents(limit=100) or [])}
+    except Exception as exc:  # noqa: BLE001 — 核不了标题就不能假装存了
+        raise KnowledgeUnreadable(f"读知识库核对文档失败：{str(exc)[:200]}") from exc
+    # 知识库未发布的文档不在 documents 列表里，但 GEO 读到过它的切块 —— 也认。
+    for c in knowledge_snapshot.documents_with_chunks():
+        known.setdefault(
+            c["document_id"],
+            {"document_id": c["document_id"], "title": c["title"], "version": None,
+             "source": "geo_snapshot"},
+        )
+    for doc_id in wanted_ids:
+        item = known.get(doc_id)
+        if item is None:
+            unknown.append(doc_id)
+            continue
+        # 同步时把切块正文一并带过来存下（权威门开着读权威；门关着用 GEO 已存的快照）。
+        pulled = 0
+        truncated = False
+        try:
+            got = await list_document_chunks(doc_id)
+            pulled = len(got.get("items") or [])
+            truncated = bool(got.get("truncated"))
+        except Exception as exc:  # noqa: BLE001 — 拉不到切块不影响「选中文档」这件事，但要如实报
+            logger.warning("kb-init apply: chunks for %s failed: %s", doc_id, exc)
+        entry = {"document_id": doc_id, "chunks": pulled}
+        if truncated:
+            # 翻页到上限还有下一页：如实说「这只是其中一部分」，不把少带说成带全了。
+            entry["truncated"] = True
+        chunks_pulled.append(entry)
+        documents.append(
+            {
+                "document_id": doc_id,
+                "title": str(item.get("title") or ""),
+                "version": item.get("version"),
+            }
+        )
+    return documents, unknown, chunks_pulled
+
+
+
 @router.post("/scan")
 async def kb_init_scan():
     """扫一遍知识库，给出可点选的候选（公司 / 产品 / 相关文档）。
@@ -113,7 +209,7 @@ async def kb_init_scan():
     「读不到知识库」和「知识库是空的」必须分得开：前者原样报错并保留 ``error``，
     后者才是 ``empty=true`` + 提示上传。
     """
-    from adapters.eios import list_documents
+    from adapters.eios import knowledge_read_grant, list_documents
     from app.api.v1 import onboard
 
     profile = _current_profile()
@@ -121,17 +217,24 @@ async def kb_init_scan():
     have_products = set(profile["products"])
     have_documents = {d["document_id"] for d in profile["documents"]}
 
-    detect = await onboard._step_detect()
-    if detect.get("error"):
-        return err("knowledge_unreadable", str(detect["error"])[:300])
+    # 开门：只有这里能实时读知识库；出了这个 with，别的面一律读 GEO 自己的柜。
+    with knowledge_read_grant("kb_sync"):
+        detect = await onboard._step_detect_from_knowledge()
+        if detect.get("error"):
+            return err("knowledge_unreadable", str(detect["error"])[:300])
 
-    documents: list[dict] = []
-    doc_error: str | None = None
-    try:
-        documents = await list_documents(limit=100) or []
-    except Exception as exc:  # noqa: BLE001 — 文档读不到只少一桶，不假装三桶齐全
-        doc_error = str(exc)[:200]
-        logger.warning("kb-init scan: list_documents failed: %s", exc)
+        documents: list[dict] = []
+        doc_error: str | None = None
+        try:
+            documents = await list_documents(limit=100) or []
+        except Exception as exc:  # noqa: BLE001 — 文档读不到只少一桶，不假装三桶齐全
+            doc_error = str(exc)[:200]
+            logger.warning("kb-init scan: list_documents failed: %s", exc)
+        # 同步一步到位：对象 / 正式事实 / 本公司关系一并落进 GEO 自己的柜
+        # （运行时不再实时读知识库，靠的就是这份）。
+        captured = await _capture_enterprise_knowledge(
+            [str(x) for x in (detect.get("company") or [])]
+        )
 
     companies = [
         {"name": n, "in_profile": n in have_companies}
@@ -202,6 +305,7 @@ async def kb_init_scan():
                 if any(c["document_id"] not in seen_ids for c in read_docs)
                 else ""
             ),
+            "captured": captured,
             "classification_source": detect.get("classification_source"),
             "industry": detect.get("industry"),
             "empty": empty,
@@ -221,7 +325,7 @@ async def kb_init_apply(payload: KbInitApplyIn):
     - 文档标题由 GEO 自己去知识库核对：客户端只报 id。核不到的 id 不静默丢掉，
       原样列进 ``unknown_documents``。
     """
-    from adapters.eios import list_document_chunks, list_documents
+    from adapters.eios import knowledge_read_grant, list_document_chunks, list_documents
 
     companies = _clean_names(payload.companies)
     products = _clean_names(payload.products)
@@ -231,47 +335,14 @@ async def kb_init_apply(payload: KbInitApplyIn):
 
     prev = _current_profile()
 
-    documents: list[dict] = []
-    unknown: list[str] = []
-    chunks_pulled: list[dict] = []
-    if wanted_ids:
-        try:
-            known = {str(d.get("document_id") or ""): d for d in (await list_documents(limit=100) or [])}
-        except Exception as exc:  # noqa: BLE001 — 核不了标题就不能假装存了
-            return err("knowledge_unreadable", f"读知识库核对文档失败：{str(exc)[:200]}")
-        # 知识库未发布的文档不在 documents 列表里，但 GEO 读到过它的切块 —— 也认。
-        for c in knowledge_snapshot.documents_with_chunks():
-            known.setdefault(
-                c["document_id"],
-                {"document_id": c["document_id"], "title": c["title"], "version": None,
-                 "source": "geo_snapshot"},
+    # 同一次「手动同步」的放行块：核对文档标题 + 拉切块都要读知识库。
+    try:
+        with knowledge_read_grant("kb_sync"):
+            documents, unknown, chunks_pulled = await _pull_documents(
+                wanted_ids, list_documents, list_document_chunks
             )
-        for doc_id in wanted_ids:
-            item = known.get(doc_id)
-            if item is None:
-                unknown.append(doc_id)
-                continue
-            # 同步时把切块正文一并带过来存下（权威门开着读权威；门关着用 GEO 已存的快照）。
-            pulled = 0
-            truncated = False
-            try:
-                got = await list_document_chunks(doc_id)
-                pulled = len(got.get("items") or [])
-                truncated = bool(got.get("truncated"))
-            except Exception as exc:  # noqa: BLE001 — 拉不到切块不影响「选中文档」这件事，但要如实报
-                logger.warning("kb-init apply: chunks for %s failed: %s", doc_id, exc)
-            entry = {"document_id": doc_id, "chunks": pulled}
-            if truncated:
-                # 翻页到上限还有下一页：如实说「这只是其中一部分」，不把少带说成带全了。
-                entry["truncated"] = True
-            chunks_pulled.append(entry)
-            documents.append(
-                {
-                    "document_id": doc_id,
-                    "title": str(item.get("title") or ""),
-                    "version": item.get("version"),
-                }
-            )
+    except KnowledgeUnreadable as exc:
+        return err("knowledge_unreadable", str(exc)[:300])
 
     merged_companies = sorted({*prev["companies"], *companies})
     merged_products = sorted({*prev["products"], *products})

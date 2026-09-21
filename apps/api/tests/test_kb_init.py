@@ -33,7 +33,7 @@ def tenant():
         engine.dispose()
 
 
-#: 一个够真的 detect 结果（形状与 ``onboard._step_detect`` 一致）
+#: 一个够真的 detect 结果（形状与 ``onboard._step_detect_from_knowledge`` 一致）
 DETECT = {
     "company": ["亚宇臻隆"],
     "aliases": [],
@@ -78,9 +78,23 @@ def _patch_kb(monkeypatch, *, detect=None, documents=None, documents_error=None,
             "warnings": [],
         }
 
-    monkeypatch.setattr(onboard, "_step_detect", _detect)
+    async def _entities():
+        return [{"canonical_name": "亚宇臻隆", "object_type": "entity", "status": "active"}]
+
+    async def _facts():
+        return [{"canonical_name": "吴鑫宇 负责人 自媒体运营", "object_type": "fact", "status": "active"}]
+
+    async def _relations(query: str = "", **kwargs):
+        return [{"source_name": query, "target_name": "自媒体运营", "relation_type": "负责"}]
+
+    # 「知识库同步」那一档现在叫 _step_detect_from_knowledge（另一档是内容资产）
+    monkeypatch.setattr(onboard, "_step_detect_from_knowledge", _detect)
     monkeypatch.setattr(eios, "list_documents", _list_documents)
     monkeypatch.setattr(eios, "list_document_chunks", _list_document_chunks)
+    # 同步要把对象/事实/关系一并带进 GEO 的柜；这里全部打桩，测试不打真网络
+    monkeypatch.setattr(eios, "get_entities", _entities)
+    monkeypatch.setattr(eios, "list_enterprise_facts", _facts)
+    monkeypatch.setattr(eios, "search_relations", _relations)
 
 
 def test_scan_offers_companies_products_and_documents(monkeypatch, tenant):

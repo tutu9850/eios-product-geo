@@ -267,6 +267,77 @@ def chunk_snapshot_payload(chunks: list[dict[str, Any]]) -> dict[str, Any]:
     return {"contract": "geo.knowledge_chunks/v1", "items": items}
 
 
+
+def _dedup_items(items, key):
+    """按 key 去重、新读到的排前面（台账本来就是倒序的）。"""
+    out, seen = [], set()
+    for item in items:
+        k = str(item.get(key) or "")
+        if not k or k in seen:
+            continue
+        seen.add(k)
+        out.append(item)
+    return out
+
+
+def objects(*, kind_filter: str | None = None, limit: int = 400) -> list[dict[str, Any]]:
+    """GEO 自己柜里的企业知识对象（快照台账 ``kind=objects``）。
+
+    为什么要有它：2026-09-22 Owner 拍板「除了手动的知识库同步以外，不让 GEO 去知识库里
+    找东西」。运行时（画像 / 蒸馏 / 监测 / 内容生成）于是改读**这次同步带回来的那份**。
+    没有它 = 还没同步过，如实返回空，不去打 :8040。
+
+    ``kind_filter="fact"`` = 只要事实型对象（``type=fact``）；``None`` = 全部（实体 + 事实）。
+    """
+    items: list[dict[str, Any]] = []
+    for _row, item in _iter_items("objects"):
+        if kind_filter and str(item.get("object_type") or "") != kind_filter:
+            continue
+        items.append(item)
+    return _dedup_items(items, "object_id")[: max(1, int(limit))]
+
+
+def documents(limit: int = 200) -> list[dict[str, Any]]:
+    """GEO 自己柜里的企业文档列表（快照台账 ``kind=documents``）。"""
+    items = [item for _row, item in _iter_items("documents")]
+    return _dedup_items(items, "document_id")[: max(1, int(limit))]
+
+
+def relations(limit: int = 200) -> list[dict[str, Any]]:
+    """GEO 自己柜里的对象关系（快照台账 ``kind=relations``）。"""
+    items = [item for _row, item in _iter_items("relations")]
+    out, seen = [], set()
+    for item in items:
+        key = f"{item.get('source_id')}|{item.get('relation_type')}|{item.get('target_id')}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out[: max(1, int(limit))]
+
+
+def all_chunks(limit: int = 2000) -> list[dict[str, Any]]:
+    """GEO 自己柜里读过的**全部文档切块**（快照台账 ``kind=chunks``）。
+
+    内容生成按本企业资料检索时用这个：切块是 GEO 同步时一并带回来的，
+    运行时不再回头去打知识库。
+    """
+    items = []
+    for _row, item in _iter_items("chunks"):
+        text = str(item.get("text") or item.get("snippet") or item.get("value") or "")
+        if str(item.get("chunk_id") or "") and text.strip():
+            items.append(item)
+    return _dedup_items(items, "chunk_id")[: max(1, int(limit))]
+
+
+def has_anything() -> bool:
+    """GEO 柜里有没有从知识库同步回来的东西（用于如实区分「没同步」与「同步了但没资料」）。"""
+    for kind in ("objects", "documents", "chunks", "relations"):
+        if next(_iter_items(kind), None) is not None:
+            return True
+    return False
+
+
 def summary() -> dict[str, Any]:
     """企业资料就绪度：GEO 到底从知识库读到过什么（本地读，不去打知识库）。
 
@@ -313,4 +384,15 @@ def summary() -> dict[str, Any]:
     }
 
 
-__all__ = ["payload_hash", "record", "list_recent", "summary", "SOURCE"]
+__all__ = [
+    "payload_hash",
+    "record",
+    "list_recent",
+    "summary",
+    "objects",
+    "documents",
+    "relations",
+    "all_chunks",
+    "has_anything",
+    "SOURCE",
+]

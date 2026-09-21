@@ -150,6 +150,9 @@ def test_get_entities_reads_the_eios_object_catalog(monkeypatch):
         return {"items": [], "next_cursor": None}
 
     monkeypatch.setattr(eios, "_request", fake_request)
+    # 本用例考的是**实时读**那一路的契约；GEO 运行时默认不放行实时读（Owner 2026-09-22），
+    # 所以这里显式放开闸门。
+    monkeypatch.setattr(eios, "reads_granted", lambda: True)
     import asyncio
 
     asyncio.run(eios.get_entities())
@@ -228,6 +231,7 @@ def test_search_knowledge_speaks_the_knowledge_search_contract(monkeypatch):
         return {"contract": "eios.knowledge_search_result/v2", "hits": [], "matched": False}
 
     monkeypatch.setattr(eios, "_request", fake_request)
+    monkeypatch.setattr(eios, "reads_granted", lambda: True)  # 同上一例：这一路考的是实时读契约
 
     import asyncio
 

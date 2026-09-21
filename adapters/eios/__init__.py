@@ -1,5 +1,13 @@
 """EIOS Foundation 知识库只读适配层 — GEO 读企业知识的唯一入口。
 
+**读闸门（Owner 2026-09-22，代拍 · 待 Owner 复核）**：``除了手动的知识库同步以外，
+不让 GEO 去知识库里找东西``。所以本模块默认**不放行实时读**：``_request`` 会抛
+``KnowledgeReadBlocked``；各个读函数在闸门关着时改读 **GEO 自己柜里的快照**
+（``app.services.knowledge_snapshot``，就是手动同步带回来的那份），没有同步过就如实返回空，
+不回头去打 :8040。唯一放行实时读的入口是 ``knowledge_read_grant("kb_sync")`` ——
+目前只有 ``/api/v1/kb-init/scan|apply``（页面上那个「知识库同步」按钮）持有它。
+
+
 Owner 2026-09-20 拍板（本文件是它的落地）：
 - **只读**。scope 常量表里只有读：``knowledge.search`` / ``knowledge.objects.read`` /
   ``knowledge.documents.read``。申请写 scope 的代码在这里不存在，也不接受调用方传入 scope。
@@ -19,8 +27,10 @@ Owner 2026-09-20 拍板（本文件是它的落地）：
 """
 from __future__ import annotations
 
+import contextlib
+import contextvars
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Iterator
 
 import httpx
 
@@ -70,6 +80,57 @@ class AuthorityWriteNotAllowed(EIOSKnowledgeError):
         )
 
 
+# ── 读闸门（Owner 2026-09-22）───────────────────────────────────────────
+#: 上下文里的放行凭据（谁开的门，写在里面，出错时报得出来）。
+_GRANT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "geo_knowledge_read_grant", default=None
+)
+
+
+class KnowledgeReadBlocked(EIOSKnowledgeError):
+    """闸门关着还想实时读知识库。
+
+    Owner 2026-09-22：``除了手动的知识库同步以外，不让 GEO 去知识库里找东西``。
+    这不是知识库拒绝，是 GEO 自己不发起这次读 —— 所以正文里写清楚「该读自己的柜」。
+    """
+
+    def __init__(self, operation: str):
+        super().__init__(
+            "KNOWLEDGE_READ_NOT_GRANTED",
+            f"GEO 不允许在运行时实时读企业知识库（{operation}）；"
+            "只有「知识库同步」这一步可以读，运行时请读 GEO 自己柜里的快照",
+            403,
+        )
+
+
+def runtime_reads_enabled() -> bool:
+    """部署级开关：``GEO_KNOWLEDGE_READ=on`` 才允许任何运行时实时读（排障用，默认关）。"""
+    return _env("GEO_KNOWLEDGE_READ", "manual").strip().lower() == "on"
+
+
+def reads_granted() -> bool:
+    """这次调用有没有资格实时读知识库。"""
+    return _GRANT.get() is not None or runtime_reads_enabled()
+
+
+def current_grant() -> str | None:
+    """当前这次读是谁开的门（没开门 = None）。"""
+    return _GRANT.get()
+
+
+@contextlib.contextmanager
+def knowledge_read_grant(purpose: str) -> Iterator[str]:
+    """开一次「手动知识库同步」的门。
+
+    只给 ``/kb-init`` 用：用户明确点了同步按钮，才会把知识库里的东西读回来存进 GEO 自己的柜。
+    出了这个 with 块，读闸门立刻关回去（不是进程级开关，别的地方拿不到这个门）。
+    """
+    token = _GRANT.set(str(purpose or "manual"))
+    try:
+        yield str(purpose or "manual")
+    finally:
+        _GRANT.reset(token)
+
 def _env(name: str, default: str = "") -> str:
     return identity.env(name, default)
 
@@ -114,6 +175,8 @@ async def _request(
     params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     require_outbound_network("eios_knowledge")
+    if not reads_granted():
+        raise KnowledgeReadBlocked(f"{method} {path}")
     token = _sign_token()
     url = f"{knowledge_url()}{path}"
     try:
@@ -224,6 +287,156 @@ def hits_of(result: Any) -> list[dict[str, Any]]:
     return []
 
 
+# ── 闸门关着时的读法：读 GEO 自己柜里的快照 ───────────────────────────────
+# 这些函数**不打网络**：数据是「知识库同步」那一步读回来放进 GEO 库里的
+# （``app.services.knowledge_snapshot``，kind = objects / documents / chunks / relations）。
+# 没同步过 → 如实返回空，由调用方如实说「还没同步」，而不是回头去打 :8040。
+
+_LOCAL_NOTE = "来自 GEO 自己柜里的知识库快照（手动同步带回来的那份）；正本仍在企业知识库"
+
+
+def _local_provenance(**extra: Any) -> dict[str, Any]:
+    return {
+        "source": "geo_snapshot",
+        "source_url": "",
+        "authority": KNOWLEDGE_AUDIENCE,
+        "contract": SEARCH_RESULT_CONTRACT,
+        "read_at": _now_iso(),
+        "authoritative": False,
+        "note": _LOCAL_NOTE,
+        **extra,
+    }
+
+
+def _n_gram_rank(text: str, rows: list[dict[str, Any]]) -> dict[str, float]:
+    """用既有的 n-gram 口径给候选打分（不新建第二套打分公式，也不调模型/向量）。"""
+    if not text or not rows:
+        return {}
+    try:
+        from services.embed import n_gram_scores
+
+        docs = [
+            {"id": str(r.get("id") or ""), "title": str(r.get("title") or ""), "content": str(r.get("content") or "")}
+            for r in rows
+        ]
+        return dict(n_gram_scores(text, docs, title_key="title", content_key="content"))
+    except Exception as exc:  # noqa: BLE001 — 打分不可用就一条不给，不猜相关性
+        import logging
+
+        logging.getLogger("eios.geo.eios_adapter").warning("本地快照打分不可用: %s", exc)
+        return {}
+
+
+def _local_hit(source: dict[str, Any], *, score: float) -> dict[str, Any]:
+    """本地快照条目 → 与 ``_map_hit`` 同形状的命中（调用方不用分两套字段）。"""
+    return {
+        "score": score,
+        "canonical_name": source.get("canonical_name") or source.get("document_title") or "",
+        "name": source.get("canonical_name") or source.get("document_title") or "",
+        "predicate": None,
+        "value": source.get("text") or source.get("snippet") or "",
+        "snippet": source.get("text") or source.get("snippet") or "",
+        "layer": source.get("layer") or "material",
+        "source_layer": "geo_snapshot",
+        "object_id": source.get("object_id"),
+        "object_type": source.get("object_type"),
+        "document_id": source.get("document_id"),
+        "document_title": source.get("document_title"),
+        "chunk_id": source.get("chunk_id"),
+        "evidence_ids": list(source.get("evidence_ids") or []),
+        "freshness": None,
+        "rank_reasons": ["geo_snapshot"],
+    }
+
+
+def local_search(query: str, *, top_k: int = DEFAULT_LIMIT, include_candidates: bool = True) -> dict[str, Any]:
+    """在 GEO 自己的快照里检索（切块 + 实体）。
+
+    口径与实时检索一致：没有命中就返回空 —— **不许拿「最新资料」凑数**（Owner 2026-09-22）。
+    """
+    from app.services import knowledge_snapshot
+
+    text = (query or "").strip()
+    limit = max(1, min(int(top_k or DEFAULT_LIMIT), MAX_LIMIT))
+    hits: list[dict[str, Any]] = []
+    if text:
+        chunks = knowledge_snapshot.all_chunks()
+        scores = _n_gram_rank(
+            text,
+            [
+                {
+                    "id": str(c.get("chunk_id") or ""),
+                    "title": str(c.get("document_title") or ""),
+                    "content": str(c.get("text") or ""),
+                }
+                for c in chunks
+            ],
+        )
+        for chunk in sorted(chunks, key=lambda c: -scores.get(str(c.get("chunk_id")), 0.0)):
+            score = scores.get(str(chunk.get("chunk_id")), 0.0)
+            if score <= 0:
+                continue
+            hits.append(_local_hit(chunk, score=score))
+            if len(hits) >= limit:
+                break
+        if include_candidates:
+            objects = knowledge_snapshot.objects()
+            obj_scores = _n_gram_rank(
+                text,
+                [
+                    {"id": str(o.get("object_id") or ""), "title": str(o.get("canonical_name") or ""), "content": ""}
+                    for o in objects
+                ],
+            )
+            for obj in objects:
+                score = obj_scores.get(str(obj.get("object_id")), 0.0)
+                if score <= 0:
+                    continue
+                hit = _local_hit(
+                    {"canonical_name": obj.get("canonical_name"), "object_id": obj.get("object_id"),
+                     "object_type": obj.get("object_type"), "evidence_ids": obj.get("evidence_ids")},
+                    score=score,
+                )
+                if not any(h.get("object_id") == hit["object_id"] for h in hits):
+                    hits.append(hit)
+    payload = {
+        "contract": SEARCH_RESULT_CONTRACT,
+        "query": text[:512],
+        "query_id": None,
+        "matched": bool(hits),
+        "hits": hits,
+        "warnings": ["read_from_geo_snapshot", _LOCAL_NOTE],
+        "layers": ["governed"] + (["material"] if include_candidates else []),
+    }
+    result = dict(payload)
+    result["provenance"] = _local_provenance(kind="search", query=text[:512])
+    result["snapshot_recorded"] = False
+    return result
+
+
+def local_entities(*, limit: int = 200) -> list[dict[str, Any]]:
+    """GEO 柜里的企业知识对象（快照），字段与 ``get_entities`` 一致。"""
+    from app.services import knowledge_snapshot
+
+    out = []
+    for item in knowledge_snapshot.objects(limit=limit):
+        out.append(
+            {
+                "canonical_name": item.get("canonical_name") or "",
+                "name": item.get("canonical_name") or "",
+                "object_type": item.get("object_type"),
+                "status": item.get("status"),
+                "evidence_ids": list(item.get("evidence_ids") or []),
+                "object_id": item.get("object_id"),
+                "object_scope": item.get("object_scope"),
+                "semantic_object_id": item.get("semantic_object_id"),
+                "authority_level": item.get("authority_level"),
+                "source": "geo_snapshot",
+            }
+        )
+    return out
+
+
 async def search_knowledge(
     query: str,
     tenant_id: str | None = None,
@@ -237,6 +450,9 @@ async def search_knowledge(
     ``tenant_id`` 参数保留只为兼容旧调用点：租户在 EIOS 里由票上的
     deployment/enterprise 决定，调用方无权指定。
     """
+    if not reads_granted():
+        # 闸门关着：读 GEO 自己柜里同步回来的那份，没有就如实空着（不打 :8040）。
+        return local_search(query, top_k=top_k, include_candidates=include_candidates)
     text = (query or "").strip()
     if not text:
         # 空查询在换知识源前的老适配器里等于「列全部」。EIOS 的检索契约要求 query 非空，
@@ -306,6 +522,23 @@ async def search_knowledge(
 
 async def list_knowledge_objects(limit: int = 100, name: str | None = None) -> list[dict[str, Any]]:
     """企业知识对象目录（只读正式对象）。空查询/枚举场景用这个，不用假检索。"""
+    if not reads_granted():
+        from app.services import knowledge_snapshot
+
+        return [
+            {
+                "object_id": item.get("object_id"),
+                "canonical_name": item.get("canonical_name") or "",
+                "object_type": item.get("object_type"),
+                "status": item.get("status"),
+                "object_scope": item.get("object_scope"),
+                "semantic_object_id": item.get("semantic_object_id"),
+                "authority_level": item.get("authority_level"),
+                "evidence_ids": list(item.get("evidence_ids") or []),
+            }
+            for item in knowledge_snapshot.objects(limit=limit)
+            if not name or name in str(item.get("canonical_name") or "")
+        ]
     items: list[dict[str, Any]] = []
     cursor: str | None = None
     remaining = max(1, int(limit))
@@ -352,6 +585,8 @@ async def get_entities(
     所以 ``object_type`` 就是 EIOS 给的那两种，调用方不要再假设能拿到 company/product。
     ``company_id`` / ``tenant_id`` 保留只为兼容：租户由票决定。
     """
+    if not reads_granted():
+        return local_entities(limit=limit)
     require_outbound_network("eios_knowledge")
     items = await list_knowledge_objects(limit=limit)
     _record(
@@ -394,6 +629,10 @@ async def list_enterprise_facts(limit: int = 400) -> list[dict[str, Any]]:
     ``limit`` 默认 400：实测本部署企业可见对象 371 条（entity 342 + fact 29），
     目录会自己按页取完并提前结束。
     """
+    if not reads_granted():
+        from app.services import knowledge_snapshot
+
+        return knowledge_snapshot.objects(kind_filter="fact", limit=limit)
     items = await list_knowledge_objects(limit=limit)
     facts = [it for it in items if it.get("object_type") == "fact"]
     _record(
@@ -542,7 +781,14 @@ async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str
 
 
 async def list_documents(limit: int = 50) -> list[dict[str, Any]]:
-    """企业文档列表（只读）。用于回答「企业有没有上传过资料」。"""
+    """企业文档列表（只读）。用于回答「企业有没有上传过资料」。
+
+    闸门关着 → 读 GEO 柜里同步回来的文档名单（没有同步过就是空的，不打 :8040）。
+    """
+    if not reads_granted():
+        from app.services import knowledge_snapshot
+
+        return knowledge_snapshot.documents(limit=limit)
     require_outbound_network("eios_knowledge")
     data = await _request(
         "GET", "/api/v1/knowledge/documents", params={"limit": max(1, min(int(limit), 100))}
@@ -572,6 +818,14 @@ async def search_relations(
     text = (query or "").strip()
     if not text:
         return []
+    if not reads_granted():
+        from app.services import knowledge_snapshot
+
+        return [
+            r
+            for r in knowledge_snapshot.relations()
+            if text in str(r.get("source_name") or "") or text in str(r.get("target_name") or "")
+        ]
     objects = await list_knowledge_objects(limit=5, name=text[:80])
     if not objects:
         return []
@@ -609,6 +863,13 @@ async def write_candidate(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
 __all__ = [
     "hits_of",
+    "KnowledgeReadBlocked",
+    "current_grant",
+    "knowledge_read_grant",
+    "local_entities",
+    "local_search",
+    "reads_granted",
+    "runtime_reads_enabled",
     "AuthorityWriteNotAllowed",
     "EIOSKnowledgeError",
     "KnowledgeError",

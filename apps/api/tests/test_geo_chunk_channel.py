@@ -120,6 +120,7 @@ def test_search_knowledge_records_every_read_chunk_in_geos_own_ledger(monkeypatc
         }
 
     monkeypatch.setattr(eios, "_request", _search)
+    monkeypatch.setattr(eios, "reads_granted", lambda: True)  # 本用例考的是实时读那一路
     result = _run(eios.search_knowledge("亚宇臻隆科技", top_k=5, include_candidates=True))
 
     assert result["snapshot_recorded"] is True
@@ -142,6 +143,7 @@ def test_list_document_chunks_uses_the_authority_gate_when_it_opens(monkeypatch)
         return {"items": [{"id": "chk_1", "ordinal": 0, "content": "权威给的切块原文"}]}
 
     monkeypatch.setattr(eios, "_request", _request)
+    monkeypatch.setattr(eios, "reads_granted", lambda: True)  # 本用例考的是实时读那一路
     got = _run(eios.list_document_chunks("doc_pub"))
 
     assert seen == {"method": "GET", "path": "/api/v1/knowledge/documents/doc_pub/chunks"}
@@ -219,6 +221,7 @@ def test_list_document_chunks_follows_the_next_cursor_until_it_runs_out(monkeypa
         return pages[cursor]
 
     monkeypatch.setattr(eios, "_request", _request)
+    monkeypatch.setattr(eios, "reads_granted", lambda: True)  # 本用例考的是实时读那一路
     got = _run(eios.list_document_chunks("doc_paged"))
 
     assert seen == [None, "c1"]
@@ -237,6 +240,7 @@ def test_list_document_chunks_says_so_when_it_stops_at_the_page_cap(monkeypatch)
         return {"items": [{"id": f"chk_{n}", "ordinal": n, "content": f"第 {n} 页"}], "next_cursor": f"c{n + 1}"}
 
     monkeypatch.setattr(eios, "_request", _always_more)
+    monkeypatch.setattr(eios, "reads_granted", lambda: True)  # 本用例考的是实时读那一路
     got = _run(eios.list_document_chunks("doc_forever"))
 
     assert len(got["items"]) == eios._MAX_CHUNK_PAGES
