@@ -210,14 +210,18 @@ async def _cognition_profile_v2() -> dict:
 @router.get("/portrait")
 async def portrait():
     materials = get_store().load("kb")
-    texts = "\n".join(f"{m.get('title', '')} {m.get('content', '')}" for m in materials)
     profile_v2 = await _cognition_profile_v2()
     matrix = profile_v2.get("matrix") or []
     ai_by_key = {str(r.get("key")): r for r in matrix}
     items = []
     for d in _PROFILE_DIMS:
-        provided = any(w in texts for w in d["words"])
-        profile = "资料已提供" if provided else "资料未提供"
+        evidence = []
+        for material in materials:
+            text = f"{material.get('title', '')} {material.get('content', '')}"
+            if any(w in text for w in d["words"]):
+                evidence.append({"id": material.get("id"), "title": material.get("title") or "未命名内容资产"})
+        provided = bool(evidence)
+        profile = f"命中 {len(evidence)} 份 GEO 内容资产" if provided else "暂无可核验内容资产"
         ai = ai_by_key.get(d["key"])
         claims = int(ai.get("claims", 0) or 0) if ai else 0
         grounded = int(ai.get("grounded", 0) or 0) if ai else 0
@@ -237,6 +241,8 @@ async def portrait():
             "key": d["key"],
             "label": d["label"],
             "profile": profile,
+            "evidence_count": len(evidence),
+            "evidence": evidence[:5],
             "ai_status": str(ai.get("status", "未评估")) if ai else "未评估",
             "ai_grounded": grounded,
             "ai_claims": claims,
@@ -246,7 +252,9 @@ async def portrait():
         "items": items,
         "ai_health": profile_v2.get("health"),
         "ai_total": profile_v2.get("total", 0),
-        "note": "数据口径：资料侧来自已上传内容资产；AI 侧来自 AI 认知评估（监测回答语义分析）",
+        "evaluated_at": profile_v2.get("evaluated_at"),
+        "material_count": len(materials),
+        "note": "资料侧只读取当前仍存在的 GEO 内容资产，并按维度关键词列出命中数量；AI 侧来自同一批 AI 认知评估。这里不代表企业知识库正式资料。",
     })
 
 
@@ -274,21 +282,21 @@ async def health():
     trust_g, sec_g = grounded_pct("organization"), grounded_pct("security")
     trust = round((trust_g + sec_g) / 2) if trust_g is not None and sec_g is not None else trust_g or sec_g or None
     dims = [
-        {"key": "brand", "label": "品牌认知", "score": metrics.get("awareness") or mention_rate or None,
+        {"key": "brand", "label": "品牌认知", "score": metrics.get("awareness") if metrics.get("awareness") is not None else mention_rate,
          "basis": (
              f"AI 认识程度 {metrics.get('awareness')}%（主动提到企业占比）"
              if metrics.get("awareness") is not None
              else (f"已回答 {len(answered_list)} 条中 {mentioned_count} 条提到我方（{mention_rate}%）" if mention_rate is not None else "暂无已回答的监测回答")
          )},
         {"key": "product", "label": "产品认知", "score": grounded_pct("product"), "basis": "产品能力 claim 已理解占比（AI 评估）"},
-        {"key": "scene", "label": "场景覆盖", "score": mention_rate or None,
+        {"key": "scene", "label": "场景覆盖", "score": mention_rate,
          "basis": f"已回答 {len(answered_list)} 条中被提及占比（{mentioned_count}/{len(answered_list)} 条）" if answered_list else "暂无监测回答"},
         {"key": "trust", "label": "信任证据", "score": trust, "basis": "组织/安全合规 claim 已理解占比均值"},
         {"key": "case", "label": "案例覆盖", "score": grounded_pct("customer"), "basis": "客户案例 claim 已理解占比（AI 评估）"},
         {"key": "price", "label": "价格透明度", "score": grounded_pct("finance"), "basis": "价格信息 claim 已理解占比（AI 评估）"},
-        {"key": "diff", "label": "差异化认知", "score": metrics.get("recommendation") or None,
+        {"key": "diff", "label": "差异化认知", "score": metrics.get("recommendation"),
          "basis": f"AI 推荐倾向 {metrics.get('recommendation')}%（正面推荐占比）" if metrics.get("recommendation") is not None else "暂无评估"},
-        {"key": "defense", "label": "竞品防御力", "score": metrics.get("understanding") or None,
+        {"key": "defense", "label": "竞品防御力", "score": metrics.get("understanding"),
          "basis": f"AI 理解程度 {metrics.get('understanding')}%（回答与事实一致率）" if metrics.get("understanding") is not None else "暂无评估"},
     ]
     scored = [d for d in dims if d["score"] is not None]
@@ -296,6 +304,8 @@ async def health():
     return ok({
         "total": total,
         "dims": dims,
+        "sample_size": profile_v2.get("total", 0),
+        "evaluated_at": profile_v2.get("evaluated_at"),
         "note": f"数据口径：全部基于已上传资料与 AI 监测回答计算（不搜外部）；每维可溯源到评估 claim 或监测回答。总分为 {len(scored)}/8 个有数据维度的均值，无数据维度不计入（不编 0 分）。",
     })
 

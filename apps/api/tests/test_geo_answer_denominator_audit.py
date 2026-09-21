@@ -110,6 +110,41 @@ def test_cognition_health_says_no_answer_instead_of_zero(monkeypatch):
     assert "暂无已回答" in brand["basis"]
 
 
+def test_cognition_health_preserves_a_real_zero_score(monkeypatch):
+    from app.api.v1 import cognition
+
+    _patch_cognition(monkeypatch, [])
+
+    async def zero_profile():
+        return {
+            "total": 2,
+            "evaluated_at": "2026-09-22T01:00:00+00:00",
+            "metrics": {"awareness": 0, "recommendation": 0, "understanding": 0},
+            "matrix": [],
+        }
+
+    monkeypatch.setattr(cognition, "_cognition_profile_v2", zero_profile)
+    data = _run(cognition.health())["data"]
+
+    assert next(d for d in data["dims"] if d["key"] == "brand")["score"] == 0
+    assert next(d for d in data["dims"] if d["key"] == "diff")["score"] == 0
+    assert data["sample_size"] == 2
+    assert data["evaluated_at"] == "2026-09-22T01:00:00+00:00"
+
+
+def test_cognition_portrait_does_not_claim_deleted_material_exists(monkeypatch):
+    from app.api.v1 import cognition
+
+    monkeypatch.setattr(cognition, "get_store", lambda: _FakeStore({"kb": []}))
+    monkeypatch.setattr(cognition, "_cognition_profile_v2", _fake_profile_v2)
+    data = _run(cognition.portrait())["data"]
+
+    assert data["material_count"] == 0
+    assert all(row["profile"] == "暂无可核验内容资产" for row in data["items"])
+    assert all(row["evidence_count"] == 0 for row in data["items"])
+    assert "不代表企业知识库正式资料" in data["note"]
+
+
 def test_cognition_coverage_divides_by_answered_not_by_probe_rows(monkeypatch):
     from app.api.v1 import cognition
 

@@ -1489,6 +1489,7 @@ async def cognition_profile_v2():
 
     return ok({
         "total": len(evals),
+        "evaluated_at": max((str(e.get("evaluated_at") or "") for e in evals), default="") or None,
         "health": health,
         "metrics": {
             "awareness": awareness,

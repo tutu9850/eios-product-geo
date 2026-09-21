@@ -7,6 +7,7 @@ import { GeoError, GeoLoading, useGeoNav } from './shared'
 /** V2 认知评估结构（:3002 /distill/cognition/profile 返回） */
 interface CognitionV2 {
   total: number
+  evaluated_at?: string | null
   health: number | null
   metrics: {
     awareness: number | null
@@ -36,19 +37,23 @@ interface PortraitItem {
   ai_grounded: number
   ai_claims: number
   deviation: string
+  evidence_count: number
+  evidence?: Array<{ id?: string; title: string }>
 }
 
 /** 认知健康 8 维度（报告 01）结构 */
 interface HealthDim {
   key: string
   label: string
-  score: number
+  score: number | null
   basis: string
 }
 
 interface HealthResult {
-  total: number
+  total: number | null
   dims: HealthDim[]
+  sample_size?: number
+  evaluated_at?: string | null
   note?: string
 }
 
@@ -56,7 +61,7 @@ interface HealthResult {
 export function GeoCognitionCard() {
   const [profile, setProfile] = useState<CognitionV2 | null>(null)
   const [health, setHealth] = useState<HealthResult | null>(null)
-  const [portrait, setPortrait] = useState<{ items: PortraitItem[]; ai_health: number | null; note?: string } | null>(null)
+  const [portrait, setPortrait] = useState<{ items: PortraitItem[]; ai_health: number | null; material_count?: number; evaluated_at?: string | null; note?: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [evaluating, setEvaluating] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +73,7 @@ export function GeoCognitionCard() {
       const [d, h, p] = await Promise.all([
         geoGet<CognitionV2>('/distill/cognition/profile'),
         geoGet<HealthResult>('/cognition/health'),
-        geoGet<{ items: PortraitItem[]; ai_health: number | null; note?: string }>('/cognition/portrait'),
+        geoGet<{ items: PortraitItem[]; ai_health: number | null; material_count?: number; evaluated_at?: string | null; note?: string }>('/cognition/portrait'),
       ])
       setProfile(d)
       setHealth(h)
@@ -103,6 +108,7 @@ export function GeoCognitionCard() {
   const go = useGeoNav()
   const total = health?.total ?? null
   const dims = health?.dims ?? []
+  const evaluatedAt = health?.evaluated_at ? new Date(health.evaluated_at).toLocaleString('zh-CN', { hour12: false }) : null
 
   const metricItems = [
     ['品牌认知', profile?.metrics.awareness], ['理解准确', profile?.metrics.understanding],
@@ -111,10 +117,10 @@ export function GeoCognitionCard() {
   return <div className="cognition-workbench">
     <header className="cognition-head"><div><span>BRAND PERCEPTION</span><h1>AI 如何理解你的企业</h1><p>从国产大模型的真实回答中，识别稳定认知、缺失认知和错误认知。</p></div><Button disabled={evaluating} onClick={() => void runEvaluate()}><RefreshCw className={`size-3.5 ${evaluating ? 'animate-spin' : ''}`} />{evaluating ? '评估中…' : '重新评估'}</Button></header>
     <section className="cognition-summary"><div className="health-score"><span>认知健康度</span><strong>{total ?? '—'}</strong><small>{total == null ? '等待监测数据' : total >= 70 ? '整体认知稳定' : total >= 40 ? '存在明显差距' : '需要优先治理'}</small></div>{metricItems.map(([label, value]) => <div className="cognition-kpi" key={label}><span>{label}</span><strong>{value == null ? '—' : `${Math.round(value)}%`}</strong><i><em style={{ width: `${value ?? 0}%` }} /></i></div>)}</section>
-    <div className="cognition-layout"><section className="cognition-panel dimension-panel"><header><div><h2>八维认知表现</h2><p>分数越低，越需要补充权威事实或公开证据</p></div><span className="cognition-legend">真实监测结果</span></header><div className="dimension-grid">{dims.map((d) => <article key={d.key}><div><span>{d.label}</span><strong>{d.score}</strong></div><i><em data-score={d.score >= 70 ? 'good' : d.score >= 40 ? 'mid' : 'low'} style={{ width: `${Math.min(100,d.score)}%` }} /></i><p>{d.basis}</p></article>)}</div></section>
+    <div className="cognition-layout"><section className="cognition-panel dimension-panel"><header><div><h2>八维认知表现</h2><p>{health?.sample_size ? `同一批 ${health.sample_size} 条认知评估${evaluatedAt ? ` · ${evaluatedAt}` : ''}` : '暂无已完成的认知评估'}</p></div><span className="cognition-legend">真实监测结果</span></header><div className="dimension-grid">{dims.map((d) => <article key={d.key}><div><span>{d.label}</span><strong>{d.score == null ? '—' : d.score}</strong></div><i><em data-score={d.score == null ? 'empty' : d.score >= 70 ? 'good' : d.score >= 40 ? 'mid' : 'low'} style={{ width: `${d.score == null ? 0 : Math.min(100,d.score)}%` }} /></i><p>{d.basis}</p></article>)}</div></section>
       <aside className="cognition-panel verdict-panel"><header><div><h2>本期判断</h2><p>给业务团队的直接结论</p></div></header><div className="verdict"><ShieldCheck /><div><b>{total !== null && total >= 70 ? '核心定位已形成稳定认知' : '核心认知尚未完全建立'}</b><p>{health?.note ?? '持续监测并补齐低分维度的事实与证据。'}</p></div></div><div className="verdict"><AlertTriangle /><div><b>{profile?.errors.length ?? 0} 条错误认知待处理</b><p>优先修正影响购买决策或企业可信度的错误信息。</p></div></div></aside>
     </div>
-    <section className="cognition-panel portrait-panel"><header><div><h2>企业资料与 AI 认知偏差</h2><p>资料中已经明确表达，但模型仍未正确理解的内容</p></div></header><div className="portrait-table"><div className="portrait-row portrait-header"><span>认知维度</span><span>企业正式资料</span><span>AI 当前状态</span><span>判断</span></div>{portrait?.items.map((row) => <div className="portrait-row" key={row.key}><b>{row.label}</b><span>{row.profile || '暂无正式资料'}</span><span>{row.ai_status} · {row.ai_grounded}/{row.ai_claims}</span>{/* 2026-09-21：「未评估」不是问题，别给它挂警示三角；只有真出现偏差才提示。 */}
+    <section className="cognition-panel portrait-panel"><header><div><h2>GEO 内容资产与 AI 认知偏差</h2><p>{portrait?.material_count ? `当前 ${portrait.material_count} 份 GEO 内容资产；与同一批 AI 认知评估对照` : '当前没有 GEO 内容资产，不判断资料覆盖情况'}</p></div></header><div className="portrait-table"><div className="portrait-row portrait-header"><span>认知维度</span><span>当前 GEO 内容资产</span><span>AI 当前状态</span><span>判断</span></div>{portrait?.items.map((row) => <div className="portrait-row" key={row.key}><b>{row.label}</b><span title={row.evidence?.map((item) => item.title).join('、')}>{row.profile}</span><span>{row.ai_status} · {row.ai_grounded}/{row.ai_claims}</span>{/* 2026-09-21：「未评估」不是问题，别给它挂警示三角；只有真出现偏差才提示。 */}
                 <em data-ok={row.deviation === '一致'}>
                   {row.deviation === '一致' ? <CheckCircle2 /> : row.deviation === '未评估' ? <Minus /> : <AlertTriangle />}
                   {row.deviation}
