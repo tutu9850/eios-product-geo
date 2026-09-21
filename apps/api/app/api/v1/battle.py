@@ -21,7 +21,7 @@ class BattleIn(BaseModel):
 
 @router.post("")
 async def battle(payload: BattleIn):
-    from adapters.engines import EngineFaceError, ask, list_engines
+    from adapters.engines import BATTLE_CONSUMER, EngineFaceError, ask, list_engines
     from adapters.llm import chat, LLMNotConfiguredError, LLMError
 
     if not payload.question.strip():
@@ -51,7 +51,8 @@ async def battle(payload: BattleIn):
                     "保持简洁（400 字内）。"
                 )
             try:
-                answer = await ask(e["id"], q, max_tokens=900)
+                # 辩论自报 geo.battle：它确实要联网问 AI，但账本上不该记成「监测」。
+                answer = await ask(e["id"], q, max_tokens=900, consumer=BATTLE_CONSUMER)
             except Exception as ex:  # noqa: BLE001
                 answer = f"（调用失败：{ex}）"
             round_results.append({"engine_id": e["id"], "engine_name": e["name"], "answer": answer})

@@ -234,3 +234,53 @@ def test_a_batch_reports_an_unreachable_entry_with_its_own_code(monkeypatch):
     data = asyncio.run(monitor_module.run_batch_items(_one_probe()))
     assert data["results"] == []
     assert "MODEL_CAPABILITY_UNAVAILABLE" in data["skipped"]
+
+
+# ── 各面报自己的家门：辩论不该记成「监测」 ───────────────────────────────
+
+
+def test_each_face_reports_its_own_consumer_name(entry):
+    """consumer 决定部署要不要给这次调用联网；名字要如实，别人查账本时看得懂。"""
+    fake = entry(_Entry(catalog=_catalog(_item("alpha")),
+                        invoke={"ok": True, "capability": "model.text_generation", "data": {"text": "ok"}}))
+
+    asyncio.run(engines.ask("alpha", "q", consumer=engines.BATTLE_CONSUMER))
+    assert fake.calls[-1][1]["consumer"] == "geo.battle"
+
+    asyncio.run(engines.ask("alpha", "q", consumer=engines.ONBOARD_CONSUMER))
+    assert fake.calls[-1][1]["consumer"] == "geo.onboard"
+
+    # 不写就是监测面（ping / 监测循环都是它）
+    asyncio.run(engines.ask("alpha", "q"))
+    assert fake.calls[-1][1]["consumer"] == "geo.monitor"
+
+
+def test_a_result_echoing_another_consumer_is_still_refused_for_that_face(entry):
+    """每个面都拿自己的名字去核结果，不能因为 default 是 geo.monitor 就放行别人。"""
+    fake = entry(_Entry(catalog=_catalog(_item("alpha"))))
+    fake._invoke = {"ok": True, "capability": "model.text_generation",
+                    "data": {"text": "a", "consumer": "geo.monitor"}}
+    with pytest.raises(engines.EngineCallFailed):
+        asyncio.run(engines.ask("alpha", "q", consumer=engines.BATTLE_CONSUMER))
+
+
+def test_onboarding_asks_doubao_by_name_through_the_same_entry(entry):
+    """入驻的竞品发现点名豆包（Owner 2026-09-21 拍板「问豆包」）。
+
+    点的是**部署目录里的 model_id**：端点/凭据/形状仍然是部署的。部署没登记豆包 →
+    如实失败（这里回退成空串，调用方走通用对标），而不是 GEO 自己找一条豆包连接。
+    """
+    from app.api.v1 import onboard
+
+    fake = entry(_Entry(catalog=_catalog(_item("alpha")),
+                        invoke={"ok": True, "capability": "model.text_generation", "data": {"text": '[{"name":"某竞品","company":"某公司"}]'}}))
+    text = asyncio.run(onboard._ask_doubao_for_brands("谁在做类似的事？"))
+    assert "某竞品" in text
+    request = fake.calls[-1][1]
+    assert request["model_id"] == "doubao"
+    assert request["consumer"] == "geo.onboard"
+
+    # 部署没给豆包凭据 → 回退空串，调用方走通用对标（与改造前豆包失败时的行为一致）
+    entry(_Entry(catalog=_catalog(_item("alpha")),
+                 invoke={"ok": False, "error": {"code": "MODEL_SECRET_UNAVAILABLE", "message": "no"}}))
+    assert asyncio.run(onboard._ask_doubao_for_brands("谁在做类似的事？")) == ""

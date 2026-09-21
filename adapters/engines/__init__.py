@@ -30,8 +30,11 @@ from typing import Any, Sequence
 
 from adapters import identity
 
-#: 监测/问答这一面的 consumer 名。部署侧按这个名字决定要不要注入联网参数。
+#: 各面的 consumer 名。部署侧按这个名字决定要不要注入联网参数（联网白名单见
+#: eios-integrations/adapters/model_domestic）。名字要如实：辩论不该记成「监测」。
 MONITOR_CONSUMER = "geo.monitor"
+BATTLE_CONSUMER = "geo.battle"
+ONBOARD_CONSUMER = "geo.onboard"
 INVOCATION_CONTRACT = "eios.model_invocation/v1"
 CAPABILITY = "model.text_generation"
 #: 契约上限 16384；这一侧再压一道，防止某个调用点写错数量级。
@@ -187,12 +190,12 @@ async def engine_status() -> list[dict]:
     ]
 
 
-async def _invoke(engine_id: str, question: str, max_tokens: int) -> dict:
+async def _invoke(engine_id: str, question: str, max_tokens: int, consumer: str = MONITOR_CONSUMER) -> dict:
     entry = _entry()
     request = {
         "contract": INVOCATION_CONTRACT,
         "model_id": engine_id,
-        "consumer": MONITOR_CONSUMER,
+        "consumer": consumer,
         "modality": "text",
         "messages": [{"role": "user", "content": question}],
         "max_output_tokens": max(1, min(int(max_tokens), MAX_OUTPUT_TOKENS)),
@@ -210,20 +213,27 @@ async def _invoke(engine_id: str, question: str, max_tokens: int) -> dict:
     data = body.get("data")
     if not isinstance(data, dict) or not isinstance(data.get("text"), str):
         raise EngineCallFailed("MODEL_BAD_RESPONSE", "模型结果里没有 text 字段")
-    if data.get("consumer") != MONITOR_CONSUMER:
+    if data.get("consumer") != consumer:
         raise EngineCallFailed("MODEL_BAD_RESPONSE", f"结果里的 consumer 不是本服务的：{data.get('consumer')}")
     # ``web_search`` 是权威侧如实回报的事实；老适配器不报 = 不知道，按「没联网」记。
     return {"content": data["text"], "web_realtime": bool(data.get("web_search"))}
 
 
-async def ask_with_meta(engine_id: str, question: str, max_tokens: int = 800) -> dict:
-    """问一个引擎，返回 ``{"content", "web_realtime"}``。"""
-    return await _invoke(engine_id, question, max_tokens)
+async def ask_with_meta(
+    engine_id: str, question: str, max_tokens: int = 800, *, consumer: str = MONITOR_CONSUMER
+) -> dict:
+    """问一个引擎，返回 ``{"content", "web_realtime"}``。
+
+    ``consumer`` 是自报家门，决定部署要不要给这次调用注入联网参数 —— 各面报自己的名字。
+    """
+    return await _invoke(engine_id, question, max_tokens, consumer)
 
 
-async def ask(engine_id: str, question: str, max_tokens: int = 800) -> str:
+async def ask(
+    engine_id: str, question: str, max_tokens: int = 800, *, consumer: str = MONITOR_CONSUMER
+) -> str:
     """同 ``ask_with_meta``，只取正文。"""
-    return (await _invoke(engine_id, question, max_tokens))["content"]
+    return (await _invoke(engine_id, question, max_tokens, consumer))["content"]
 
 
 async def ping(engine_id: str) -> dict:
@@ -240,10 +250,13 @@ async def ping(engine_id: str) -> dict:
 
 
 __all__ = [
+    "BATTLE_CONSUMER",
     "EngineCallFailed",
     "EngineFaceError",
     "EngineEntryUnavailable",
     "EngineNotConfigured",
+    "MONITOR_CONSUMER",
+    "ONBOARD_CONSUMER",
     "ask",
     "ask_with_meta",
     "engine_status",

@@ -337,22 +337,27 @@ def _extract_city(company: str) -> str:
     return ""
 
 
-async def _ask_deployment_model(prompt: str, max_tokens: int = 800) -> str:
-    """竞品发现要一次「问 AI」：走部署的统一模型入口。
+#: 竞品发现固定问**豆包** —— Owner 2026-09-21 拍板（「问豆包」）。
+#: 这仍然是**点名部署目录里的一个 model_id**，不是 GEO 替企业选 provider / 端点 / 凭据：
+#: 豆包是否登记、怎么连、用哪把 key 都是部署的事（部署没登记就如实失败并回退通用对标）。
+ONBOARD_MODEL_ID = "doubao"
+
+
+async def _ask_doubao_for_brands(prompt: str, max_tokens: int = 800) -> str:
+    """竞品发现要一次「问 AI」：点名豆包，走部署的统一模型入口。
 
     以前这里是 GEO 自己拿豆包的 key 直连 —— Owner 2026-09-21：「GEO 不保留 Builder /
     .env / 自己的模型 Key」「Model Capability 必须成为所有产品统一调用模型的唯一正规入口」。
-    所以凭据、base_url、model、温度全部归部署；GEO 只说「我要一段文本」。
 
-    失败（部署没模型 / 权威侧拒绝）一律返回空串，调用方回退到通用对标逻辑 —— 与改造前
-    豆包失败时的行为一致。
+    失败（部署没登记豆包 / 没给凭据 / 权威侧拒绝）一律返回空串，调用方回退通用对标逻辑 ——
+    与改造前豆包失败时的行为一致。
     """
-    from adapters.llm import LLMError, LLMNotConfiguredError, chat
+    from adapters.engines import EngineFaceError, EngineNotConfigured, ONBOARD_CONSUMER, ask
 
     try:
-        return (await chat(prompt, max_tokens=max_tokens)).strip()
-    except (LLMNotConfiguredError, LLMError) as exc:
-        logger.warning("竞品发现问模型失败（回退通用对标）：%s", str(exc)[:150])
+        return (await ask(ONBOARD_MODEL_ID, prompt, max_tokens=max_tokens, consumer=ONBOARD_CONSUMER)).strip()
+    except (EngineNotConfigured, EngineFaceError) as exc:
+        logger.warning("竞品发现问豆包失败（回退通用对标）：%s", str(exc)[:150])
         return ""
 
 def _extract_brands(content: str) -> list[str]:
@@ -392,7 +397,7 @@ async def _step_discover(products: list[str], own_names: list[str] | None = None
         "只列中国企业和中国品牌（如字节跳动、腾讯、阿里、华为、百度等），绝对不要国外品牌（OpenAI/Google/Microsoft/Salesforce 等）。\n"
         '严格 JSON 数组输出：[{"name": "竞品品牌名", "company": "所属公司名"}]'
     )
-    doubao_text = await _ask_deployment_model(q_text)
+    doubao_text = await _ask_doubao_for_brands(q_text)
     if doubao_text:
         # 2026-08-19：优先 JSON 解析（带 company）；失败退回文本品牌提取（company 空）
         parsed = _extract_json_array(doubao_text)
