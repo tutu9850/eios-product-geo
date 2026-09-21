@@ -2251,13 +2251,14 @@ def _aggregate_overview(items: list[dict]) -> dict:
         for q in h.get("questions") or []:
             for er in q.get("engine_detail") or []:
                 name = er.get("engine_name")
-                if not name:
+                # 没配凭据或调用失败时 mentioned=None：这是「没有回答」，不是 0% 提及。
+                # 不为这类探针创建平台趋势点，否则总览会把六个登记模型全部画成 0%。
+                if not name or er.get("mentioned") is None:
                     continue
                 p = per_platform.setdefault(name, {"mentioned": 0, "configured": 0})
                 if er.get("mentioned") is True:
                     p["mentioned"] += 1
-                if er.get("mentioned") is not None:
-                    p["configured"] += 1
+                p["configured"] += 1
         for name, p in per_platform.items():
             if name not in platform_points:
                 platform_points[name] = []

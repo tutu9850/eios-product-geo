@@ -1147,6 +1147,7 @@ async def distill_overview():
         "ai_judgment": ai_judgment,
         "verified_questions": verified,
         "unverified_questions": unverified,
+        "open_gaps_count": len(gaps),
         "top_gaps": top_gaps,
         "opportunities_count": len(open_plans),
         "note": "总览为现有数据聚合（问题池/缺口/计划），无 AI 猜测；企业覆盖只按已判定过的问题算，未判定为 null",

@@ -71,14 +71,14 @@ export function GeoReportCard() {
   const knowledgeLine = !knowledge
     ? '未检测'
     : knowledge.read_ever
-      ? `已读取 · 知识对象 ${knowledge.objects_seen} / 文档 ${knowledge.documents_seen}`
+      ? `历史快照 · 曾读取知识对象 ${knowledge.objects_seen} / 文档 ${knowledge.documents_seen}`
       : '尚未读取知识库'
 
   return (
     <GeoCardShell title="阶段成果摘要" className="geo-report-workbench">
       <GeoList
         items={[
-          { title: '企业资料', meta: knowledgeLine },
+          { title: '企业知识历史快照', meta: knowledgeLine },
           { title: 'GEO 素材库', meta: `${status?.materials ?? 0} 个` },
           { title: '监测对象', meta: `${status?.items ?? 0} 个` },
           { title: '客户问题池', meta: `${status?.questions ?? 0} 个` },
@@ -87,7 +87,7 @@ export function GeoReportCard() {
       {knowledge ? (
         <p className="pt-1 text-[11px] text-[var(--yayu-muted)]">
           {knowledge.read_ever
-            ? `企业知识来自知识库（正本在知识库，GEO 存的是快照${knowledge.last_read_at ? `，最后读取 ${knowledge.last_read_at.slice(0, 10)}` : ''}）；GEO 不写知识库。`
+            ? `这里只记录 GEO 历史上读到过什么，不代表知识库当前仍有这些资料；删除或退休正本不会删除历史快照${knowledge.last_read_at ? `，最后读取 ${knowledge.last_read_at.slice(0, 10)}` : ''}。`
             : 'GEO 还没从企业知识库读到过内容；GEO 只读知识库，不写。'}
         </p>
       ) : null}

@@ -8,7 +8,8 @@ export interface MonitorAnswer {
   item_type: string
   query: string
   engine: string
-  mentioned: boolean
+  /** null = 该模型没有返回回答；false = 有回答但没有提到企业。 */
+  mentioned: boolean | null
   rank_est: number | null
   sentiment: string
   snippet: string
@@ -54,7 +55,8 @@ type ReportTab = 'answers' | 'sentiment' | 'citations' | 'sources'
  * 实际编出来的结论（模型根本没排过名）。现在只说这句话本身：提到了、在第几句提到。
  * 颜色仍按出现早晚分档，但只作为「提到得早/晚」的视觉提示。
  */
-function positionOf(a: { mentioned: boolean; rank_est: number | null }): { label: string; cls: string } {
+function positionOf(a: { mentioned: boolean | null; rank_est: number | null }): { label: string; cls: string } {
+  if (a.mentioned == null) return { label: '未获得回答', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-faint)]' }
   if (!a.mentioned) return { label: '未提及', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-faint)]' }
   const n = a.rank_est
   if (n == null) return { label: '提及（未记位置）', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-muted)]' }
@@ -228,7 +230,8 @@ export function GeoMonitorReportCard() {
           ) : (
             <div className="space-y-2">
               {groups.slice(0, _MAX_QUESTION_GROUPS).map(([query, list]) => {
-                const activeEngine = picked[query] ?? list[0]?.engine ?? ''
+                const answered = list.filter((row) => row.mentioned != null)
+                const activeEngine = picked[query] ?? answered[0]?.engine ?? list[0]?.engine ?? ''
                 const current = list.find((x) => x.engine === activeEngine) ?? list[0]
                 const expanded = !!openFull[query]
                 const pos = current ? positionOf(current) : null
@@ -238,14 +241,14 @@ export function GeoMonitorReportCard() {
                     <div className="flex items-start justify-between gap-2">
                       <span className="text-[12px] leading-snug text-[var(--yayu-foreground)]">{query}</span>
                       <span className="shrink-0 rounded bg-[var(--yayu-input)] px-1.5 py-0.5 text-[10px] text-[var(--yayu-faint)]">
-                        {list.length} 个平台
+                        {answered.length} / {list.length} 个平台有回答
                       </span>
                     </div>
-                    {/* 平台切换：一个按钮一家，未提及的置灰 —— 一眼看出哪几家根本没提到我们 */}
+                    {/* 平台切换：没回答、回答但未提及、已提及是三种不同状态。 */}
                     <div className="mt-1 flex flex-wrap gap-1">
                       {list.map((a) => {
                         const on = a.engine === activeEngine
-                        const dot = !a.mentioned
+                        const dot = a.mentioned == null || !a.mentioned
                           ? 'bg-[var(--yayu-border)]'
                           : (a.rank_est ?? 99) <= 3
                             ? 'bg-[var(--yayu-foreground)]'
@@ -254,7 +257,7 @@ export function GeoMonitorReportCard() {
                           <button
                             key={a.engine}
                             type="button"
-                            title={a.mentioned ? `已提及${a.rank_est !== null ? `（企业名在第 ${a.rank_est} 句首次出现）` : ''}` : '未提及本企业'}
+                            title={a.mentioned == null ? '该模型未获得回答' : a.mentioned ? `已提及${a.rank_est !== null ? `（企业名在第 ${a.rank_est} 句首次出现）` : ''}` : '已回答，但未提及本企业'}
                             onClick={() => setPicked((prev) => ({ ...prev, [query]: a.engine }))}
                             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] transition-colors ${
                               on

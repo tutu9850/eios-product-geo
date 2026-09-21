@@ -175,13 +175,14 @@ export interface GeoStatsOverview {
 }
 
 export interface GeoDistillOverview {
-  funnel: Array<{ stage: string; question_count: number; coverage_pct: number }>
+  funnel: Array<{ stage: string; question_count: number; judged_count: number; coverage_pct: number | null }>
   ai_judgment: { stage: string; coverage_pct: number; reason: string; samples: string[] }
+  open_gaps_count: number
 }
 
 export interface GeoMonitorOverview {
-  recommend: { value: number; delta: number }
-  rank: { value: number; delta: number }
+  recommend: { value: number | null; delta: number | null }
+  rank: { value: number | null; delta: number | null }
   citations_count: number
   cite_rate: number | null
   published_count: number

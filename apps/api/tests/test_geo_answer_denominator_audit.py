@@ -242,6 +242,19 @@ def test_question_monitor_count_ignores_engines_that_never_answered(monkeypatch)
     assert item["ai_visibility"] == 100
 
 
+def test_monitor_overview_omits_platforms_that_never_answered(monkeypatch):
+    from app.api.v1 import monitor
+    from app.services import store as store_mod
+
+    history = [_batch("亚宇臻隆科技是什么？", "mi_1", answered=True, mentioned=False)]
+    monkeypatch.setattr(store_mod, "get_store", lambda: _FakeStore({"kb": []}))
+
+    data = monitor._aggregate_overview(history)
+    assert list(data["platforms"]) == ["DeepSeek"]
+    assert data["platforms"]["DeepSeek"][0]["recommend_pct"] == 0
+    assert data["recommend"]["delta"] is None, "没有上一周期就必须是 null，不能伪装成 ↑0"
+
+
 # ── 4. 企业资料：整体覆盖率的分母不算空问题 ────────────────────
 
 
