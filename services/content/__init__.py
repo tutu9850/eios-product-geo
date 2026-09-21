@@ -4,7 +4,7 @@
 适配：企业资料自动读取（Kernel）、模型走 GEO 专用模型（服务端转发）、不自动发布。
 流程：企业知识(自动) + 用户问题 + 内容目标/类型 + 平台 → GEO Prompt 编译 → 生成
 """
-from adapters.eios import get_entities, hits_of, search_knowledge
+from adapters.eios import hits_of, search_knowledge
 from adapters.llm import chat
 import re
 
@@ -319,36 +319,22 @@ async def quality(content: str, question: str = "", company_name: str | None = N
 
 
 async def _auto_company(tenant_id: str) -> tuple[str | None, list[str]]:
-    """从 Kernel 自动识别企业：找企业实体 → 检索相关企业资料
+    """识别「本公司」→ 检索相关企业资料，返回 (企业名, 资料列表)。
 
-    返回 (企业名, 资料列表)
+    2026-09-21 修正（Owner：「输出正常但不正确」）：旧实现在实体名单里**只按关键词挑第一个**，
+    只要名字里带「企业」就认 —— 实测把素材标题「企业AI获客入口改造」当成公司名，内容生成
+    因此张冠李戴、评分还把这条错名字标成「画像已解析」。现在统一交给
+    ``services.company_identity``（用户点选确认的档案 → brand 对象 → 严格公司名规则），
+    认不出来就返回 None，由上游如实说「未识别到企业名称」。
     """
-    try:
-        entities = await get_entities()
-    except Exception:  # noqa: BLE001
+    from services.company_identity import resolve_self_company
+
+    resolved = await resolve_self_company(tenant_id)
+    company_name = resolved.get("name")
+    if not company_name:
         return None, []
-    # 企业实体：优先 有限公司/集团/科技 等企业全称特征；排除 官网/诊断/模板 等非企业实体
-    _BLOCK = ("官网", "诊断", "模板", "报告", "文档", "目录", "制度", "流程", "预算", "计划", "会议", "通知")
-    company_names = []
-    for e in entities or []:
-        name = e.get("canonical_name") or e.get("name") or ""
-        if any(b in name for b in _BLOCK):
-            continue
-        if any(k in name for k in ("有限公司", "有限责任公司", "集团", "股份")):
-            company_names.append(name)
-    if not company_names:
-        for e in entities or []:
-            name = e.get("canonical_name") or e.get("name") or ""
-            if any(b in name for b in _BLOCK):
-                continue
-            if any(k in name for k in ("公司", "科技", "企业", "有限", "工作室")):
-                company_names.append(name)
-    # 2026-08-15 修复：找不到企业实体时返回 None（不再"取第一个实体"兜底——
-    # Kernel 实体首条常是产品名（如 PostgreSQL），会被误当企业名导致生成内容张冠李戴）
-    if not company_names:
-        return None, []
-    company_name = company_names[0]
     materials: list[str] = []
+    # 资料检索照旧：拿认定的公司名去知识库捞，捞到几条就带几条（捞不到不是错，如实为空）。
     try:
         res = await search_knowledge(company_name, tenant_id=tenant_id, top_k=8, include_candidates=False)
         items = hits_of(res)
@@ -555,7 +541,7 @@ async def build_context(
                    "report_findings": [], "available": False}
 
     context_sources = [
-        {"kind": "kernel", "label": "企业知识库（Kernel）", "items": materials[:6]},
+        {"kind": "kernel", "label": "企业知识库", "items": materials[:6]},
         {"kind": "faq_asset", "label": "FAQ 内容资产", "items": [
             {"title": a.get("title"), "id": a.get("id"), "content": str(a.get("content") or "")[:200]} for a in faq_assets
         ]},
@@ -625,9 +611,9 @@ async def generate(
     if not auto_name:
         # H21：区分「知识库为空」与「填了公司名但没识别」——给用户可行动的提示
         if company_name and company_name.strip():
-            hint = f"未识别到企业名称「{company_name.strip()}」：企业知识库（Kernel）中暂无该企业实体（含「有限公司/集团」等企业特征）。请先在企业知识库上传/登记企业资料，或检查知识库是否被清空。"
+            hint = f"未识别到企业名称「{company_name.strip()}」：企业知识库里没有这个名称的对象。请核对名称，或先做一次知识库初始化把本公司与产品点选确认下来。"
         else:
-            hint = "未识别到企业名称：请在生成时填写公司名称，或先在企业知识库建立公司实体（含「有限公司/集团」等企业特征）。当前企业知识库为空——先补充企业资料后重试。"
+            hint = "未识别到企业名称：请先在「高级工具 → 知识库初始化」里点选确认本公司与产品（扫描结果里若有多个像公司的名字，系统不替你猜），或在生成时手动填写公司名称。"
         return {
             "ok": False,
             "error": hint,

@@ -1005,45 +1005,24 @@ def _attach_factor_notes(items: list[dict]) -> None:
 
 
 async def _self_company_names() -> list[str]:
-    """自家公司名（动态，不写死）：brand 对象（用户自动配置时勾选确认的）→ 无则 Kernel company 类引用频次最高兜底。
+    """自家公司名（动态，不写死）：用户确认的来源优先，认不出来就返回空。
 
     2026-08-11 修复：旧代码写死「云启」（虚构测试集品牌），换真实公司（亚宇臻隆）后
     企业介绍类内容机会全被跳过。改为读用户确认过的数据，换公司资料无需改代码。
+
+    2026-09-21 修复（Owner：「输出正常但不正确」）：兜底那一版按 ``object_type == "company"``
+    取频次最高 —— 而 EIOS 的知识对象**只有 entity / fact 两种 type**（见 ``adapters.eios.
+    get_entities`` 的说明，公司/产品分类在 Semantic 不在 Knowledge），这个条件恒不成立，
+    兜底一直是死代码（没有 brand 对象时恒返回空）。现在统一走
+    ``services.company_identity``：用户点选确认的档案 → brand 对象 → 严格公司名规则。
     """
-    from app.services.store import get_store
+    from services.company_identity import resolve_self_company
 
-    names: list[str] = []
-    for b in get_store().load("monitor_items"):
-        if b.get("type") != "brand" or b.get("status") != "active":
-            continue
-        cfg = b.get("config_json") or {}
-        if cfg.get("company"):
-            names.append(str(cfg["company"]).strip())
-        for a in (cfg.get("aliases") or []):
-            s = str(a).strip()
-            if s:
-                names.append(s)
-        if names:
-            break
-    if names:
-        return names
-    # 兜底：Kernel company 类实体按引用频次取最高（与 detect 自家判定同一思路）
-    try:
-        from adapters.eios import get_entities
-
-        ents = await get_entities()
-        comps = sorted(
-            (
-                ((e.get("canonical_name") or "").strip(), len(e.get("evidence_ids") or []))
-                for e in ents if e.get("object_type") == "company"
-            ),
-            key=lambda x: -x[1],
-        )
-        if comps and comps[0][0]:
-            return [comps[0][0]]
-    except Exception:  # noqa: BLE001
-        pass
-    return []
+    resolved = await resolve_self_company()
+    name = resolved.get("name")
+    if not name:
+        return []
+    return [name, *[str(a) for a in resolved.get("aliases") or [] if str(a).strip()]]
 
 
 @router.post("/opportunities")

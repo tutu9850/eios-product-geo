@@ -58,14 +58,22 @@ const PROFILE_GROUPS: Array<{ key: string; label: string }> = [
   { key: 'people', label: '关键人物' },
 ]
 
-/** Kernel 事实 → 一行人话；没有 value 就退回事实原文 */
+/** 知识对象 → 一行人话。优先用后端给的 display：命中里的 value 是「这条对象
+    出现在哪段原文里」（一张表可能几百字），直接打印就是把原文倒给用户。 */
 function factLine(row: Record<string, unknown>): string {
+  const display = String(row.display ?? '').trim()
+  if (display) return display
   const name = String(row.canonical_name ?? '').trim()
-  const value = String(row.value ?? '').trim()
+  const value = oneLine(row.value)
   if (name && value) return `${name}：${value}`
   if (name) return name
-  const text = String(row.text ?? '').trim()
-  return text || '（这条事实没有可读内容）'
+  const text = oneLine(row.text)
+  return text || '（这条知识对象没有可读内容）'
+}
+
+/** 压成单行并限长（与后端 _one_line 同一口径） */
+function oneLine(raw: unknown, limit = 120): string {
+  return String(raw ?? '').replace(/\s+/g, ' ').trim().slice(0, limit)
 }
 
 function ProfileBody({ profile }: { profile: Row | null }) {
@@ -84,7 +92,7 @@ function ProfileBody({ profile }: { profile: Row | null }) {
     <div className="geo-profile-readout">
       <GeoKpis
         items={[
-          { label: '知识库事实', value: `${facts.length} 条`, detail: profile.company ? String(profile.company) : '未指明企业' },
+          { label: '知识库对象', value: `${facts.length} 条`, detail: profile.company ? String(profile.company) : '未指明企业' },
           { label: '关键事实', value: `${keyFacts.length} 条`, detail: '带数字/时间，最适合被 AI 引用' },
           { label: '对象关系', value: `${relations.length} 条`, detail: '人、产品、客户之间的连接' },
           { label: '内容资产', value: `${assets.length} 个`, detail: '本企业已入库的素材' },
@@ -98,9 +106,17 @@ function ProfileBody({ profile }: { profile: Row | null }) {
         {sources.length ? ` · 来源 ${sources.map(profileSourceText).join('、')}` : ''}
       </p>
 
+      {facts.length && !facts.some((f) => String(f.predicate ?? '').trim()) ? (
+        <p className="geo-note">
+          企业知识库里目前只有<strong>实体提及</strong>（公司/账号/人名等），还没有结构化的
+          「属性 = 值」事实，所以下面的行业、产品、客户等归纳会显示「暂无记录」——这不是没读到，
+          是知识库里还没有这类事实。
+        </p>
+      ) : null}
+
       {keyFacts.length ? (
         <>
-          <div className="geo-subhead"><h3>关键事实</h3><small>生成内容时会强制注入这几条</small></div>
+          <div className="geo-subhead"><h3>关键事实</h3><small>带数字/时间，生成内容时会强制注入这几条</small></div>
           <ul className="geo-lines">{keyFacts.slice(0, 6).map((row, index) => <li key={index}>{factLine(row)}</li>)}</ul>
         </>
       ) : null}

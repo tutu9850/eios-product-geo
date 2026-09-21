@@ -233,7 +233,7 @@ def _rule_diagnosis(m: dict) -> str:
         if miss:
             parts.append(f"竞品有但知识库无的维度：{'、'.join(miss)}")
         if unknown:
-            parts.append(f"Kernel 暂不可达、能力缺口待核实的维度：{'、'.join(unknown)}")
+            parts.append(f"企业知识库暂不可达、能力缺口待核实的维度：{'、'.join(unknown)}")
     if greens:
         parts.append(f"外界已认知的维度：{'、'.join(d['dimension'] for d in greens)}")
     if missing:

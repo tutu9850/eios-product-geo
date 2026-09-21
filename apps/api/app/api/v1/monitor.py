@@ -2815,7 +2815,7 @@ async def fact_check():
                     timeout=15,
                 )
             except asyncio.TimeoutError:
-                return {"checked": False, "abnormal": False, "reason": "Kernel 检索超时", "kernel_ok": False}
+                return {"checked": False, "abnormal": False, "reason": "企业知识库检索超时", "kernel_ok": False}
 
     checked = await asyncio.gather(*[_checked(r) for r in records])
     results = [{**rec, **ck} for rec, ck in zip(records, checked)]

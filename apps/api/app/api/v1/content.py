@@ -97,11 +97,21 @@ async def score_content(req: ScoreIn):
 
 @router.get("/company")
 async def company():
-    """自动识别当前企业（Kernel 读取）"""
+    """识别当前企业（知识库 + 用户确认的档案）。
+
+    2026-09-21：把「从哪认出来的」如实一起返回（profile / monitor_item / knowledge_scan /
+    unresolved）—— 旧实现只回一个名字，前端拿到的错名字（素材标题）无从解释。
+    """
+    from services.company_identity import resolve_self_company
     from services.content import _auto_company
 
+    resolved = await resolve_self_company("tenant_corp_01")
     name, materials = await _auto_company("tenant_corp_01")
-    return ok({"company_name": name, "materials_count": len(materials)})
+    return ok({
+        "company_name": name,
+        "materials_count": len(materials),
+        "company_source": resolved.get("source"),
+    })
 
 
 class ParseRequest(BaseModel):

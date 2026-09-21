@@ -29,6 +29,30 @@ _RULES = {
 }
 
 
+def _one_line(text, limit: int = 120) -> str:
+    """压成单行、限长——展示给用户的字段绝不放整段多行原文。"""
+    return " ".join(str(text or "").split())[:limit]
+
+
+def _fact_display(hit: dict) -> str:
+    """前端「企业画像」用的单行人话标签。
+
+    2026-09-21：知识库命中里的 ``value`` 是这条对象**出现在哪段原文里**
+    （``adapters/eios._map_hit`` 把 snippet 放 value，predicate 恒为 None），
+    实测一张账号矩阵表就是 502 字。旧前端直接 ``name：value`` 打印，
+    于是画像卡里出现整段表格。现在：
+      - 有 predicate 的真事实 → 「名：值」
+      - 只有名字的实体 → 「名 · 来自《资料名》」
+    """
+    name = _one_line(hit.get("canonical_name"), 40)
+    doc = _one_line(hit.get("document_title"), 40)
+    if hit.get("predicate"):
+        return _one_line(f"{name}：{hit.get('value')}", 120)
+    if name and doc:
+        return f"{name} · 来自《{doc}》"
+    return name or doc or "（这条知识对象没有可读内容）"
+
+
 def _classify(facts: list[dict]) -> dict[str, list[dict]]:
     """把 Kernel 事实按 predicate/名称 归类到画像字段。"""
     out: dict[str, list[dict]] = {k: [] for k in _RULES}
@@ -104,6 +128,11 @@ async def build_company_profile(
                         "predicate": it.get("predicate"),
                         "value": it.get("value"),
                         "text": str(it.get("text") or "")[:200],
+                        # 2026-09-21：知识库对象类型（entity/fact）与出处，供前端
+                        # 如实区分「实体提及」与「结构化事实」；display 是单行人话标签。
+                        "object_type": it.get("object_type"),
+                        "document_title": it.get("document_title"),
+                        "display": _fact_display(it),
                         "evidence_ids": it.get("evidence_ids") or [],
                     }
                 )

@@ -15,6 +15,9 @@ from typing import Any
 EXPECTED_SECTIONS = 5  # 模板分节：一句话回答/解决什么问题/对比表格/事实案例/FAQ
 
 _ENTITY_CORE = re.compile(r"[A-Za-z\u4e00-\u9fff]{2,12}")
+#: 纯编号/流水号（M-001、A12、2024…）：知识库把表格里的编号也抽成了实体，
+#: 但它们不是「企业实体表述」，不该要求正文提到（实测建议里出现过「补充实体表述：M-001」）。
+_CODE_CORE = re.compile(r"(?i)^[a-z]{0,4}[-_ ]?\d+$")
 
 
 def _entity_cores(facts: list[dict], company_name: str = "") -> list[str]:
@@ -28,8 +31,9 @@ def _entity_cores(facts: list[dict], company_name: str = "") -> list[str]:
             core = core[len(prefix):]
         elif prefix and prefix in core:
             core = core.replace(prefix, "", 1)
-        if len(core) >= 2:
-            cores.append(core.strip())
+        core = core.strip()
+        if len(core) >= 2 and not _CODE_CORE.match(core):
+            cores.append(core)
     return list(dict.fromkeys(cores))[:15]
 
 

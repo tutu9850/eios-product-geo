@@ -339,7 +339,7 @@ def render_report_html(
             f"<td><span class='tag {tagc}'>P{i}</span></td></tr>"
         )
     if not gap_rows:
-        gap_rows = "<tr><td colspan='4'>暂无知识缺口（Kernel 能力条目充足）</td></tr>"
+        gap_rows = "<tr><td colspan='4'>暂无知识缺口（企业知识库能力条目充足）</td></tr>"
 
     # ── 08 内容建设 ──
     act_rows = ""
