@@ -119,11 +119,6 @@ def _ent_evidence_count(e) -> int:
 #: 公司名尾巴 / 业务特征词（候选池的粗筛规则，真正的归类交给 LLM，见 ``_classify_*``）
 _COMPANY_SUFFIX = ("公司", "科技", "集团", "工作室", "有限", "研究院", "事务所", "厂", "店")
 _BIZ_MARK = ("版", "Agent", "OS", "系统", "平台", "终端", "服务", "套餐", "方案", "课程", "产品")
-#: 素材标题里带这些词 = 内部文档/流程/制度，不是「产品名」。素材标题做业务候选时要过掉。
-_MATERIAL_TITLE_NOISE = (
-    "制度", "流程", "计划", "报告", "清单", "模板", "白皮书", "目录", "手册", "指南", "规范",
-    "表格", "合同", "通知", "会议", "记录", "预算", "薪酬", "排班", "对账",
-)
 
 
 def _dedup_list(values) -> list[str]:
@@ -273,20 +268,24 @@ async def _step_detect_from_materials():
         "classification_source": "heuristic",
     }
     # 素材很小（没上传东西、或只有几条）时不必麻烦 LLM，规则给的候选已经够用。
-    if titles:
+    digest = _material_llm_digest(materials)
+    if digest:
         try:
             from adapters.llm import chat
 
             text = await chat(
-                "以下是一家企业自己上传的内容资产标题（新上传的排前面）：\n"
-                + "\n".join(f"- {t}" for t in titles)
-                + "\n\n请据此判断这家企业自己是谁、在卖什么（**只依据上面的材料，看不出来就留空，"
-                "不要编造名单外的名字**）：\n"
-                "- company：这家企业自己的公司名（材料里出现过才算）\n"
-                "- products：材料里出现过的产品/软件/版本名（如「企业版Agent OS」「GEO+知识库版」）\n"
-                "- services：材料里出现过的服务/课程类名\n"
+                "以下是一家企业自己上传的内容资产（标题 + 正文摘录，新上传的排前面）：\n"
+                + digest
+                + "\n\n请**读正文**判断这家企业自己是谁、在卖什么（只依据上面的材料，看不出来就留空，"
+                "不要编造材料里没有的名字）：\n"
+                "- company：这家企业自己的公司名 / 品牌名（材料里出现过才算）\n"
+                "- products：正文里出现过的**具体产品 / 系列 / 版本名**（如「琥珀沙发」）。"
+                "**绝对不要把材料标题当产品名** —— 标题是「这份材料叫什么」，不是企业在卖什么；"
+                "**设计风格/调性词（「意式极简」「奶油风」「中古」「轻法式」）不是产品名**，归 keywords\n"
+                "- services：正文里出现过的服务 / 课程类名\n"
                 "- industry：所属行业（一句话）\n"
-                "- keywords：普通用户找这类服务会搜的行业词/痛点词 6-10 个（不要公司名/品牌名）\n"
+                "- keywords：普通用户找这类企业会搜的行业词 / 痛点词 6-10 个"
+                "（要来自正文说的业务；不要公司名、不要品牌名、不要材料标题里的词）\n"
                 '严格 JSON 输出：{"company": [...], "products": [...], "services": [...], '
                 '"industry": "...", "keywords": ["..."]}',
                 max_tokens=800,
@@ -303,18 +302,27 @@ async def _step_detect_from_materials():
             for key in ("company", "products", "services"):
                 # 材料里出现过的名字才收。**素材标题本身不算产品名**：标题是「这份材料叫什么」，
                 # 不是「企业在卖什么」（实测模型会把标题原样列进产品候选）。
-                vals = [
-                    str(x).strip()
-                    for x in (picked.get(key) or [])
-                    if str(x).strip()
-                    and (
-                        str(x).strip() in company_cands
-                        or (
-                            str(x).strip() not in title_set
-                            and _grounded_in_materials(str(x).strip(), corpus, allowed)
-                        )
+                vals: list[str] = []
+                for raw in picked.get(key) or []:
+                    name = str(raw).strip()
+                    if not name:
+                        continue
+                    if name not in company_cands and (
+                        name in title_set or not _grounded_in_materials(name, corpus, allowed)
+                    ):
+                        continue
+                    if key != "company" and _looks_like_style_word(name):
+                        continue
+                    # 模型常把名字截短（实测公司给了「笔革」而不是「笔革家居」）——
+                    # 扩回候选池里更完整的同名项。产品/服务不许扩成素材标题。
+                    name = _expand_to_pool_name(
+                        name,
+                        allowed,
+                        blocked=title_set if key != "company" else (),
+                        preferred=set(company_cands),
                     )
-                ]
+                    if name not in vals:
+                        vals.append(name)
                 if vals:
                     result[key] = vals if key != "company" else vals[:5]
                     result["classification_source"] = "llm"
@@ -326,11 +334,84 @@ async def _step_detect_from_materials():
         except Exception as e:  # noqa: BLE001 — LLM 只是归类器，失败不阻塞检测
             logger.warning("detect(materials) classify failed: %s", e)
 
-    # 业务候选（规则兜底）：素材标题里不带「制度/流程/报告」这类噪声的，当候选
-    biz_fallback = [
-        t for t in titles if len(t) <= 24 and not any(w in t for w in _MATERIAL_TITLE_NOISE)
-    ]
-    return await _finalize_detect(result, biz_fallback=biz_fallback)
+    # 业务候选的兜底：**不用素材标题**（2026-09-22 修）。
+    # 原来这里把「标题里不带噪声词」的素材标题当产品候选，于是文件名直接进了
+    # 「产品（点击取消不想监测的）」那一行 —— 实测就是 export_1785221955586 /
+    # 三品牌战略+奢侈品调研-前31页 / 笔革家居主理人访谈纪要。标题不是产品名：
+    # 正文里认不出来就如实留空 + 一句人话提示，让人去补，而不是拿文件名充数。
+    out = await _finalize_detect(result, biz_fallback=[])
+    if out["empty"]:
+        # 一条都没认出来（例如只上传了文件名像流水号的材料）：别拿「知识库」顶包，
+        # 这里读的是 GEO 自己的内容资产，就直说内容资产。
+        out["hint"] = (
+            "没从这些内容资产里认出公司名或产品名：可以在「内容资产」补一份公司介绍/产品资料"
+            "再回来重新检测，或直接在公司/产品里手动填写。"
+        )
+    elif not out["products"] and not out["services"]:
+        out["hint"] = (
+            "只认出公司名，没从材料正文里认出产品名：可以在「内容资产」补一份产品资料再回来，"
+            "或在下面的「产品」里手动写一个。"
+        )
+    return out
+
+
+#: 设计风格/调性词 = 这家企业能承接的**风格**，不是产品（实测模型把「意式极简」「奶油风」列成产品）。
+_STYLE_WORDS = ("极简", "轻奢", "法式", "中式", "简约", "中古", "奶油风", "侘寂", "北欧", "日式", "美式", "意式")
+#: 以这些收尾说明它是一个「东西」（「奶油风沙发」是产品），不是光秃秃的风格词。
+_PRODUCT_TAILS = ("沙发", "床", "柜", "桌", "椅", "几", "门", "窗", "套装", "系列", "版", "套餐", "服务")
+
+
+def _looks_like_style_word(name: str) -> bool:
+    """「意式极简」「奶油风」这类风格词不该出现在产品那一行。"""
+    if name.endswith(_PRODUCT_TAILS):
+        return False
+    return name.endswith("风") or any(w in name for w in _STYLE_WORDS)
+
+
+def _expand_to_pool_name(
+    name: str, pool: set[str], *, blocked: set[str] | tuple = (), preferred: set[str] | tuple = ()
+) -> str:
+    """把模型截短的名字扩回候选池里更完整的那个：``笔革`` → ``笔革家居``。
+
+    为什么需要：实测模型从正文里认出的是「笔革」「凡客」这种半截名字，页面上就直接显示成
+    「笔革」。规则取词明明已经有完整的「笔革家居」，没有理由让半截的上桌。
+
+    优先取 ``preferred``（规则挑出来的公司候选）里的那一个：只按长度取最长会把
+    素材标题「笔革家居主理人访谈纪要」选上来 —— 那更不是名字。扩不了就原样返回。
+    """
+    if name in pool:
+        return name
+    longer = [p for p in pool if len(p) > len(name) and p.startswith(name) and p not in blocked]
+    if not longer:
+        return name
+    picked_from_preferred = [p for p in longer if p in preferred]
+    return sorted(picked_from_preferred or longer, key=len)[-1]
+
+
+def _material_llm_digest(materials: list[dict], *, per_material: int = 1200, total: int = 6000) -> str:
+    """给模型看的材料摘录：**标题 + 正文开头**（2026-09-22 修）。
+
+    为什么不能只喂标题：只给标题时，模型能拿到的信息就是那几个文件名 —— 实测它于是把
+    标题原样当成「产品」交回来（``export_1785221955586``、``三品牌战略+奢侈品调研-前31页``），
+    关键词也全是标题里的词。看一眼正文，它才认得出这家企业在卖什么。
+    """
+    parts: list[str] = []
+    used = 0
+    for m in materials or []:
+        title = str(m.get("title") or "").strip()
+        body = " ".join(str(m.get("content") or "").split())
+        piece = f"【材料】{title}\n{body[:per_material]}".strip()
+        if not piece:
+            continue
+        if used + len(piece) > total:
+            piece = piece[: max(0, total - used)]
+        if not piece:
+            break
+        parts.append(piece)
+        used += len(piece)
+        if used >= total:
+            break
+    return "\n\n".join(parts)
 
 
 def _material_corpus(materials: list[dict], *, per_material: int = 4000) -> str:

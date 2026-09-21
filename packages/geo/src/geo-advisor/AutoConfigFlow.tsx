@@ -41,12 +41,21 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
   // 公司可点选（单选 chips）+ 行业文本输入（确认继续时保存，create 步骤使用）
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null)
   const [industryText, setIndustryText] = useState('')
+  // 第 1 步产品手填（2026-09-22）：材料里没认出产品名时不再拿文件名充数，
+  // 后端如实留空 + 提示；这里必须给人一条手动补的通道，否则「确认继续」点不动。
+  const [productDraft, setProductDraft] = useState('')
   // 所在地（Owner 2026-09-21）：竞品发现按「{城市}的{行业}都有哪些公司」去问。
   // 以前只能从公司名里抠城市，「笔革家居」抠不出来 → 退化成全国结果（实测返回的是
   // 三维家/酷家乐这类平台，不是成都本地的家装公司），所以这里让用户直接填。
   const [cityText, setCityText] = useState('')
   // 第 2 步竞品可勾选（按名字保存 + localStorage 持久化，刷新/重进保留）
   const [selectedCompetitorNames, setSelectedCompetitorNames] = useState<Set<string>>(loadSavedCompetitors())
+
+  // 产品 chips = 检测到的 + 手填的（手填的也要能点掉，不然加错了没法撤）
+  const productChips = [
+    ...(detect?.products ?? []),
+    ...[...selectedProducts].filter((p) => !(detect?.products ?? []).includes(p)),
+  ]
 
   // ── 竞品勾选持久化（刷新页面/重新进入后保留）──
   function loadSavedCompetitors(): Set<string> {
@@ -111,6 +120,13 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
       else next.add(s)
       return next
     })
+
+  const addProductDraft = () => {
+    const name = productDraft.trim()
+    if (!name) return
+    setSelectedProducts((prev) => new Set(prev).add(name))
+    setProductDraft('')
+  }
 
   // 第 2 步 · 竞品发现（「刷新竞品」= 重新调 discover；已勾选按名字保留）
   const runDiscover = () =>
@@ -272,9 +288,11 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
         detect?.empty ? (
           <>
             <p className="text-[12px] leading-relaxed text-[var(--yayu-muted)]">
-              {detect?.error
-                ? `企业知识库读不到（这不等于知识库是空的）：${detect.error}`
-                : '知识库暂无企业资料，无法自动推断。请先上传产品/案例材料到知识库，再重新检测。'}
+              {detect?.hint
+                ? detect.hint
+                : detect?.error
+                  ? `企业知识库读不到（这不等于知识库是空的）：${detect.error}`
+                  : '知识库暂无企业资料，无法自动推断。请先上传产品/案例材料到知识库，再重新检测。'}
             </p>
             <GeoButtonRow>
               <Button size="sm" onClick={runDetect}>
@@ -332,10 +350,10 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             </div>
             <div className="pt-1">
               <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
-                产品（{selectedProducts.size}/{detect?.products?.length ?? 0}，点击取消不想监测的）
+                产品（{selectedProducts.size}/{productChips.length}，点击取消不想监测的）
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {(detect?.products ?? []).map((p) => {
+                {productChips.map((p) => {
                   const active = selectedProducts.has(p)
                   return (
                     <button
@@ -352,6 +370,29 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
                     </button>
                   )
                 })}
+                {productChips.length === 0 ? (
+                  <span className="text-[11px] text-[var(--yayu-muted)]">材料里没认出产品名</span>
+                ) : null}
+              </div>
+              {detect?.hint ? (
+                <p className="mt-1 text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">{detect.hint}</p>
+              ) : null}
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <input
+                  value={productDraft}
+                  onChange={(e) => setProductDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addProductDraft()
+                    }
+                  }}
+                  placeholder="手动加产品名，回车确认"
+                  className="min-w-0 flex-1 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+                />
+                <Button variant="secondary" size="sm" onClick={addProductDraft} disabled={!productDraft.trim()}>
+                  添加
+                </Button>
               </div>
             </div>
             {detect && detect.services?.length > 0 ? (

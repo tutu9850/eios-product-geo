@@ -98,10 +98,22 @@ _BRAND_TAIL = (
 _MATERIAL_MAX_LEN = 16
 _STRIP_CHARS = " \t\u3000《》〈〉【】()（）[]［］「」“”\"'·—-_/,，。;；:：!！?？\n\r"
 #: 名字**前缀**里出现这些字，多半是「往前吃字」吃进了句子，不是公司名。
-#: 只放虚词/连接词 —— 不放「华为」的「为」、「全友」的「有」这类**真名字里会有**的字。
-_PREFIX_NOISE_CHARS = set("的了是在和与这那其并及或把被对从到都也就才又还只很更而之该我你他它们些做")
-#: 前缀里的动词短语（整词判，比单字准）
-_PREFIX_NOISE_WORDS = ("提供", "以及", "面向", "旗下", "是一家", "可以", "就是", "作为", "通过", "公司是", "其中", "做的")
+#: 只放虚词/连接词/动词 —— 不放「华为」的「为」、「全友」的「有」这类**真名字里会有**的字。
+_PREFIX_NOISE_CHARS = set(
+    "的了是在和与这那其并及或把被对从到都也就才又还只很更而之该我你他它们些做"
+    "为属已认超归暂确"
+)
+#: 前缀里的动词/修饰短语（整词判，比单字准）。实测这批把「主要来自过往家具」
+#: 「优先选择上市公司」「全面梳理比格家居」「阐述笔革家居」这类句子片段挡在候选池外。
+_PREFIX_NOISE_WORDS = (
+    "提供", "以及", "面向", "旗下", "是一家", "可以", "就是", "作为", "通过", "公司是", "其中", "做的",
+    "来自", "主要", "优先", "选择", "上市", "全面", "梳理", "阐述", "坚信", "传统", "属于", "归属",
+    "确认", "暂无", "类似", "定位", "儿童房", "高净值", "服务于", "超越", "奢侈", "文化革命",
+)
+#: 前缀以量词/序数开头 = 在说「三大/五个/两类…」，不是名字。
+_QUANTIFIER_START = ("一", "二", "两", "三", "四", "五", "六", "七", "八", "九", "十", "几", "多", "各", "全")
+#: 前缀里最多几个汉字：再长就是「往前多吃了几口」的句子片段（实测 6 字前缀全是垃圾）。
+_PREFIX_MAX_CJK = 4
 
 
 def _word_char(ch: str) -> bool:
@@ -110,7 +122,17 @@ def _word_char(ch: str) -> bool:
 
 
 def _prefix_is_noise(prefix: str) -> bool:
-    return any(ch in _PREFIX_NOISE_CHARS for ch in prefix) or any(w in prefix for w in _PREFIX_NOISE_WORDS)
+    if not prefix:
+        return True
+    if any(ch in _PREFIX_NOISE_CHARS for ch in prefix):
+        return True
+    if any(w in prefix for w in _PREFIX_NOISE_WORDS):
+        return True
+    if prefix[0] in _QUANTIFIER_START:
+        return True
+    cjk = [c for c in prefix if "\u4e00" <= c <= "\u9fff"]
+    # 纯汉字前缀超过 4 字 = 多半是把句子当名字吃进来了；带字母的（BG/ANKE）只看汉字数。
+    return len(cjk) > _PREFIX_MAX_CJK
 
 
 #: 通用业务词 + 公司尾巴 = 行业泛称，不是公司名（「家装公司」「定制公司」「AI获客公司」）。
@@ -171,27 +193,77 @@ def _candidate_names(text: str) -> list[str]:
     return out
 
 
+#: 光秃秃一个行业词 = 通用词，不是专名（「AI设计」这种带字母的也要挡）。
+_BARE_CATEGORY_WORDS = {
+    "设计", "品牌", "装饰", "软装", "家具", "家居", "家装", "教育", "文化", "传媒",
+    "建材", "电器", "橱柜", "科技", "网络", "信息", "智能", "公司", "集团", "工作室",
+}
+
+
+def _looks_like_proper_noun(name: str) -> bool:
+    """这像不像一个**专名**（品牌/公司），而不是「正文里碰巧凑出来的四个字」。
+
+    为什么需要：法律上「XX家居」「XX设计」这种尾巴满篇都是，规则取词必然在正文里
+    凑出「国际知名设计」「未来审美设计」「净值人群家居」这类片段 —— 它们**每份材料里
+    只出现一次**，而真名字要么被用户写进标题、要么在多份材料里反复出现、要么带字母/数字
+    （ANKE、BG、MK）。实测口径：标题命中 / ≥2 份材料出现 / 含字母或数字，三者占其一。
+    """
+    if any(("a" <= c.lower() <= "z") or c.isdigit() for c in name):
+        # 带字母/数字基本就是品牌（ANKE、BG笔革艺术、MK玛珂家具）；
+        # 但「字母 + 光秃秃一个行业词」除外 —— 那是「AI设计」这种通用词，不是名字。
+        cjk = "".join(c for c in name if "\u4e00" <= c <= "\u9fff")
+        return cjk not in _BARE_CATEGORY_WORDS
+    return False
+
+
 def company_candidates_from_materials(materials: list[dict[str, Any]]) -> list[str]:
     """从 GEO 自己的内容资产里猜公司/品牌名，按「出现得多 + 上过标题」排序。
 
     一条素材里同一个名字只算一次（不然正文里反复出现的品牌会把分数堆爆），
     标题里出现过 ×3 加权 —— 标题是用户自己给这份材料定的名字，指向性最强。
+
+    2026-09-22 修（Owner：「为什么能有那么多公司呢」）：加两道闸 ——
+    取词阶段挡掉句子片段（见 ``_prefix_is_noise``），排序前再要求候选是**专名**
+    （标题命中 / 全文出现 ≥2 次 / 含字母数字）。只冒出来一次的纯汉字片段一律不进名单：
+    那是正文里凑出来的字（「主要来自过往家具」「全面梳理比格家居」），不是谁的名字。
     """
     score: dict[str, float] = {}
+    occurrences: dict[str, int] = {}
+    title_hits: set[str] = set()
     for material in materials or []:
         title = str(material.get("title") or "")
         content = str(material.get("content") or "")
         for name in set(_candidate_names(title)):
             score[name] = score.get(name, 0.0) + 3.0
+            title_hits.add(name)
         for name in set(_candidate_names(content[:4000])):
             score[name] = score.get(name, 0.0) + 1.0
+        for name in set(_candidate_names(title)) | set(_candidate_names(content[:4000])):
+            occurrences[name] = occurrences.get(name, 0) + title.count(name) + content.count(name)
+    score = {
+        name: value
+        for name, value in score.items()
+        if name in title_hits or occurrences.get(name, 0) >= 2 or _looks_like_proper_noun(name)
+    }
     ranked = sorted(score.items(), key=lambda kv: (-kv[1], -len(kv[0]), kv[0]))
     # 后缀收敛：「臻隆科技」是「亚宇臻隆科技」的后缀、「有限公司」是「笔革家居有限公司」的后缀
     # —— 同一次出现产生的短后缀不算另一个公司，只留长的那个。
+    #
+    # 2026-09-22 修：原规则**只要**存在更长的后缀就把短的丢掉，方向反了 ——
+    # 实测「笔革家居」（标题命中，4 分）被正文里的碎片「阐述笔革家居」（1 分）吃掉，
+    # 「比格家居」被「全面梳理比格家居」「梳理比格家居」吃掉，于是一份 5 条的公司名单里
+    # 好名字全没了、只剩碎片。现在只在**长的那个分不低**时才收敛。
     names = [name for name, _s in ranked]
     kept: list[str] = []
     for name in names:
-        if any(other != name and other.endswith(name) and len(other) > len(name) for other in names):
+        suppressed = any(
+            other != name
+            and other.endswith(name)
+            and len(other) > len(name)
+            and score.get(other, 0.0) >= score.get(name, 0.0)
+            for other in names
+        )
+        if suppressed:
             continue
         kept.append(name)
     return kept[:20]
