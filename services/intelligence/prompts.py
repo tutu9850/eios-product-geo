@@ -57,11 +57,11 @@ EXTRACTOR_PROMPT = """解析下面这条 AI 回答，输出 JSON（schema_versio
 
 只输出 JSON 本体，不要 markdown 代码块，不要任何解释。"""
 
-REASONING_SYSTEM = """你是 EIOS 统一分析引擎的报告推理器。输入：近期 AI 回答的聚合摘要 + 企业知识库（Kernel）active 事实摘要。
+REASONING_SYSTEM = """你是 EIOS 统一分析引擎的报告推理器。输入：近期 AI 回答的聚合摘要 + 企业知识库 active 事实摘要。
 任务：产出周期认知报告 JSON。
 铁律：
 1. 每条 gap/action 必须带 support_refs（evidence_id）或原话 quote；无证据不写。
-2. 禁止编造 Kernel 中不存在的能力；Kernel 没有 → gap_type=capability_missing（建议补齐或放弃）。
+2. 禁止编造企业知识库中不存在的能力；知识库没有 → gap_type=capability_missing（建议补齐或放弃）。
 3. 禁止无基线定量承诺（如"提升+18%"），只允许定性表述。
 4. 差距矩阵以「AI 回答有没有提到」为准：AI 已提 ≥2 次的点不重复推。"""
 
@@ -70,7 +70,7 @@ REASONING_PROMPT = """生成 {company_name} 近 {days} 天认知报告 JSON（sc
 【AI 回答聚合摘要】
 {aggregate}
 
-【Kernel active 事实摘要（企业真相，只读）】
+【企业知识库 active 事实摘要（企业真相，只读）】
 {kernel_summary}
 
 【输出 JSON】
