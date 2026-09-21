@@ -128,27 +128,130 @@ def select_a2(docs: list[dict], question: str, top_k: int, lam: float = 0.6,
 
 
 # ---------------- 评分 ----------------
+def _containment(a: set[str], b: set[str]) -> float:
+    """较小一侧被覆盖的比例（能不能说「一份基本被另一份包含」）。"""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / min(len(a), len(b))
+
+
+def select_a3(docs: list[dict], question: str, top_k: int, lam: float = 0.4,
+              min_score: int = 2, contain_thr: float = 0.85) -> list[dict]:
+    """A3 = Owner 2026-09-21 指定的流程顺序：
+
+    候选 → 排序 → **同事实/同版本重复识别** → 每簇选代表 → 选其他非重复内容
+    → 最低分过滤 → Context Pack（不凑数）。
+
+    关键差异（相对 A2）：
+    - 去重判据是**包含度 containment**（较小一侧被覆盖比例），不是 Jaccard 相似度。
+      真实语料实测：同一份材料的重复导入/重复切片 containment ≈ 0.98–1.00；
+      而「同主题不同回答角色」「不同期间月报」containment ≤ 0.57。相似度分不开这两类。
+    - 去重在**候选排序之后、贪心选取之前**完成（不是混在贪心里当惩罚项）。
+    - 同一份文档默认**最多占 1 个名额**（避免同一文档的两个块把名额吃光）。
+    """
+    q = _n_gram_keys(question)
+    # 文档级：一份基本被另一份包含 → 视为「重复导入」，只保留更完整的那份
+    doc_keys = {d["id"]: _n_gram_keys(str(d.get("content") or "")) for d in docs}
+    by_id = {d["id"]: d for d in docs}
+    subsumed: set[str] = set()
+    for a in docs:
+        for b in docs:
+            if a["id"] == b["id"] or a["id"] in subsumed:
+                continue
+            ka, kb = doc_keys[a["id"]], doc_keys[b["id"]]
+            if len(ka) < len(kb) and _containment(ka, kb) >= contain_thr:
+                subsumed.add(a["id"])  # a 是 b 的子集 → 保留 b（更完整）
+
+    cands: list[dict] = []
+    for d in docs:
+        if d["id"] in subsumed:
+            continue
+        tb = title_bonus(question, d)
+        for c, hit in chunk_scores(question, d):
+            if hit <= 0:
+                continue
+            cands.append({"doc_id": d["id"], "title": d["title"], "chunk_ordinal": c.get("ordinal"),
+                          "chunk_score": hit, "keys": _n_gram_keys(str(c["text"])),
+                          "chunk_text": str(c.get("text") or "")[:80], "title_bonus": tb,
+                          "text": str(c.get("text") or "")})
+    cands.sort(key=lambda c: (-c["chunk_score"], -len(c["text"])))
+
+    # 簇级：同事实/同版本（包含度高）只留代表（分更高；并列则取更完整的那块）
+    keep: list[dict] = []
+    for c in cands:
+        dup_of = None
+        for k in keep:
+            if _containment(c["keys"], k["keys"]) >= contain_thr:
+                dup_of = k
+                break
+        if dup_of is None:
+            keep.append(c)
+    reps = sorted(keep, key=lambda c: (-c["chunk_score"], -len(c["text"])))
+
+    chosen: list[dict] = []
+    used_docs: set[str] = set()
+    for c in reps:
+        if len(chosen) >= top_k:
+            break
+        if c["chunk_score"] < min_score:
+            break  # 宪法 §17：低于阈值不凑数
+        if c["doc_id"] in used_docs:
+            continue  # 同一文档默认只占 1 个名额
+        chosen.append(c)
+        used_docs.add(c["doc_id"])
+    out = []
+    for c in chosen:
+        out.append({"doc_id": c["doc_id"], "title": c["title"], "chunk_ordinal": c["chunk_ordinal"],
+                    "chunk_score": c["chunk_score"], "chunk_text": c["chunk_text"],
+                    "score": float(c["chunk_score"] + 2 * c["title_bonus"]),
+                    "selection_reason": f"chunk hit {c['chunk_score']} key(s); dedup by containment>={contain_thr}, one slot per document"})
+    return out
+
+
+def _apply_knowledge_ordinal_rule(docs: list[dict], sel: list[dict]) -> list[dict]:
+    """裁定 6：Knowledge 侧不提供段号时不虚造 —— ordinal 如实为 null。"""
+    kinds = {d["id"]: d.get("source_type") for d in docs}
+    for row in sel:
+        if kinds.get(row["doc_id"]) == "knowledge_document_chunk":
+            row["chunk_ordinal"] = None
+            row["selection_reason"] = (row.get("selection_reason") or "") + " · Knowledge 未提供段号（不虚造）"
+    return sel
+
+
 def evaluate(data: dict, top_k: int, lam: float, min_score: int) -> dict:
     docs = data["documents"]
     groups = data.get("duplicate_groups") or {}
+    # 去重之后「内容还在不在」要按**重复簇代表**判定，而不是按具体文件名：
+    # 例如策略报告去重后代表是完整版，那么「前31页在不在」应等价于「该簇在不在」。
+    group_of: dict[str, str] = {}
+    for gname, ids in groups.items():
+        for i in ids:
+            group_of[i] = gname
+
+    def canon(doc_id: str) -> str:
+        return f"@{group_of[doc_id]}" if doc_id in group_of else doc_id
+
+    def has(sel_ids: list[str], want: str) -> bool:
+        return any(canon(i) == canon(want) for i in sel_ids)
     algos = {
         "A0_whole_doc": lambda q: select_a0(docs, q, top_k),
         "A1_best_chunk": lambda q: select_a1(docs, q, top_k, 1),
         "A2_chunk_dedup_cover": lambda q: select_a2(docs, q, top_k, lam, min_score),
+        "A3_containment_dedup": lambda q: select_a3(docs, q, top_k, lam, min_score),
     }
     report: dict = {"top_k": top_k, "lambda": lam, "min_score": min_score, "tasks": {}}
     for task in data["tasks"]:
         q, exp = task["question"], task["expect"]
         row: dict = {"question": q, "category": task["category"], "algos": {}}
         for name, fn in algos.items():
-            sel = fn(q)
+            sel = _apply_knowledge_ordinal_rule(docs, fn(q))
             sel_ids = [s["doc_id"] for s in sel]
             r = {"selected": [{"doc_id": s["doc_id"], "chunk_ordinal": s["chunk_ordinal"],
                                "score": round(s["score"], 2)} for s in sel],
                  "empty": not sel}
             # hit@K
             if exp.get("must_include"):
-                r["hit"] = any(i in sel_ids for i in exp["must_include"])
+                r["hit"] = all(has(sel_ids, i) for i in exp["must_include"])
             else:
                 r["hit"] = None
             # 无资料任务
@@ -171,6 +274,11 @@ def evaluate(data: dict, top_k: int, lam: float, min_score: int) -> dict:
                 else:
                     r["pass_rank"] = None
                 r["order"] = sel_ids
+            # 不同回答角色必须并存（Owner 2026-09-21：同主题 ≠ 同内容）
+            if exp.get("coexist"):
+                missing = [i for i in exp["coexist"] if not has(sel_ids, i)]
+                r["coexist_missing"] = missing
+                r["pass_coexist"] = not missing
             row["algos"][name] = r
         # 诊断（陷阱量化）：T2 两份文档的两种口径分
         if task["id"] == "T2":
@@ -191,7 +299,7 @@ def evaluate(data: dict, top_k: int, lam: float, min_score: int) -> dict:
 
 def summarize(report: dict, data: dict) -> list[str]:
     lines = []
-    names = ["A0_whole_doc", "A1_best_chunk", "A2_chunk_dedup_cover"]
+    names = ["A0_whole_doc", "A1_best_chunk", "A2_chunk_dedup_cover", "A3_containment_dedup"]
     tot = {n: {"hit": 0, "hit_n": 0, "group": 0, "group_n": 0, "empty": 0, "empty_n": 0,
                "rank": 0, "rank_n": 0} for n in names}
     for tid, row in report["tasks"].items():
@@ -210,13 +318,17 @@ def summarize(report: dict, data: dict) -> list[str]:
             if exp.get("must_rank_above"):
                 tot[n]["rank_n"] += 1
                 tot[n]["rank"] += 1 if r.get("pass_rank") else 0
+            if exp.get("coexist"):
+                tot[n]["coexist_n"] = tot[n].get("coexist_n", 0) + 1
+                tot[n]["coexist"] = tot[n].get("coexist", 0) + (1 if r.get("pass_coexist") else 0)
     for n in names:
         t = tot[n]
         lines.append(
             f"{n:<22} hit@K {t['hit']}/{t['hit_n']}  "
             f"不重复占组 {t['group']}/{t['group_n']}  "
             f"无资料不凑数 {t['empty']}/{t['empty_n']}  "
-            f"排序正确 {t['rank']}/{t['rank_n']}"
+            f"排序正确 {t['rank']}/{t['rank_n']}  "
+            f"不同角色并存 {t.get('coexist', 0)}/{t.get('coexist_n', 0)}"
         )
     return lines
 
@@ -227,9 +339,11 @@ def main() -> int:
     ap.add_argument("--lam", type=float, default=0.6)
     ap.add_argument("--min-score", type=int, default=2)
     ap.add_argument("--json", type=str, default="")
+    ap.add_argument("--set", type=str, default=str(EVAL_SET),
+                    help="评估集 JSON（默认构造语料；可指向真实正式资料语料）")
     args = ap.parse_args()
 
-    data = load_corpus()
+    data = load_corpus(Path(args.set))
     report = evaluate(data, args.top_k, args.lam, args.min_score)
     print(f"=== 评估集：{len(data['documents'])} 篇资料 / {len(data['tasks'])} 个任务"
           f"（top_k={args.top_k}, lambda={args.lam}, min_score={args.min_score}）===")
@@ -245,6 +359,8 @@ def main() -> int:
                 flags.append(f"group={r['max_from_one_group']}" + ("ok" if r["pass_group_max"] else " DUP"))
             if r.get("pass_rank") is not None:
                 flags.append("rank-ok" if r["pass_rank"] else "RANK-WRONG")
+            if "pass_coexist" in r:
+                flags.append("coexist-ok" if r["pass_coexist"] else f"COEXIST-MISS{ r['coexist_missing'] }")
             sel = ", ".join(f"{s['doc_id']}#{s['chunk_ordinal']}({s['score']})" for s in r["selected"]) or "∅"
             print(f"   {n:<22} {sel}")
             print(f"   {'':<22} {' '.join(flags)}")
