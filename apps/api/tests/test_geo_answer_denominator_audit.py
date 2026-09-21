@@ -255,6 +255,29 @@ def test_item_trend_uses_answered_models_as_denominator():
     assert points[1]["visibility"] is None, "本期无人回答应为未判定，不能画成 0%"
 
 
+def test_material_effect_counts_only_real_answers(monkeypatch):
+    from app.api.v1 import monitor
+    from app.services import store as store_mod
+
+    material = {"id": "m_1", "published_at": "2026-09-22T00:00:00+00:00", "coverage_questions": ["问题A"]}
+    history = [{
+        "batch": True,
+        "created_at": "2026-09-22T01:00:00+00:00",
+        "questions": [{
+            "question": "问题A", "mentioned_count": 1, "configured_count": 6, "answered_count": 1,
+            "engine_detail": [{"mentioned": True}] + [{"mentioned": None}] * 5,
+        }],
+        "citations": [],
+    }]
+    monkeypatch.setattr(store_mod, "get_store", lambda: _FakeStore({"kb": [material]}))
+    monkeypatch.setattr(monitor, "_load_history", lambda: history)
+
+    data = monitor._material_effects_sync("m_1")
+    assert data["mentioned_count"] == 1
+    assert data["total_checks"] == 1, "失败的 5 个模型不能被当作 5 次未提及"
+    assert data["mentioned_questions"] == ["问题A"]
+
+
 # ── 2. 竞品对比：共 N 条回答 / 胜负桶也只算真作答 ────────────────
 
 

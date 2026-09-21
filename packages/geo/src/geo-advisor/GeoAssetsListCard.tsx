@@ -15,6 +15,13 @@ function softError(data: { error?: unknown } | null): string | null {
 
 /** 内容资产全库统计（文件管理器顶部那行） */
 type AssetStats = { files?: number; chunks?: number; chars?: number; uploaded_files?: number }
+type MaterialEffects = {
+  published: boolean; data_empty?: boolean; message?: string | null; has_baseline: boolean
+  covered_questions: string[]; mentioned_questions: string[]; weak_questions: string[]
+  mentioned_count: number; total_checks: number; citations_count?: number
+  trend: Array<{ ts: string; mentioned_questions: number; total_questions: number; engine_checks: number }>
+  conclusion?: string | null
+}
 
 /** 素材来源标签（文件管理器里给用户看的，不暴露接口字段名） */
 const SOURCE_LABELS: Record<string, string> = {
@@ -72,6 +79,7 @@ export function GeoAssetsListCard() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailText, setDetailText] = useState<string | null>(null)
   const [detailChunks, setDetailChunks] = useState<number | null>(null)
+  const [detailEffects, setDetailEffects] = useState<MaterialEffects | null>(null)
   // 文件管理器：按来源筛选 + 全库统计 + 删除后的如实回执
   const [filter, setFilter] = useState('all')
   const [stats, setStats] = useState<AssetStats | null>(null)
@@ -126,17 +134,20 @@ export function GeoAssetsListCard() {
       setDetailId(null)
       setDetailText(null)
       setDetailChunks(null)
+      setDetailEffects(null)
       return
     }
     setDetailId(id)
     setDetailText(null)
     setDetailChunks(null)
+    setDetailEffects(null)
     try {
       // 接口返回的是 { item, effects }：以前这里读 d.content，永远是 undefined →
       // 详情永远显示「（无内容）」（2026-09-21 修）。
-      const d = await geoGet<{ item: GeoMaterial }>(`/knowledge/materials/${id}`)
+      const d = await geoGet<{ item: GeoMaterial; effects?: MaterialEffects }>(`/knowledge/materials/${id}`)
       setDetailText(d.item?.content ?? '（无内容）')
       setDetailChunks(d.item?.chunks ?? null)
+      setDetailEffects(d.effects ?? null)
     } catch (e) {
       setDetailText(`详情加载失败：${e instanceof Error ? e.message : '未知错误'}`)
     }
@@ -159,6 +170,7 @@ export function GeoAssetsListCard() {
         setDetailId(null)
         setDetailText(null)
         setDetailChunks(null)
+        setDetailEffects(null)
       }
       await load(query)
     } catch (e) {
@@ -432,6 +444,13 @@ export function GeoAssetsListCard() {
                     <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[var(--yayu-surface-raised)] p-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
                       {detailText ?? '加载中…'}
                     </div>
+                    {detailEffects ? <div className="material-effect-card">
+                      <div><b>内容效果</b><span>{detailEffects.published ? detailEffects.data_empty ? '已发布 · 等待监测' : '已发布 · 已有结果' : '尚未登记发布'}</span></div>
+                      {detailEffects.conclusion ? <p>{detailEffects.conclusion}</p> : <p>{detailEffects.message ?? '登记发布链接后，系统会用覆盖问题的后续监测结果判断效果。'}</p>}
+                      {detailEffects.published && !detailEffects.data_empty ? <div className="material-effect-metrics"><span><b>{detailEffects.mentioned_questions.length}/{detailEffects.covered_questions.length}</b>覆盖问题被提及</span><span><b>{detailEffects.mentioned_count}/{detailEffects.total_checks}</b>模型回答提及</span><span><b>{detailEffects.citations_count ?? 0}</b>次内容引用</span><span><b>{detailEffects.trend.length}</b>个监测周期</span></div> : null}
+                      {detailEffects.weak_questions.length ? <small>仍需改善：{detailEffects.weak_questions.slice(0, 3).join('；')}</small> : null}
+                      {detailEffects.published && !detailEffects.has_baseline ? <small>缺少发布前基线，只展示发布后的真实结果，不计算提升幅度。</small> : null}
+                    </div> : null}
                   </>
                 ) : null}
                 {active ? (

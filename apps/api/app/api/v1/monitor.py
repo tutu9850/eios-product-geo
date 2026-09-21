@@ -2093,7 +2093,7 @@ def _material_effects_sync(material_id: str) -> dict:
                         "ts": ts,
                         "question": q.get("question"),
                         "mentioned": q.get("mentioned_count", 0),
-                        "configured": q.get("configured_count", 0),
+                        "configured": q.get("answered_count") if q.get("answered_count") is not None else sum(1 for e in (q.get("engine_detail") or []) if e.get("mentioned") is not None),
                     })
     hits.sort(key=lambda x: x["ts"])
     after = [x for x in hits if x["ts"] >= published_at]
