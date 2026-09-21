@@ -617,14 +617,16 @@ function TrendDetail({ data }: { data: TrendData }) {
     <>
       <GeoKpis
         items={[
-          { label: '最新可见度', value: `${latest.visibility ?? '—'}%`, detail: direction, tone: visibility[visibility.length - 1] >= visibility[0] ? 'good' : 'warn' },
+          // 2026-09-21：接口字段叫 visibility，口径就是「回答里提到本企业的比例」= 提及率，
+          // 页面上叫「可见度」会让用户以为是另一个指标、和总览的 AI 提及率对不上账。
+          { label: '最新提及率', value: `${latest.visibility ?? '—'}%`, detail: direction, tone: visibility[visibility.length - 1] >= visibility[0] ? 'good' : 'warn' },
           { label: '被提及', value: `${latest.mention ?? '—'} 条`, detail: '最近一次监测' },
           { label: '正面 / 负面', value: `${latest.positive ?? 0} / ${latest.negative ?? 0}`, detail: '最近一次监测的回答倾向', tone: (latest.negative ?? 0) > (latest.positive ?? 0) ? 'bad' : 'good' },
           { label: '监测期数', value: `${points.length} 期`, detail: `首次 ${shortDay(first.ts)}` },
         ]}
       />
       <div className="geo-subhead">
-        <h3>可见度走势</h3>
+        <h3>提及率走势</h3>
         <small>{range === 'all' ? `共 ${all.length} 期` : `显示 ${points.length} / 共 ${all.length} 期`}</small>
       </div>
       <div className="trend-range" role="group" aria-label="趋势周期">
@@ -633,16 +635,18 @@ function TrendDetail({ data }: { data: TrendData }) {
         ))}
       </div>
       <GeoLine points={points.map((point) => ({ label: shortDay(point.ts).slice(5), value: Number(point.visibility ?? 0) }))} unit="%" />
+      {/* 2026-09-21：原来这里还有一列「引用」，后端 _aggregate_item_trend 的 citation
+          是写死的 0（注释写着「item 级待细化」）——一列永远显示 0 的数字，
+          用户会读成「一条引用都没有」。没实现就不展示，等它真有了再加回来。 */}
       <GeoTable
-        columns={['时间', '可见度', '提及', '正面', '负面', '引用']}
-        template="96px 74px 60px 60px 60px 60px"
+        columns={['时间', '提及率', '提及', '正面', '负面']}
+        template="96px 74px 60px 60px 60px"
         rows={points.map((point) => [
           <em>{shortDay(point.ts)}</em>,
           <b>{`${point.visibility ?? '—'}%`}</b>,
           <em>{point.mention ?? '—'}</em>,
           <em>{point.positive ?? 0}</em>,
           <em data-tone={(point.negative ?? 0) > 0 ? 'bad' : undefined}>{point.negative ?? 0}</em>,
-          <em>{point.citation ?? 0}</em>,
         ])}
       />
       {latest.snippet ? (
@@ -664,8 +668,10 @@ function TaskDetail({ data }: { data: TaskOverview }) {
         items={[
           { label: '监测对象', value: `${data.item_count ?? states.length} 个`, detail: statusText(data.task?.status) },
           { label: '最近运行', value: data.last_run_at ? shortDay(data.last_run_at) : '—', detail: data.last_run_at ? '任务最近一次执行' : '这个任务还没跑过' },
-          { label: '推荐度', value: summary?.coverage_pct == null ? '—' : `${summary.coverage_pct}%`, detail: summary ? `提及 ${summary.mentioned_questions ?? 0}/${summary.total_questions ?? 0} 个问题` : '还没有运行汇总' },
-          { label: '平均排名', value: summary?.rank_avg == null ? '—' : `${summary.rank_avg}`, detail: '企业名首次出现的位置' },
+          // 2026-09-21 口径修正：summary.coverage_pct 是「回答里提到本企业的问题占比」，
+          // rank_avg 是「企业名第一次出现在第几句话」的平均——都不是「推荐度/排名」。
+          { label: 'AI 提及率', value: summary?.coverage_pct == null ? '—' : `${summary.coverage_pct}%`, detail: summary ? `提到本企业 ${summary.mentioned_questions ?? 0}/${summary.total_questions ?? 0} 个问题（提及 ≠ 推荐）` : '还没有运行汇总' },
+          { label: '首句提及位置', value: summary?.rank_avg == null ? '—' : `第 ${summary.rank_avg} 句`, detail: '企业名首次出现在第几句的平均；未提及的问题不计入' },
         ]}
       />
       <GeoTable

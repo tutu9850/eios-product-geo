@@ -210,10 +210,14 @@ async def portrait():
         ai = ai_by_key.get(d["key"])
         claims = int(ai.get("claims", 0) or 0) if ai else 0
         grounded = int(ai.get("grounded", 0) or 0) if ai else 0
-        if not provided:
-            deviation = "AI 在说但资料没有" if claims > 0 else "一致"
-        elif claims == 0:
-            deviation = "AI 未评估"
+        # 2026-09-21 修（Owner：「输出正常但不正确」）：
+        # 原来「资料未提供 + AI 也没说过」判成「一致」——可这一格根本没有可比对的东西，
+        # 页面上却是一个 ✓「一致」（实测：六行全是「资料未提供 / 未评估 0/0 / ✓一致」）。
+        # 本文件开头的红线就是「无数据 → 空态，不编 0 分；未评估 ≠ 未认知」，所以先判 claims == 0。
+        if claims == 0:
+            deviation = "未评估"
+        elif not provided:
+            deviation = "AI 在说但资料没有"
         elif grounded == 0:
             deviation = "资料有但 AI 未认知"
         else:

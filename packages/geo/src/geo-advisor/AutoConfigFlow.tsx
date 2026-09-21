@@ -700,7 +700,14 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             ]}
           />
           <div className="flex items-center gap-1.5 text-[12px] text-[var(--yayu-muted)]">
-            <Check className="size-3.5" /> 自动配置完成，日常流程已启动——每天监测、分析后推荐内容。
+            <Check className="size-3.5" />
+            {/* 2026-09-21：原来不管上一步选了什么，这里都写「每天监测」——
+                选「不设定时」时这句话就是假的（上面那行已经如实写着「未设定」）。 */}
+            {schedule === 'daily'
+              ? '自动配置完成，日常流程已启动——每天监测、分析后推荐内容。'
+              : schedule === 'weekly'
+                ? '自动配置完成，每周会跑一轮监测并出报告；日常分析仍可随时手动触发。'
+                : '自动配置完成。你选择了不设定时任务——监测不会自动跑，需要时到「AI 监测」手动运行。'}
           </div>
           <GeoButtonRow>
             {(create?.created?.length ?? 0) === 0 && (status?.items ?? 0) === 0 && (status?.questions ?? 0) === 0 ? (

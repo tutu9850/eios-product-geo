@@ -188,7 +188,10 @@ export function GeoInsightWorkspace() {
         <GeoKpis
           items={[
             { label: '品牌曝光率', value: pct(human?.metrics.exposure_rate), detail: '回答里出现我方的比例' },
-            { label: '推荐率', value: pct(human?.metrics.recommendation_rate), detail: '被正面推荐的比例', tone: (human?.metrics.recommendation_rate ?? 0) > 0 ? 'good' : 'warn' },
+            // 2026-09-21：recommendation_rate 的口径是「回答里明确推荐了我方」（认知层级到了
+            // recommended，需要带推荐理由），与「正面评价」不是一回事——原文写「被正面推荐」会
+            // 让用户以为这里做了情感判断。改成口径原话。
+            { label: '推荐率', value: pct(human?.metrics.recommendation_rate), detail: '回答里明确推荐了我方（不只是被提及）', tone: (human?.metrics.recommendation_rate ?? 0) > 0 ? 'good' : 'warn' },
             { label: '落后能力点', value: `${human?.metrics.gap_count ?? '—'}`, detail: '竞品有、我方缺', tone: (human?.metrics.gap_count ?? 0) > 0 ? 'warn' : 'good' },
             { label: '声量份额 SOV', value: selfSov ? pct(selfSov.recommend_share) : '—', detail: `${sov?.period_days ?? 30} 天窗口`, tone: 'good' },
           ]}

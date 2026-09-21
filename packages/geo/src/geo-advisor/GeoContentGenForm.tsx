@@ -619,6 +619,11 @@ export function GeoContentGenForm() {
                       <li key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">· {m}</li>
                     ))}
                   </ul>
+                  {/* 2026-09-21：知识库里一条带数字的事实都没有时，missing_facts 是空的，
+                      上面就只剩「建议补充：」后面一片空白。后端其实给了 suggestion，把它如实显示出来。 */}
+                  {!(result.fact_check.missing_facts ?? []).length && result.fact_check.suggestion ? (
+                    <div className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">{result.fact_check.suggestion}</div>
+                  ) : null}
                 </>
               ) : (
                 <div className="text-[10.5px] text-[var(--yayu-muted)]">已覆盖知识库中的带数据事实</div>

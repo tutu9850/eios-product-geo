@@ -4,6 +4,18 @@ import { geoGet, geoPost } from './geo-api'
 import { GeoBars, GeoKpis, GeoTable, askGeoConfirm, shortDay } from './shared'
 
 type Row=Record<string,any>
+/**
+ * 画像来源是后端内部标识（company_profile.py 的 sources），页面上不给用户看英文代号。
+ * 2026-09-21：这张卡原来直接打印「来源 kernel_search、kernel_relations、geo_questions、geo_kb」。
+ */
+const PROFILE_SOURCE_LABEL: Record<string, string> = {
+  kernel_search: '企业知识库检索',
+  kernel_relations: '企业知识库关系',
+  geo_questions: 'GEO 客户问题池',
+  geo_kb: 'GEO 内容资产',
+}
+const profileSourceText = (value: string) => PROFILE_SOURCE_LABEL[value] ?? `其他来源（${value}）`
+
 export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
   const [engines,setEngines]=useState<Row[]>([]),[profile,setProfile]=useState<Row|null>(null),[busy,setBusy]=useState(''),[notice,setNotice]=useState('')
   const [company,setCompany]=useState(''),[keywords,setKeywords]=useState(''),[platform,setPlatform]=useState('sogou'),[limit,setLimit]=useState(3)
@@ -27,7 +39,7 @@ export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
     <section><header><CheckCircle2/><div><h3>素材索引与企业画像</h3><p>索引由系统维护；这里提供人工补跑和画像状态检查。</p></div></header><div className="profile-preview"><ProfileBody profile={profile}/><button className="geo-btn secondary" disabled={busy==='vector'} onClick={()=>void act('vector',()=>geoPost('/knowledge/materials/vectorize',{}),'素材索引已更新')}>更新素材索引</button></div></section>
     {/* Owner 2026-09-21：重置接口已在产品门放行，前端补入口（原先只有接口没有按钮）。
         出厂重置是最高危操作，点两次才算数——第一次说明范围，第二次是真正确认，然后才带 confirm=true 调用。 */}
-    <section className="disabled-tool"><header><Trash2/><div><h3>重置 GEO 数据</h3><p>恢复出厂状态：清空问题池、知识缺口、内容计划、监测历史、内容资产、关注/采集/链接与素材向量。<b>不可撤销</b>；不动企业知识库（Kernel）与其他产品。</p></div></header><div className="loop-control"><button className="geo-btn secondary" disabled={busy==='reset'} onClick={()=>void resetGeoData()}>{busy==='reset'?<LoaderCircle className="spin"/>:<Trash2/>}重置 GEO 数据</button></div></section>
+    <section className="disabled-tool"><header><Trash2/><div><h3>重置 GEO 数据</h3><p>恢复出厂状态：清空问题池、知识缺口、内容计划、监测历史、内容资产、关注/采集/链接与素材向量。<b>不可撤销</b>；不动企业自己的知识库与其他产品。</p></div></header><div className="loop-control"><button className="geo-btn secondary" disabled={busy==='reset'} onClick={()=>void resetGeoData()}>{busy==='reset'?<LoaderCircle className="spin"/>:<Trash2/>}重置 GEO 数据</button></div></section>
     <section className="disabled-tool"><header><Search/><div><h3>官网诊断</h3><p>后端当前仍是 P0 占位接口，尚未产生真实诊断报告，因此不开放运行按钮。</p></div></header></section>
   </aside>
 }
@@ -83,7 +95,7 @@ function ProfileBody({ profile }: { profile: Row | null }) {
           ? `知识库这次读不到：${String(profile.kernel_error ?? '未知原因')}（这是读取失败，不代表企业没有数据）`
           : '知识库读取正常'}
         {profile.built_at ? ` · 画像构建于 ${shortDay(String(profile.built_at))}` : ''}
-        {sources.length ? ` · 来源 ${sources.join('、')}` : ''}
+        {sources.length ? ` · 来源 ${sources.map(profileSourceText).join('、')}` : ''}
       </p>
 
       {keyFacts.length ? (

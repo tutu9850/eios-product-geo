@@ -210,7 +210,13 @@ export interface GeoQuestion {
 export interface GeoGap {
   question: string
   entity: string
-  missing_information: string
+  /** 缺哪类企业信息。模型没答上来时后端留空（以前会退化回问题原文，看着有值其实是废话） */
+  missing_information: string | null
+  /** 缺口判定依据：fact_triple=按知识库事实三元组；document_text=知识库只给了文档分块 */
+  judge_basis?: 'fact_triple' | 'document_text'
+  /** 判定时真正命中的问题内容词（可复盘） */
+  matched_terms?: string[]
+  missing_capabilities?: string[]
   source: string
   retrieval_score: number
   matched_refs: Array<{ score: number; name: string }>

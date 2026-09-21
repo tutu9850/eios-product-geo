@@ -60,6 +60,10 @@ interface FactCheck {
     affected_questions: number
     affected_sources: number
     total_checked: number
+    /** 本轮拉到的候选回答数（受上限截断），用来解释「已核验」为什么比总回答少 */
+    candidate_total?: number
+    /** 有回答但没有任何可核验断言（不计命中也不计失真） */
+    no_claim_count?: number
     kernel_ok: boolean
   }
   source_rank: Array<{ rank: number; source: string; count: number; main_type: string }>
@@ -276,12 +280,22 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
     <div className="analysis-stack">
       <GeoKpis
         items={[
-          { label: '已核验回答', value: `${truth.total_checked}`, detail: data.company_name ?? '本企业' },
-          { label: '知识库命中', value: `${truth.hit_kb}`, detail: truth.kernel_ok ? '知识库读取正常' : '知识库读取异常', tone: truth.kernel_ok ? 'good' : 'bad' },
+          // 2026-09-21 口径修正：原来「已核验回答」算的是送检条数（超时/无文本也算），
+          // 「知识库命中」把「没有任何事实断言」的回答也算成命中。现在两个数都只算真跑完检查、
+          // 且真的有断言可比对的回答；没有断言的条数单独如实写出来。
+          { label: '已核验回答', value: `${truth.total_checked}`, detail: `共拉到 ${truth.candidate_total ?? truth.total_checked} 条回答（超时/空回答不计入）` },
+          { label: '知识库命中', value: `${truth.hit_kb}`, detail: '断言能在企业知识库对上', tone: truth.kernel_ok ? 'good' : 'bad' },
           { label: '疑似失真', value: `${truth.abnormal_count}`, detail: `影响 ${truth.affected_questions} 个问题 / ${truth.affected_sources} 个平台`, tone: truth.abnormal_count ? 'warn' : 'good' },
         ]}
       />
+      {truth.candidate_total != null && (truth.candidate_total - truth.total_checked > 0 || (truth.no_claim_count ?? 0) > 0) ? (
+        <p className="geo-note">
+          {truth.candidate_total - truth.total_checked > 0 ? `另有 ${truth.candidate_total - truth.total_checked} 条没跑完检查（超时或没有正文）。` : ''}
+          {truth.no_claim_count ? `另有 ${truth.no_claim_count} 条回答里没有可核验的企业断言（既不算命中，也不算失真）。` : ''}
+        </p>
+      ) : null}
       {!truth.available ? <div className="geo-empty">这一轮没有可用于对照的企业知识，结论先不下。</div> : null}
+      {truth.kernel_ok ? null : <p className="geo-note">知识库这次读不到，命中/失真两个数不完整。</p>}
       {truth.abnormal_count ? (
         <>
           <div className="geo-subhead"><h3>失真平台排行</h3><small>哪个模型最容易说错</small></div>

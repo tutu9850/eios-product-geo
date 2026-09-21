@@ -9,8 +9,10 @@ type Filter = 'all' | 'high' | 'unverified' | 'verified'
 const FILTERS: Array<{ id: Filter; label: string }> = [
   { id: 'all', label: '全部' },
   { id: 'high', label: '高优先' },
-  { id: 'unverified', label: '未验证' },
-  { id: 'verified', label: '已验证' },
+  // 2026-09-21：后端 validated 的真实含义是「这个问题被真实监测到过」（见 distill.list_questions），
+  // 不是「答案已被验证」。原来叫「已验证/未验证」，与「缺口产出只能标 C、禁止标已验证」的红线相悖。
+  { id: 'unverified', label: '未监测' },
+  { id: 'verified', label: '已监测' },
 ]
 
 /** 决策链阶段分类（关键词规则，客户端过滤） */
@@ -189,7 +191,7 @@ export function GeoQuestionsListCard() {
                 <div className="mt-0.5 text-[11px] text-[var(--yayu-muted)]">
                   阶段：{q.customer_stage} · 意图：{q.intent}
                   {q.evidence_level ? ` · 证据：${q.evidence_level}` : ''}
-                  {q.validated ? ' · ✅已验证' : ' · 未验证'}
+                  {q.validated ? ' · 已监测' : ' · 未监测'}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">

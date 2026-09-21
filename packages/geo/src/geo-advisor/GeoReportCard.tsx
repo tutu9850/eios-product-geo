@@ -5,6 +5,10 @@ import { geoDownload, geoGet, geoPost, type GeoOnboardStatus } from './geo-api'
 import { GeoBars, GeoButtonRow, GeoCardShell, GeoError, GeoKpis, GeoList, GeoLoading, GeoQuote, GeoTable } from './shared'
 import { saveBlobToDisk } from '../lib/save-to-disk'
 
+/** 报告证据来源枚举 → 业务文字（后端 reasoning.py / prompts.py 固定写 ["ai_answer"]） */
+const REPORT_SCOPE_LABEL: Record<string, string> = { ai_answer: 'AI 回答（监测证据）' }
+const reportScopeText = (value: string) => REPORT_SCOPE_LABEL[value] ?? `其他来源（${value}）`
+
 /** 阶段报告卡：自动配置/监测整体状态汇总 + 导出 */
 export function GeoReportCard() {
   const [status, setStatus] = useState<GeoOnboardStatus | null>(null)
@@ -164,7 +168,9 @@ function ReportBody({ report }: { report: GeoReport }) {
   const missing = (report.missing ?? []).map(reportText).filter(Boolean)
   const keywords = (report.keywords ?? []).map(reportText).filter(Boolean)
   const period = report.period_days ? `统计周期 ${report.period_days} 天` : ''
-  const scope = report.source_scope?.length ? `来源 ${report.source_scope.join(' / ')}` : ''
+  // 2026-09-21：source_scope 是证据来源枚举（后端固定 ai_answer = 监测到的 AI 回答），
+  // 页面上不打印英文代号（原来显示「来源 ai_answer」）。
+  const scope = report.source_scope?.length ? `来源 ${report.source_scope.map(reportScopeText).join(' / ')}` : ''
   const meta = [period, scope, report.model ? `模型 ${report.model}` : '', report.prompt_version ? `提示词 v${report.prompt_version}` : ''].filter(Boolean).join(' · ')
 
   return (
@@ -177,7 +183,7 @@ function ReportBody({ report }: { report: GeoReport }) {
           { label: '分析的回答', value: `${report.brand_overview?.total_evidence ?? 0} 条`, detail: '报告引用的 AI 回答数' },
           { label: '认知标签', value: `${tags.length} 个`, detail: 'AI 回答里出现的认知词', tone: tags.length ? 'good' : 'warn' },
           { label: '认知偏差', value: `${bias.length} 处`, detail: '我方与竞品被提及方式不一致', tone: bias.length ? 'warn' : 'good' },
-          { label: '知识缺口', value: `${knowledgeGaps.length} 个`, detail: '竞品有、我方缺的能力' },
+          { label: '知识缺口（报告口径）', value: `${knowledgeGaps.length} 个`, detail: '竞品有、我方缺的能力——与「增长行动 → 知识缺口」不是同一个东西' },
         ]}
       />
 
@@ -252,7 +258,10 @@ function ReportBody({ report }: { report: GeoReport }) {
 
       {knowledgeGaps.length ? (
         <>
-          <div className="geo-subhead"><h3>知识缺口</h3><small>竞品有、我方缺的能力</small></div>
+          {/* 2026-09-21：这份报告里的「知识缺口」和「增长行动 → 知识缺口」是同名不同物——
+              这里是模型读完监测证据后自己写的能力差距，上面 KPI 已经标明「报告口径」，
+              正文章节也跟上，免得用户拿两边的数字对账。 */}
+          <div className="geo-subhead"><h3>知识缺口（报告口径）</h3><small>竞品有、我方缺的能力 · 与「增长行动 → 知识缺口」不是同一个东西</small></div>
           <GeoTable
             columns={['维度', '竞品', '补法']}
             template="minmax(0,1fr) 110px minmax(0,1.6fr)"

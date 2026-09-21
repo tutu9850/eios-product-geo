@@ -624,7 +624,13 @@ def generate_brand_queries(cfg: dict, tier: str = "standard") -> dict:
     # 6 风险认知（为什么不选我）
     risk = []
     if company:
-        risk += [f"{company}有哪些缺点？", f"使用{company}需要注意什么？"]
+        # 2026-09-21（Owner 点名「怎么还会问这么愚蠢的问题」）：删掉
+        # 「使用{company}需要注意什么？」—— 公司不是能「使用」的东西，这句话本身不成立；
+        # 而且这类探针不问事实，只逼模型替我们编一份「注意事项」，
+        # 于是监测里出现「输出正常但不正确」的条目（实测：模型答「建议查工商信息/警惕风险」，
+        # 被记成 negative，再进总览当负面情绪）。
+        # 留下的四句都是真实用户在决策前会搜的话，测的是「AI 会不会说我们坏话」，不是让 AI 编坏话。
+        risk += [f"{company}有哪些缺点？", f"{company}有什么负面评价？"]
         risk += [f"{company}适合哪些企业？", f"{company}不适合哪些企业？"]
     cats["risk"] = risk[:n]
 
@@ -655,7 +661,8 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
         product = cfg.get("product") or item.get("entity") or ""
         if product:
             queries = [
-                f"{product}推荐？",
+                # 「{product}推荐？」缺宾语（问出来是半句话，模型只能反问「你想推荐什么」）
+                f"{product}推荐哪些公司？",
                 f"{product}价格多少？",
                 f"{product}哪个好？",
             ]
@@ -686,9 +693,9 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
                 queries.append(f"{product}应该选{target}还是{comp}？")
             # ③ 能力类
             queries.append(f"{target}和{comp}分别有什么优势？")
-            # ④ 场景类（结合我方产品/行业）
-            if product and comp:
-                queries.append(f"企业知识管理应该选择{target}还是{comp}？")
+            # ④ 场景类（结合我方行业）
+            # 2026-09-21：原来这里写死了「企业知识管理应该选择X还是Y？」—— 家装公司也会被问
+            # 「企业知识管理…」，跟它的生意毫无关系，而且当行业存在时与上一句完全重复。
             if industry:
                 queries.append(f"{industry}领域，{comp}和{target}谁更适合？")
     elif t == "keyword":
@@ -716,7 +723,13 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
         q = cfg.get("query") or ""
         if q:
             queries = [q]
-    return queries
+    # 去重保序：竞品分支是逐条 append 的，写法一变就可能出现同一句问两遍（白烧模型额度）
+    deduped: list[str] = []
+    for q in queries:
+        q = (q or "").strip()
+        if q and q not in deduped:
+            deduped.append(q)
+    return deduped
 
 
 def _load_published_materials() -> list[dict]:
@@ -2642,6 +2655,9 @@ _CLAIM_ANCHORS = (
     "认证", "通过", "获得", "荣获", "评为", "入选", "认定", "获批", "授予", "中标",
     "第一", "领先", "首家", "最大", "唯一", "销量", "客户", "用户", "门店", "覆盖",
     "成立于", "年成立", "注册资本", "员工", "人", "家", "款", "亿", "万",
+    # 2026-09-21：价格类断言原来一条都不检测 ——「9800 元」既不含「万/亿」也不含上面任何词，
+    # 于是「亚宇臻隆科技主营X，价格 9800 元」被判成「无事实断言」直接放过。
+    "价格", "报价", "费用", "收费", "元", "免费", "折扣", "返点",
 )
 
 
@@ -2678,18 +2694,15 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
         for s in claim_sentences[:3]:
             res = await search_knowledge(s, top_k=3, include_candidates=False)
             hits = (res or {}).get("hits") or []
-            best = 0.0
-            hit_blob = ""
-            for h in hits:
-                try:
-                    sc = float(h.get("score", 0) or 0)
-                except (TypeError, ValueError):
-                    sc = 0.0
-                if sc > best:
-                    best = sc
-                    hit_blob = " ".join(
-                        str(h.get(k, "") or "") for k in ("canonical_name", "name", "predicate", "value", "text")
-                    )
+            # 证据文本取**全部**命中片段，不只看最高分那条：断言里的数字出现在哪一条都算有依据，
+            # 只看第一条会造成「明明有依据却说没依据」的假阳性。
+            # 注意：不比较 score —— EIOS 知识库的 n 是无界 rank 分（见下方说明），
+            # 它不是 0~1 的置信度，拿阈值卡它是上一版的老 Kernel 假设。
+            hit_blob = " ".join(
+                str(h.get(k, "") or "")
+                for h in hits
+                for k in ("canonical_name", "name", "predicate", "value", "text")
+            )
             # 实体相关性收紧（防"公司名必在知识库"导致全命中）：
             # 断言句去掉公司名后的 4 字窗口必须出现在命中文本里，才算有依据
             # （"通过了国家高新技术企业认证" → 窗口"高新技术/技术企业/企业认证"命中才算）
@@ -2698,7 +2711,17 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
                 claim_core = claim_core.replace(c, "")
             ngrams = {claim_core[i : i + 4] for i in range(max(0, len(claim_core) - 3)) if len(claim_core[i : i + 4]) == 4}
             related = any(g in hit_blob for g in ngrams) if ngrams else False
-            if best < 0.5 or not related:
+            # 2026-09-21 修：原来这里还有一条 `best < 0.5`。
+            # 那个 0.5 是老 Kernel 的归一化分阈值，而 EIOS 知识库的 n 是无界 rank 分
+            # （契约 eios.knowledge_retrieval_hit/v2：`n` 只有 minimum，fixture 里就是 1.5 / 3.5；
+            #  本机实测同一批检索在 10.0~14.0），所以 `best < 0.5` **永远不成立** ——
+            # 等于只要检索回来任何东西，所有断言都算「有依据」。
+            # 实测：凭空编的「亚宇臻隆科技成立于 2005 年，注册资本 1 亿元，员工 800 人」
+            # 被判成「断言均有知识库依据」。现在改成**断言里的数字必须原样出现在证据里**：
+            # 证据里查不到的年份/金额/人数就是没有依据，不再靠词面巧合（4-gram 命中）放行。
+            digits = re.findall(r"\d+(?:\.\d+)?", claim_core)
+            missing_digits = [d for d in digits if not re.search(r"(?<!\d)" + re.escape(d) + r"(?!\d)", hit_blob)]
+            if not related or missing_digits:
                 ungrounded.append(s)
         if ungrounded:
             return {
@@ -2788,7 +2811,14 @@ async def fact_check():
     results = [{**rec, **ck} for rec, ck in zip(records, checked)]
 
     abnormal = [r for r in results if r.get("abnormal")]
-    hit = [r for r in results if r.get("checked") and not r.get("abnormal")]
+    # 2026-09-21 口径修正（Owner：「输出正常但不正确」）：
+    # `hit` 原来是「跑过检查且没判异常」——可「无事实断言」的回答（模型压根没说企业的事实，
+    # 比如只答「请查工商信息」）也满足这个条件，于是它被算进「知识库命中」。
+    # 「已核验回答」同理：原来算的是**送检条数**，超时/无文本（checked=False）也算「已核验」。
+    checked_ok = [r for r in results if r.get("checked")]
+    no_claim = [r for r in checked_ok if r.get("reason") == "无事实断言"]
+    claim_checked = [r for r in checked_ok if r.get("reason") != "无事实断言"]
+    hit = [r for r in claim_checked if not r.get("abnormal")]
 
     # 四指标
     hit_kb = len(hit)
@@ -2847,7 +2877,9 @@ async def fact_check():
             "abnormal_count": abnormal_count,
             "affected_questions": affected_questions,
             "affected_sources": affected_sources,
-            "total_checked": len(results),
+            "total_checked": len(checked_ok),       # 真的跑完检查的回答数（不含超时/无文本）
+            "candidate_total": len(base["records"]),  # 本轮拉到多少条候选回答（受上限截断）
+            "no_claim_count": len(no_claim),        # 有回答但没有任何可核验断言（不计命中也不计失真）
             "kernel_ok": all(r.get("kernel_ok", True) for r in results) if results else True,
         },
         "source_rank": source_rank,

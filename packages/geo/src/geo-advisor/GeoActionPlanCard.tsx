@@ -111,14 +111,13 @@ export function GeoActionPlanCard() {
 
       {/* 下一周期：基线 → 目标 */}
       <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
-        <div className="mb-1 text-[11px] font-medium text-[var(--yayu-muted)]">下一周期目标（基线 → 目标）</div>
-        <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-[11px]">
-          <span className="text-[var(--yayu-muted)]">AI 提及率：基线实测 → 目标 ≥70%</span>
-          <span className="text-[var(--yayu-muted)]">价格阶段覆盖：20% → ≥70%</span>
-          <span className="text-[var(--yayu-muted)]">案例阶段覆盖：15% → ≥60%</span>
-        </div>
-        <p className="pt-1 text-[9.5px] text-[var(--yayu-faint)]">
-          下次监测自动核对：行动上线后 AI 回答是否引用新信息、各阶段覆盖率是否变化。
+        <div className="mb-1 text-[11px] font-medium text-[var(--yayu-muted)]">下一周期目标</div>
+        {/* 2026-09-21：这一块原来写着「价格阶段覆盖：20% → ≥70%」「案例阶段覆盖：15% → ≥60%」，
+            那两个 20%/15% 是**写在前端代码里的常量**，不是量出来的基线，读起来却像实测值；
+            「AI 提及率：基线实测」那句更是连值都没有。而底下那句「下次监测自动核对…」
+            在代码里没有任何实现——系统不会去做这件事。全部删掉，只留能兑现的一句话。 */}
+        <p className="text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+          行动上线后，回到「AI 监测」重跑一轮，对比提及率与各阶段覆盖的变化——核对由你触发，系统不会自动宣布达标。
         </p>
       </div>
     </GeoCardShell>

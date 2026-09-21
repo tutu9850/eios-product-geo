@@ -61,13 +61,16 @@ export function GeoEnterpriseOverview({ onNavigate }: { onNavigate: (target: str
     <div className="geo-page-head"><div><span>AI DISCOVERY INTELLIGENCE</span><h1>企业 AI 可见度总览</h1><p>看见品牌在国产大模型回答中的位置，找到差距，并推动下一步增长。</p></div><button className="geo-btn secondary" onClick={() => void load()} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />}刷新数据</button></div>
     {error && <div className="geo-inline-error"><CircleAlert />{error}</div>}
     <div className="geo-metrics">
-      <Metric label="品牌推荐率" value={pct(recommend)} detail={`${recommendDelta >= 0 ? '↑' : '↓'} ${Math.abs(recommendDelta)} 较上周期`} tone={recommendDelta >= 0 ? 'good' : 'warn'} />
-      <Metric label="平均推荐排名" value={avgRank == null ? '—' : String(Math.round(avgRank * 10) / 10)} detail="跨国产模型综合" />
+      {/* 2026-09-21 口径修正（Owner：「输出正常但不正确」）：
+          这两个数原来的名字会让人读成「AI 推荐我们」，实际口径是「AI 回答里提到过我们的问题占比」，
+          以及「我们的名字第一次出现在第几句」。改名字，并在副标里写清真实含义。 */}
+      <Metric label="AI 提及率" value={pct(recommend)} detail={`提及 ≠ 推荐 · ${recommendDelta >= 0 ? '↑' : '↓'} ${Math.abs(recommendDelta)} 较上周期`} tone={recommendDelta >= 0 ? 'good' : 'warn'} />
+      <Metric label="首次出现句序" value={avgRank == null ? '—' : String(Math.round(avgRank * 10) / 10)} detail="名字出现在第几句 · 估算" />
       <Metric label="引用率" value={pct(citeRate)} detail={`${data.monitor?.citations_count ?? 0} 次内容引用`} />
       <Metric label="待补知识缺口" value={gaps == null ? '—' : String(gaps)} detail={`${data.stats?.knowledge.materials ?? 0} 份企业素材`} tone={gaps ? 'warn' : 'good'} />
     </div>
     <div className="geo-overview-grid">
-      <article className="geo-panel trend-panel"><header><div><h2>国产大模型表现</h2><p>各平台最近一次监测的品牌推荐率</p></div><span>最近批次</span></header>
+      <article className="geo-panel trend-panel"><header><div><h2>国产大模型表现</h2><p>各平台最近一次监测的 AI 提及率（提到≠推荐）</p></div><span>最近批次</span></header>
         {platformRows.length ? <div className="geo-platform-chart">{platformRows.slice(0, 6).map((item) => <div className="geo-platform" key={item.name}><div className="geo-platform-bar"><i style={{ height: `${Math.max(8, item.value)}%` }} /></div><b>{pct(item.value)}</b><span>{item.name}</span></div>)}</div> : <div className="geo-chart-empty">完成一次监测后，这里会展示各国产大模型的真实表现。</div>}
       </article>
       <article className="geo-panel action-panel"><header><div><h2>现在最值得做</h2><p>从监测结论直接进入业务动作</p></div></header>

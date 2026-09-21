@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, ArrowRight, CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, ArrowRight, CheckCircle2, Minus, RefreshCw, ShieldCheck } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoGet, geoPost } from './geo-api'
 import { GeoError, GeoLoading, useGeoNav } from './shared'
@@ -114,7 +114,11 @@ export function GeoCognitionCard() {
     <div className="cognition-layout"><section className="cognition-panel dimension-panel"><header><div><h2>八维认知表现</h2><p>分数越低，越需要补充权威事实或公开证据</p></div><span className="cognition-legend">真实监测结果</span></header><div className="dimension-grid">{dims.map((d) => <article key={d.key}><div><span>{d.label}</span><strong>{d.score}</strong></div><i><em data-score={d.score >= 70 ? 'good' : d.score >= 40 ? 'mid' : 'low'} style={{ width: `${Math.min(100,d.score)}%` }} /></i><p>{d.basis}</p></article>)}</div></section>
       <aside className="cognition-panel verdict-panel"><header><div><h2>本期判断</h2><p>给业务团队的直接结论</p></div></header><div className="verdict"><ShieldCheck /><div><b>{total !== null && total >= 70 ? '核心定位已形成稳定认知' : '核心认知尚未完全建立'}</b><p>{health?.note ?? '持续监测并补齐低分维度的事实与证据。'}</p></div></div><div className="verdict"><AlertTriangle /><div><b>{profile?.errors.length ?? 0} 条错误认知待处理</b><p>优先修正影响购买决策或企业可信度的错误信息。</p></div></div></aside>
     </div>
-    <section className="cognition-panel portrait-panel"><header><div><h2>企业资料与 AI 认知偏差</h2><p>资料中已经明确表达，但模型仍未正确理解的内容</p></div></header><div className="portrait-table"><div className="portrait-row portrait-header"><span>认知维度</span><span>企业正式资料</span><span>AI 当前状态</span><span>判断</span></div>{portrait?.items.map((row) => <div className="portrait-row" key={row.key}><b>{row.label}</b><span>{row.profile || '暂无正式资料'}</span><span>{row.ai_status} · {row.ai_grounded}/{row.ai_claims}</span><em data-ok={row.deviation === '一致'}>{row.deviation === '一致' ? <CheckCircle2 /> : <AlertTriangle />}{row.deviation}</em></div>)}</div></section>
+    <section className="cognition-panel portrait-panel"><header><div><h2>企业资料与 AI 认知偏差</h2><p>资料中已经明确表达，但模型仍未正确理解的内容</p></div></header><div className="portrait-table"><div className="portrait-row portrait-header"><span>认知维度</span><span>企业正式资料</span><span>AI 当前状态</span><span>判断</span></div>{portrait?.items.map((row) => <div className="portrait-row" key={row.key}><b>{row.label}</b><span>{row.profile || '暂无正式资料'}</span><span>{row.ai_status} · {row.ai_grounded}/{row.ai_claims}</span>{/* 2026-09-21：「未评估」不是问题，别给它挂警示三角；只有真出现偏差才提示。 */}
+                <em data-ok={row.deviation === '一致'}>
+                  {row.deviation === '一致' ? <CheckCircle2 /> : row.deviation === '未评估' ? <Minus /> : <AlertTriangle />}
+                  {row.deviation}
+                </em></div>)}</div></section>
     <div className="cognition-layout bottom"><section className="cognition-panel matrix-panel"><header><div><h2>认知证据构成</h2><p>正确、部分正确与幻觉内容的占比</p></div></header>{profile?.matrix.map((row) => <div className="matrix-row" key={row.key}><span>{row.label}</span><i><em className="grounded" style={{ width: `${row.grounded/Math.max(1,row.claims)*100}%` }} /><em className="partial" style={{ width: `${row.partial/Math.max(1,row.claims)*100}%` }} /><em className="hallucination" style={{ width: `${row.hallucination/Math.max(1,row.claims)*100}%` }} /></i><b>{row.status}</b></div>)}</section><section className="cognition-panel errors-panel"><header><div><h2>错误认知</h2><p>点一条直接带进内容生成，主题就是这句要纠正的说法</p></div></header>{profile?.errors.length ? profile.errors.slice(0,4).map((item,index) => <button key={index} onClick={()=>go?.('content',{seed:item.claim})} title="用它作为主题去生成纠正内容"><span>{item.claim}</span><small>{item.engine} · {item.question}</small><ArrowRight /></button>) : <div className="cognition-empty"><CheckCircle2 />当前没有检测到明确错误认知</div>}</section></div>
   </div>
 }

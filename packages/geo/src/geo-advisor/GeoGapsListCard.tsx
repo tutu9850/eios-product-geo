@@ -73,14 +73,33 @@ export function GeoGapsListCard() {
             .sort((a, b) => LEVEL_ORDER[gapPriority(a).level] - LEVEL_ORDER[gapPriority(b).level])
             .map((g) => {
               const p = gapPriority(g)
+              // 2026-09-21：这张卡以前把内核字段名直接吐给用户（「来源：kernel_search」），
+              // 而且从来不显示「到底缺什么」——用户看不出缺口是不是企业知识库缺的。
+              const caps = g.missing_capabilities ?? []
+              // 后端 list_gaps 自己就把「missing_information == question」当成「没说清缺什么」
+              // （checklist_source 置 null）；页面也照这个口径，不把问题原文当答案显示。
+              const rawWhat = (g.missing_information ?? '').trim()
+              const what = rawWhat && rawWhat !== (g.question ?? '').trim() ? rawWhat : caps.length ? caps.join('、') : ''
+              // 2026-09-21：这个列表里其实混着两种缺口——
+              // ① 知识库逐题判定出来的（source=enterprise_knowledge_base，有 judge_basis）；
+              // ② 内容覆盖分析产出的（source=coverage_analysis，根本没查知识库）。
+              // 原来一律写「来源：企业知识库 / 按文档文本推断」，第②种就被贴上了没做过的判定依据。
+              const fromCoverage = g.source === 'coverage_analysis'
               return {
                 title: g.question,
-                desc: g.matched_refs?.length
-                  ? `相关素材：${g.matched_refs.map((r) => r.name).slice(0, 2).join('、')}`
-                  : g.source
-                    ? `来源：${g.source}`
-                    : undefined,
-                meta: `${p.level} · ${p.stage}阶段 · 检索 ${Math.round((g.retrieval_score ?? 0) * 100)}%`,
+                desc: what
+                  ? `缺什么：${what}`
+                  : '缺什么：尚未判明（这次没有模型能给出「需要补哪类信息」）',
+                meta: [
+                  `${p.level} · ${p.stage}阶段`,
+                  ...(fromCoverage
+                    ? ['来源：内容覆盖分析（把现有内容与客户问题逐条对了一遍，不是查企业知识库）']
+                    : [
+                        g.judge_basis === 'fact_triple' ? '按知识库事实判定' : '按知识库文档文本推断',
+                        g.matched_terms?.length ? `命中「${g.matched_terms.slice(0, 3).join('/')}」` : '',
+                        '来源：企业知识库',
+                      ]),
+                ].filter(Boolean).join(' · '),
               }
             })}
         />

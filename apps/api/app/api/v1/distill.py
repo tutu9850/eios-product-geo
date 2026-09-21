@@ -313,7 +313,7 @@ async def list_questions(status: str | None = None, limit: int = 100, validated:
         else:
             q.setdefault("source_type", "ai_generated")
         q.setdefault("confidence", 0.65)
-    return ok({"items": items, "total": len(items), "note": "评分为规则估算（优先级/监测词频/Kernel 依据），非 LLM 精判；monitor_count/validated 为真实监测统计"})
+    return ok({"items": items, "total": len(items), "note": "评分为规则估算（优先级/监测词频/Kernel 依据），非 LLM 精判；monitor_count = 真实监测回答数，validated = 这个问题被真实监测过（不是「答案已验证」）"})
 
 
 @router.delete("/questions/{qid}")
@@ -532,10 +532,48 @@ def _infer_intent(question: str) -> str:
     return "认知"
 
 
-async def _knowledge_check(question: str, entities: list[str] | None = None, intent: str | None = None) -> dict:
-    """问题 → Kernel 检索 → 企业是否已有相关知识
+#: 问题里的疑问词/虚词：算「内容词」时要先去掉，否则「哪些/怎么」这类词会自己造出命中。
+_QUESTION_STOPWORDS = (
+    "是什么样的", "是什么", "是做什么的", "做什么", "怎么样", "怎样", "什么样", "哪些", "哪家", "哪个",
+    "什么", "怎么", "多少", "如何", "是否", "有没有", "请问", "应该", "可以", "需要", "以及",
+    "我们", "你们", "他们", "这个", "那个", "的话", "还是", "或者", "和", "与", "的", "吗", "呢", "吧",
+)
 
-    判定：检索问题本身 + 关联实体，取最高分；score ≥ 0.5 且命中实体名 → 已有。
+
+def _content_bigrams(text: str) -> set[str]:
+    """问题 → 内容词二元组（规则实现，不接模型）。
+
+    中文没有空格，直接用整句找子串会「问什么都命中」；改用去疑问词后的二元组集合，
+    和命中文本求交，交集大小才是「这段知识是不是在讲这件事」的度量。
+    """
+    import re as _re
+
+    t = str(text or "")
+    for w in _QUESTION_STOPWORDS:
+        t = t.replace(w, "")
+    t = _re.sub(r"[？?，,。.：:；;、（）()【】\[\]\s+]+", "", t)
+    if len(t) < 2:
+        return set()
+    return {t[i:i + 2] for i in range(len(t) - 1)}
+
+
+async def _knowledge_check(question: str, entities: list[str] | None = None, intent: str | None = None) -> dict:
+    """问题 → **企业知识库**（EIOS :8040）检索 → 企业是否已有相关知识
+
+    2026-09-21 修（Owner：「什么知识缺口到底是不是本地知识库缺的」）：
+    读的确实是本地企业知识库（`adapters.eios.search_knowledge`，只读、带出站票），
+    但**相关性判定原来是错的**：只判「实体名是否出现在任一命中片段里」。企业知识库里
+    几乎每张表都写着公司名，于是这一条恒为真 —— 实测：
+      ·「今天天气怎么样？」→ PARTIAL（缺「产品介绍」）
+      ·「全案定制在成都都有哪些公司在做？」→ COVERED
+      ·「2026年国内AI知识库市场最新动态是什么？」→ COVERED（知识库不可能有未来市场动态）
+      ·「GEO+知识库系统价格多少？」→ UNRELATED（知识库里明明有产品价格表）→ 反向漏判
+    现在相关性 = **问题内容二元组与命中文本的交集 ≥ 2**（见 `_content_bigrams`），
+    并且如实回报 `judge_basis`：判定本来要的是「主体+属性+值」事实三元组，而本机知识库
+    返回的是**文档分块**（predicate=None、value=整张表文本）时标 `document_text`，
+    让上层能如实说「这次只按文档文本推断，不是按事实三元组判定」。
+
+    **待 Owner 复核**：这条判定语义改动过（原实现恒真），已按「修 bug」处理，未新增 Authority。
     """
     from adapters.eios import search_knowledge
 
@@ -562,14 +600,15 @@ async def _knowledge_check(question: str, entities: list[str] | None = None, int
             top.append({"score": round(sc, 2), "name": name, "predicate": h.get("predicate"), "value": h.get("value")})
     top.sort(key=lambda x: -x["score"])
     best = top[0] if top else {"score": 0.0, "name": "", "predicate": "", "value": ""}
-    # 实体相关性：命中知识必须包含问题的相关实体（防"安全→数据安全"式误判）
-    # 检查范围：name + predicate + value 全字段；匹配源 = 实体 + 关键词（双兜底，防偏严）
-    if entities:
-        blob = " ".join(f"{r['name']}{r.get('predicate') or ''}{r.get('value') or ''}" for r in top)
-        check_set = [e for e in entities if e] + [q for q in (queries or []) if q and q not in entities]
-        related = any(e and (e in blob or any(e in str(r.get("value") or "") for r in top)) for e in check_set)
-    else:
-        related = True
+    # 主体相关性（2026-09-21 重做，见函数 docstring）：
+    # 命中文本里必须真的有这段知识在讲的问题（内容二元组交集 ≥ 2），
+    # 而不是「实体名在表里出现过」——后者在企业知识库里恒为真。
+    blob_all_hits = " ".join(f"{r.get('name') or ''}{r.get('predicate') or ''}{r.get('value') or ''}" for r in top)
+    q_bigrams = _content_bigrams(question)
+    overlap = {g for g in q_bigrams if g in blob_all_hits}
+    related = len(overlap) >= 2
+    # 判定依据如实交代：有 predicate 才是「主体+属性+值」三元组，否则只是文档文本
+    judge_basis = "fact_triple" if any((r.get("predicate") or "").strip() for r in top) else "document_text"
     # ── 问题理解：意图 -> 信息要求维度（规则映射，诚实"规则分类"） ──
     eff_intent = intent or _infer_intent(question)
     _REQUIRED_BY_INTENT = {
@@ -616,7 +655,9 @@ async def _knowledge_check(question: str, entities: list[str] | None = None, int
         "missing_dimensions": missing,
         "best_score": best["score"],
         "refs": top[:3],
-        "kernel_down": reachable == 0,  # Kernel 不可达（≠ 企业无知识）
+        "kernel_down": reachable == 0,  # 知识库不可达（≠ 企业无知识）
+        "judge_basis": judge_basis,     # fact_triple=按事实三元组判；document_text=只按文档文本判
+        "matched_terms": sorted(overlap)[:6],  # 判定时真正命中的问题内容词（可复盘）
     }
 
 
@@ -823,9 +864,18 @@ async def detect_gaps(limit: int = 30):
             "id": f"g_{uuid.uuid4().hex[:10]}",
             "question": a["question"],
             "entity": a["entity"],
-            "missing_information": mi_map.get(a["question"], a["question"]) or a["question"],
-            # V1.1 证据链：为什么认为缺（Kernel 检索实测）+ 缺什么（子项粒度/规则分类）
-            "source": "kernel_search",
+            # 2026-09-21 修：原来这里兜底成 `a["question"]` —— 模型没答上来时
+            # （本机就没配模型 key），「缺什么」直接变成「问题原文」，
+            # 页面上看着有值、实际是句废话（实测 dev 库几条缺口的 missing_information
+            # 就等于 question 本身）。现在如实留空，由页面写「尚未判明」。
+            "missing_information": mi_map.get(a["question"]) or None,
+            # V1.1 证据链：为什么认为缺（**企业知识库**检索实测）+ 缺什么（子项粒度/规则分类）
+            # 2026-09-21：「kernel_search」是换知识源之前的老名字 —— 知识源早就换成 EIOS
+            # 企业知识库（:8040）了，页面却还打印「来源：kernel_search」。改真名。
+            "source": "enterprise_knowledge_base",
+            # 判定依据如实落库：fact_triple=按事实三元组；document_text=知识库只给了文档分块
+            "judge_basis": kc.get("judge_basis") or "document_text",
+            "matched_terms": kc.get("matched_terms") or [],
             "retrieval_score": round(kc.get("best_score", 0.0), 2),
             "matched_refs": kc.get("refs") or [],
             "missing_capabilities": caps,  # 48 子项粒度缺失清单（命中子项）/实测缺失维度/规则兜底
@@ -1386,7 +1436,7 @@ async def cognition_profile_v2():
     - Understanding（理解程度）= grounded claims / 全部 claims
     - Hallucination（幻觉风险）= hallucination claims / 全部 claims
     - 健康度 = grounded×1 + partial×0.5（hallucination 记 0）加权
-    - 矩阵：按 claim_type 聚合 已理解/部分理解/未理解/幻觉风险
+    - 矩阵：按 claim_type 聚合 已理解/部分理解/未理解/幻觉风险（一条断言都没有的类 = 暂无此类断言，不当成未理解）
     - 错误认知：hallucination claims 明细（claim + 引擎 + 问题，可溯源）
     """
     from app.services.store import get_store
@@ -1425,7 +1475,9 @@ async def cognition_profile_v2():
     for t, cn in _CT_CN.items():
         cs = [c for c in all_claims if c.get("claim_type") == t]
         if not cs:
-            matrix.append({"key": t, "label": cn, "claims": 0, "grounded": 0, "partial": 0, "hallucination": 0, "status": "未理解"})
+            # 2026-09-21：「未理解」是给「模型提到了但没对上」用的。这一类一条断言都没有时
+            # 写「未理解」，用户会读成「AI 完全不懂这一块」，实际只是这次没提取到这类断言。
+            matrix.append({"key": t, "label": cn, "claims": 0, "grounded": 0, "partial": 0, "hallucination": 0, "status": "暂无此类断言"})
             continue
         cg = sum(1 for c in cs if c.get("status") == "grounded")
         cp = sum(1 for c in cs if c.get("status") == "partial")
@@ -2101,16 +2153,17 @@ async def gen_content_plan(limit: int = 10):
             bucket["pressure"] += share
             bucket["questions"].append({"question": s["question"], "priority_score": s["priority_score"], "intent": s["intent"]})
 
-    # 3. 企业知识支撑判定（复用企业资料总揽：子项相关问题 → Kernel 逐题判定，带缓存；
+    # 3. 企业知识支撑判定（复用企业资料总揽：子项相关问题 → 企业知识库逐题判定，带缓存；
     #    失败 → 状态可能误判「待补知识」，note 标注，重跑恢复）
+    #    2026-09-21：变量名/文案里的 Kernel 是换知识源之前的老名字，知识源现在是 EIOS 企业知识库。
     kernel_note = ""
     try:
         known = await _subitem_knowledge(questions, items)
     except Exception as e:  # noqa: BLE001
         logger = __import__("logging").getLogger("eios.distill")
-        logger.warning("content-plan kernel check failed: %s", str(e)[:150])
+        logger.warning("content-plan enterprise knowledge check failed: %s", str(e)[:150])
         known = {}
-        kernel_note = "Kernel 知识检查失败，状态可能误判为「待补知识」（重跑监测后恢复）"
+        kernel_note = "企业知识库检索失败，状态可能误判为「待补知识」（重跑监测后恢复）"
 
     # 4. 子项 → 计划（用户拍板 2026-08-19：内容计划只体现「本地已有」——有知识支撑的子项；
     #    无知识的子项不生成计划，全部由知识缺口承载（见 /gaps 子项粒度）。）
@@ -2190,7 +2243,7 @@ async def gen_content_plan(limit: int = 10):
     note = (
         "内容计划 V1（规则版）：问题价值×AI缺口→48 认知子项压力→本地知识检查。"
         "优先级 = 子项压力（越多高价值问题依赖、缺口越大 → 越靠前）；"
-        "只输出「本地已有」（Kernel 事实或素材库命中）的子项——本地没有的全部在知识缺口（按 48 子项粒度），"
+        "只输出「本地已有」（企业知识库事实或素材库命中）的子项——本地没有的全部在知识缺口（按 48 子项粒度），"
         "不再生成「待补知识」计划；旧「待补知识」计划已归档。"
     )
     if kernel_note:

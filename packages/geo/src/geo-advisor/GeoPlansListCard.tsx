@@ -6,6 +6,19 @@ import { GeoCardShell, GeoError, GeoLoading, askGeoConfirm, useGeoNav, useGeoNav
 
 type Sort = 'priority' | 'created_at'
 
+/**
+ * 计划来源是后端枚举（distill.py 写死的 source 值），页面上不给用户看英文。
+ * 2026-09-21：这张卡以前直接打印「来源：subitem_pressure」这种字段值。
+ */
+const PLAN_SOURCE_LABEL: Record<string, string> = {
+  subitem_pressure: '认知节点压力算法',
+  monitor_weak: '监测薄弱问题',
+  customer_agent_gap: '客户问题缺口',
+  coverage_analysis: '内容覆盖分析',
+  assistant: '手动创建 / 助手建议',
+}
+const planSourceText = (value: string | undefined | null) => (value ? PLAN_SOURCE_LABEL[value] ?? `其他来源（${value}）` : '—')
+
 /** 内容计划卡：列表/排序/删除 + 从缺口一键生成（交互对齐 Builder GeoDistill 计划区） */
 export function GeoPlansListCard() {
   const [items, setItems] = useState<GeoPlan[] | null>(null)
@@ -175,7 +188,7 @@ export function GeoPlansListCard() {
       <div className="mt-1 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-1.5 text-[10px] leading-relaxed text-[var(--yayu-muted)]">
         <span className="text-[var(--yayu-foreground)]">算法：</span>
         问题价值×AI缺口（简化分层 0/1/2 等权，无拍脑袋系数）→ 48 认知节点压力（高优问题共享的节点最值钱）
-        → Kernel 知识检查（有事实=待生产，无事实=待补知识）→ 压力 TopN 生成，重复节点跳过
+        → 企业知识库检查（有依据=待生产，无依据=进知识缺口）→ 压力 TopN 生成，重复节点跳过
         → 发布登记 + 复测对比（效果落库反哺）。
       </div>
 
@@ -196,7 +209,7 @@ export function GeoPlansListCard() {
                   <div className="text-[12px] leading-snug text-[var(--yayu-foreground)]">{p.topic}</div>
                   {p.reason ? <div className="mt-0.5 text-[11px] leading-snug text-[var(--yayu-muted)]">{p.reason}</div> : null}
                   <div className="mt-0.5 text-[10px] text-[var(--yayu-faint)]">
-                    {p.recommended_content_type ?? '通用'} · 来源：{p.source_type ?? p.source ?? '—'}
+                    {p.recommended_content_type ?? '通用'} · 来源：{planSourceText(p.source_type ?? p.source)}
                     {p.subitem_name ? ` · 认知节点：${p.subitem_name}` : ''}
                     {p.covered_questions ? ` · 覆盖 ${p.covered_questions} 题` : ''}
                   </div>

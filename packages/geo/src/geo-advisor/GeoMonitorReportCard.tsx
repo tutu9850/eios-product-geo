@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { geoGet } from './geo-api'
-import { GeoCardShell, GeoError, GeoLoading } from './shared'
+import { GeoCardShell, GeoError, GeoLoading, monitorTypeText, sentimentText, shortDay } from './shared'
 
 export interface MonitorAnswer {
   ts: string
@@ -29,23 +29,37 @@ interface SentimentOverview {
   neu_pct: number
 }
 
+/**
+ * 2026-09-21：这两个字段的真实形状一直是**对象数组**（monitor.py `_aggregate_sentiment` 直接
+ * 把聚合出来的 dict 丢出来），类型却写着 string[]。后果：负面样本直接当 React 子节点渲染 →
+ * 整张监测报告卡崩掉（React error #31），高频词 join 出「[object Object]」。
+ */
 interface SentimentResult {
   overview: SentimentOverview | null
   trend: Array<{ date: string; positive: number; negative: number; neutral: number }>
   questions: string[]
-  top_words: string[]
-  negative_samples: string[]
+  top_words: Array<{ word: string; count: number }>
+  negative_samples: Array<{ question?: string; platform?: string; snippet?: string; ts?: string }>
 }
 
 type ReportTab = 'answers' | 'sentiment' | 'citations' | 'sources'
 
-/** 推荐位置分级（按排名估计）：1=第一推荐 2-3=强推荐 4-6=普通 其余=顺带提及；未提及=未提及 */
+/**
+ * 提及位置（2026-09-21 口径修正，Owner：「输出正常但不正确」）。
+ *
+ * `rank_est` 在后端的真实含义是**企业名第一次出现在回答的第几句话**（见 monitor.py 的
+ * `_parse_answer`：「rank_est：企业名首次出现的句序号（按 [。！？\n] 切句），未提及 = None」）。
+ * 它**不是** AI 给出的推荐排名，也不是「第几推荐」。原来这里按它分成
+ * 「第一推荐／强推荐／普通推荐」，页面上就出现了「普通推荐 · 排名 6」这种看着正常、
+ * 实际编出来的结论（模型根本没排过名）。现在只说这句话本身：提到了、在第几句提到。
+ * 颜色仍按出现早晚分档，但只作为「提到得早/晚」的视觉提示。
+ */
 function positionOf(a: { mentioned: boolean; rank_est: number | null }): { label: string; cls: string } {
   if (!a.mentioned) return { label: '未提及', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-faint)]' }
-  if (a.rank_est === 1) return { label: '第一推荐', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-foreground)]' }
-  if ((a.rank_est ?? 99) <= 3) return { label: '强推荐', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-foreground)]' }
-  if ((a.rank_est ?? 99) <= 6) return { label: '普通推荐', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-muted)]' }
-  return { label: '顺带提及', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-faint)]' }
+  const n = a.rank_est
+  if (n == null) return { label: '提及（未记位置）', cls: 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-muted)]' }
+  const cls = n <= 3 ? 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-foreground)]' : 'bg-[var(--yayu-surface-raised)] text-[var(--yayu-muted)]'
+  return { label: n === 1 ? '首句提及' : `第 ${n} 句提及`, cls }
 }
 
 /** 监测报告卡（拆自原监测卡后半）：AI 回答 + 情绪分析 + 引用 + 来源，维度 tab 切换 */
@@ -198,10 +212,17 @@ export function GeoMonitorReportCard() {
                     : 'border-[var(--yayu-border)] bg-[var(--yayu-input)] text-[var(--yayu-muted)] hover:border-[var(--yayu-muted)]'
                 }`}
               >
-                {t === 'all' ? '全部' : t}
+                {/* 2026-09-21：这里是监测对象的类型枚举（brand/product/keyword/competitor），
+                    原来直接把英文丢在筛选按钮上，用户看不懂。统一走 monitorTypeText。 */}
+                {t === 'all' ? '全部' : monitorTypeText(t)}
               </button>
             ))}
           </div>
+          {/* 2026-09-21：把「第 N 句提及」的口径写在页面上，别让用户把它读成 AI 给的推荐排名 */}
+          <p className="mb-1 text-[10px] leading-relaxed text-[var(--yayu-faint)]">
+            口径：「第 N 句提及」= 企业名第一次出现在回答的第几句话（位置，不是 AI 给的推荐排名）；
+            同一问题的各家回答叠成一组，点平台按钮切换，未提及的平台置灰。
+          </p>
           {groups.length === 0 ? (
             <p className="text-[11px] text-[var(--yayu-faint)]">暂无监测回答，先运行一次监测。</p>
           ) : (
@@ -233,7 +254,7 @@ export function GeoMonitorReportCard() {
                           <button
                             key={a.engine}
                             type="button"
-                            title={a.mentioned ? `已提及${a.rank_est !== null ? `（排名 ${a.rank_est}）` : ''}` : '未提及本企业'}
+                            title={a.mentioned ? `已提及${a.rank_est !== null ? `（企业名在第 ${a.rank_est} 句首次出现）` : ''}` : '未提及本企业'}
                             onClick={() => setPicked((prev) => ({ ...prev, [query]: a.engine }))}
                             className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] transition-colors ${
                               on
@@ -252,8 +273,8 @@ export function GeoMonitorReportCard() {
                       <>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[var(--yayu-faint)]">
                           {pos ? <span className={`rounded px-1.5 py-0.5 ${pos.cls}`}>{pos.label}</span> : null}
-                          {current.rank_est !== null ? <span>排名 {current.rank_est}</span> : null}
-                          <span>{current.sentiment}</span>
+                          {current.rank_est !== null ? <span>企业名在第 {current.rank_est} 句首次出现</span> : null}
+                          <span>{sentimentText(current.sentiment)}</span>
                           {body ? <span className="ml-auto">{body.length} 字</span> : null}
                         </div>
                         {/* 全文放进一个框里滚动看，不把整页撑长（Owner：「用页面滑轮去调整」） */}
@@ -307,9 +328,15 @@ export function GeoMonitorReportCard() {
               <span>中性 {ov.neutral}（{ov.neu_pct}%）</span>
               <span>负面 {ov.negative}（{ov.neg_pct}%）</span>
             </div>
+            {/* 2026-09-21：口径如实写在页面上。原来的「负面 N%」会被读成「N% 的人在骂我们」，
+                实际是词表统计——模型答「我无法判断，建议你查工商信息/警惕风险」也会算负面。 */}
+            <p className="text-[10px] leading-relaxed text-[var(--yayu-faint)]">
+              口径：只统计提到本企业的回答，按正/负面词表计数判定（规则估算，非模型精判）。
+              模型回答「无法判断、建议核实工商信息」这类实际上没有认识我们的话，也会计入负面。
+            </p>
             {sentiment?.top_words && sentiment.top_words.length > 0 ? (
               <div className="text-[11px] text-[var(--yayu-muted)]">
-                高频词：{sentiment.top_words.slice(0, 8).join('、')}
+                高频词：{sentiment.top_words.slice(0, 8).map((w) => (w?.word ? `${w.word}（${w.count ?? 0}）` : String(w))).join('、')}
               </div>
             ) : null}
             {sentiment?.negative_samples && sentiment.negative_samples.length > 0 ? (
@@ -317,7 +344,10 @@ export function GeoMonitorReportCard() {
                 <div className="text-[11px] font-medium text-[var(--yayu-muted)]">负面样本</div>
                 {sentiment.negative_samples.slice(0, 3).map((s, i) => (
                   <div key={i} className="rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[11px] text-[var(--yayu-muted)]">
-                    {s}
+                    <div className="text-[10px] text-[var(--yayu-faint)]">
+                      {[s?.question, s?.platform, s?.ts ? shortDay(s.ts) : ''].filter(Boolean).join(' · ')}
+                    </div>
+                    <div className="mt-0.5 leading-relaxed">{s?.snippet || '（这条没有正文）'}</div>
                   </div>
                 ))}
               </div>

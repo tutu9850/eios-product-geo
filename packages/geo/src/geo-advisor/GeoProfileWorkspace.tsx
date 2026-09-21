@@ -43,7 +43,10 @@ export function GeoProfileWorkspace() {
       <main className="profile-detail">{!detail ? <div className="profile-loading"><LoaderCircle className="spin" />正在读取资料证据…</div> : <>
         <header><div><span data-tone={tone(detail.level)}>{detail.level}</span><h2>{selectedItem?.name ?? detail.name}</h2><p>{detail.reason}</p></div><button className="geo-btn primary" onClick={() => void makePlans()} disabled={busy}>生成补充计划<ArrowRight /></button></header>
         <div className="profile-evidence-summary"><FileText /><div><b>{knowledge?.summary ?? '暂无资料摘要'}</b><span>实体 {knowledge?.counts?.entities ?? 0} · 事实 {knowledge?.counts?.facts ?? 0} · 关系 {knowledge?.counts?.relations ?? 0} · 文档片段 {knowledge?.counts?.doc_chunks ?? 0}</span></div></div>
-        <section className="profile-detail-grid"><div><h3>已有资料与来源</h3>{(knowledge?.doc_chunks ?? []).length ? knowledge.doc_chunks.slice(0,6).map((row: Detail, i: number) => <article key={i}><p>{row.text}</p><small>{row.source || '企业知识库'} · 匹配度 {row.score ?? '—'}</small></article>) : <div className="profile-empty">没有找到可支撑这一项的企业资料。</div>}</div><div><h3>待覆盖客户问题</h3>{questions.length ? questions.slice(0,8).map((row: Detail, i: number) => <article key={i}><p>{row.question}</p><small>{i < (detail.uncovered_questions?.length ?? 0) ? '未覆盖' : '部分覆盖'}</small></article>) : <div className="profile-empty">当前没有待补问题。</div>}</div></section>
+        {/* 2026-09-21：这一段原来每行末尾写「匹配度 12.4」——那个 score 是知识库检索的
+            **序位分**（无界，实测常在 10~14），不是 0~100 的相似度百分比，写「匹配度」会让
+            用户以为是匹配百分比。分数没有可比口径，就不展示分数，只留来源。 */}
+        <section className="profile-detail-grid"><div><h3>已有资料与来源</h3>{(knowledge?.doc_chunks ?? []).length ? knowledge.doc_chunks.slice(0,6).map((row: Detail, i: number) => <article key={i}><p>{row.text}</p><small>{row.source || '企业知识库'}</small></article>) : <div className="profile-empty">没有找到可支撑这一项的企业资料。</div>}</div><div><h3>待覆盖客户问题</h3>{questions.length ? questions.slice(0,8).map((row: Detail, i: number) => <article key={i}><p>{row.question}</p><small>{i < (detail.uncovered_questions?.length ?? 0) ? '未覆盖' : '部分覆盖'}</small></article>) : <div className="profile-empty">当前没有待补问题。</div>}</div></section>
       </>}</main>
     </div>
   </div>

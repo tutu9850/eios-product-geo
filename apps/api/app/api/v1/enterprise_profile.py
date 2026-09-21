@@ -512,7 +512,7 @@ async def _assess_item(item: dict, questions: list[dict]) -> dict:
     elif coverage is None:
         level = "太少"
         related_state = "has"
-        reason = "无法评估（Kernel 不可达）"
+        reason = "无法评估（企业知识库读取失败）"
     elif coverage >= 70:
         level = "足够"
         related_state = "has"
