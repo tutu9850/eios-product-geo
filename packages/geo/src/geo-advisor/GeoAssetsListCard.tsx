@@ -84,6 +84,8 @@ export function GeoAssetsListCard() {
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [adding, setAdding] = useState(false)
+  // 批量上传的进度（一次选多个文件时，「现在传到第几个」要让人看得见）
+  const [progress, setProgress] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement | null>(null)
 
   const load = useCallback(async (q: string = '') => {
@@ -205,21 +207,44 @@ export function GeoAssetsListCard() {
     }
   }
 
-  const uploadFile = async (file: File) => {
+  /**
+   * 批量上传（Owner 2026-09-22「内容资产这里可以批量上传」）。
+   *
+   * 一次选多个文件，**逐个**上传（解析是同进程的重活，并发只会互相拖慢，也会让失败
+   * 更难归因），过程中显示「正在上传 2/5：xxx」。收口必须如实分开三件事：
+   * 全成功 / 部分失败（哪几个、为什么）/ 全失败 —— 不许把「有几份没进来」混成一句「已完成」。
+   */
+  const uploadFiles = async (files: File[]) => {
+    if (!files.length) return
     setError(null)
+    setNote(null)
     setAdding(true)
+    const done: string[] = []
+    const failed: string[] = []
     try {
-      const d = await geoUpload<{ error?: string }>('/knowledge/materials/upload', file)
-      const soft = softError(d)
-      if (soft) {
-        setError(soft)
-        return
+      for (let i = 0; i < files.length; i += 1) {
+        const f = files[i]
+        setProgress(`正在上传 ${i + 1}/${files.length}：${f.name}`)
+        try {
+          const d = await geoUpload<{ error?: string }>('/knowledge/materials/upload', f)
+          const soft = softError(d)
+          if (soft) failed.push(`${f.name}：${soft}`)
+          else done.push(f.name)
+        } catch (e) {
+          failed.push(`${f.name}：${e instanceof Error ? e.message : '上传失败'}`)
+        }
       }
-      await load(query)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '上传失败')
     } finally {
+      setProgress(null)
       setAdding(false)
+    }
+    await load(query)
+    if (!failed.length) {
+      setNote(`已上传 ${done.length} 份：${done.join('、')}`)
+    } else if (done.length) {
+      setNote(`已上传 ${done.length} 份：${done.join('、')}；${failed.length} 份没进来 —— ${failed.join('；')}`)
+    } else {
+      setError(`这 ${failed.length} 份都没进来 —— ${failed.join('；')}`)
     }
   }
 
@@ -294,19 +319,27 @@ export function GeoAssetsListCard() {
           <Upload className="size-3.5" /> {adding ? '处理中…' : '上传文件'}
         </Button>
         <span className="text-[10.5px] leading-snug text-[var(--yayu-muted)]">
-          文件支持 txt / md / csv / pdf / docx / xlsx / 图片（20MB 内），解析不出文本会如实报错。
+          可一次选多个文件（20MB 内），逐个上传、逐个报结果；解析不出文本的那份会如实说。
         </span>
         <input
           ref={fileInput}
           type="file"
+          multiple
           className="hidden"
           onChange={(e) => {
-            const file = e.target.files?.[0]
+            const files = Array.from(e.target.files ?? [])
             e.target.value = ''
-            if (file) void uploadFile(file)
+            if (files.length) void uploadFiles(files)
           }}
         />
       </div>
+
+      {progress ? (
+        <p className="text-[11px] text-[var(--yayu-muted)]">
+          {progress}
+          {adding ? '（这份传完自动传下一个）' : ''}
+        </p>
+      ) : null}
 
       {creating ? (
         <div className="space-y-1.5 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1.5">
