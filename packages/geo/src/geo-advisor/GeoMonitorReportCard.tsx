@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { geoGet } from './geo-api'
-import { GeoCardShell, GeoError, GeoLoading, monitorTypeText, sentimentText, shortDay } from './shared'
+import { GeoCardShell, GeoError, GeoFormattedAnswer, GeoLoading, monitorTypeText, sentimentText, shortDay, stripAnswerMarkdown } from './shared'
 
 export interface MonitorAnswer {
   ts: string
@@ -189,7 +189,7 @@ export function GeoMonitorReportCard() {
                         <span className="truncate font-medium text-[var(--yayu-foreground)]">{r.query}</span>
                         <span className="shrink-0 text-[var(--yayu-faint)]">{r.engine}</span>
                       </div>
-                      <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">{r.snippet}</p>
+                      <p className="mt-0.5 line-clamp-2 text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">{stripAnswerMarkdown(r.snippet)}</p>
                     </div>
                   ))}
                 </div>
@@ -283,15 +283,15 @@ export function GeoMonitorReportCard() {
                         {/* 全文放进一个框里滚动看，不把整页撑长（Owner：「用页面滑轮去调整」） */}
                         {expanded ? (
                           body ? (
-                            <div className="mt-1 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1.5 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
-                              {body}
+                            <div className="mt-1 max-h-72 overflow-y-auto rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1.5 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+                              <GeoFormattedAnswer text={body} />
                             </div>
                           ) : (
                             <p className="mt-1 text-[10.5px] text-[var(--yayu-faint)]">这家没有返回正文。</p>
                           )
                         ) : (
                           <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
-                            {current.snippet || '（这家没有返回正文）'}
+                            {current.snippet ? stripAnswerMarkdown(current.snippet) : '（这家没有返回正文）'}
                           </div>
                         )}
                         {body ? (

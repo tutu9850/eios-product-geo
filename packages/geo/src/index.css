@@ -398,6 +398,12 @@
 .monitor-run-state{border-radius:999px;padding:1px 6px;background:#eef0eb;color:#70776b}
 .monitor-run-state[data-status="success"]{background:#eaf4e6;color:#4f6f42}
 .monitor-run-state[data-status="failed"]{background:#f9e9e6;color:#a64e43}
+.geo-formatted-answer{display:flex;flex-direction:column;gap:8px}
+.geo-formatted-answer h4{margin:3px 0 0;color:#30352e;font-size:12px;font-weight:650}
+.geo-formatted-answer p{margin:0;white-space:pre-wrap}
+.geo-formatted-answer ul,.geo-formatted-answer ol{display:flex;flex-direction:column;gap:4px;margin:0;padding-left:18px}
+.geo-formatted-answer ul{list-style:disc}.geo-formatted-answer ol{list-style:decimal}
+.geo-formatted-answer strong{color:#343a32;font-weight:650}.geo-formatted-answer code{border-radius:3px;background:#eef0eb;padding:1px 4px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .geo-quote{padding:8px 10px;border-left:2px solid #c4d5a8;border-radius:0 6px 6px 0;background:#f7f8f5;color:#4f564c;font-size:11px;line-height:1.55}
 .geo-subhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:7px}
 .geo-subhead h3{margin:0;font-size:12.5px;font-weight:700}

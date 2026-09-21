@@ -210,6 +210,53 @@ export function GeoQuote({ children }: { children: ReactNode }) {
   return <p className="geo-quote">{children}</p>
 }
 
+/** 模型回答轻量排版：识别标题、列表和粗体，不把 Markdown 控制符原样丢给用户。 */
+export function stripAnswerMarkdown(value: string): string {
+  return value
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim()
+}
+
+function AnswerInline({ text }: { text: string }) {
+  const parts = text.split(/(\*\*[^*]+\*\*|__[^_]+__|`[^`]+`)/g).filter(Boolean)
+  return <>{parts.map((part, index) => {
+    if ((part.startsWith('**') && part.endsWith('**')) || (part.startsWith('__') && part.endsWith('__'))) return <strong key={index}>{part.slice(2, -2)}</strong>
+    if (part.startsWith('`') && part.endsWith('`')) return <code key={index}>{part.slice(1, -1)}</code>
+    return <span key={index}>{part}</span>
+  })}</>
+}
+
+export function GeoFormattedAnswer({ text }: { text: string }) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
+  const nodes: ReactNode[] = []
+  let list: Array<{ ordered: boolean; text: string }> = []
+  const flush = () => {
+    if (!list.length) return
+    const ordered = list[0].ordered
+    const Tag = ordered ? 'ol' : 'ul'
+    nodes.push(<Tag key={`list-${nodes.length}`}>{list.map((item, index) => <li key={index}><AnswerInline text={item.text} /></li>)}</Tag>)
+    list = []
+  }
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line) { flush(); continue }
+    const heading = line.match(/^#{1,6}\s+(.+)$/)
+    const bullet = line.match(/^[-*+]\s+(.+)$/)
+    const ordered = line.match(/^\d+[.)]\s+(.+)$/)
+    if (bullet || ordered) { list.push({ ordered: !!ordered, text: (bullet?.[1] ?? ordered?.[1] ?? '').trim() }); continue }
+    flush()
+    if (heading) nodes.push(<h4 key={`heading-${nodes.length}`}><AnswerInline text={heading[1]} /></h4>)
+    else nodes.push(<p key={`paragraph-${nodes.length}`}><AnswerInline text={line} /></p>)
+  }
+  flush()
+  return <div className="geo-formatted-answer">{nodes}</div>
+}
+
 /* ── 业务文案映射（2026-09-21）────────────────────────────────────────────
    后端返回的是 positive / brand / active 这类机器值，页面上不给用户看英文。
    索引不到就显示「未判定」，不猜。 */
@@ -368,4 +415,3 @@ export function GeoLine({
     </div>
   )
 }
-
