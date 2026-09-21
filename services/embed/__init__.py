@@ -209,6 +209,31 @@ async def ensure_vectors(materials: list[dict] | None = None) -> dict:
     return {"use_qdrant": use_qdrant, "indexed": indexed, "skipped": skipped, "failed": failed, "total": len(materials)}
 
 
+def n_gram_scores(
+    q: str, docs: list[dict], title_key: str = "title", content_key: str = "content"
+) -> dict[str, float]:
+    """通用 n-gram 相关性打分（hybrid_search 主路径的可复用入口）。
+
+    与 hybrid_search 同一口径：查询核心词（去停用字 2-gram）在标题/正文的重叠，
+    标题 2x + 正文 1x。不依赖向量与网络，确定性可复现。
+    供内容生成 build_context 等「需要按问句排序任意文档」的场景使用
+    （审计 A5：此前用的是标题字符重叠计数，不看向量与正文）。
+    返回 {doc_id: score}，只含命中项。
+    """
+    q_keys = _n_gram_keys(q or "")
+    out: dict[str, float] = {}
+    if not q_keys:
+        return out
+    for d in docs:
+        mid = str(d.get("id") or "")
+        t_hit = len(q_keys & _n_gram_keys(str(d.get(title_key) or "")))
+        c_hit = len(q_keys & _n_gram_keys(str(d.get(content_key) or "")))
+        score = t_hit * 2.0 + c_hit
+        if score > 0:
+            out[mid] = score
+    return out
+
+
 async def hybrid_search(q: str, top_k: int = 8) -> list[dict]:
     """混合检索：n-gram 关键词为主 + 向量语义补充（向量不可用自动降级纯 n-gram）
 
@@ -235,18 +260,8 @@ async def hybrid_search(q: str, top_k: int = 8) -> list[dict]:
     except Exception:  # noqa: BLE001
         pass  # 向量不可用不影响 n-gram 主路径
 
-    q_keys = _n_gram_keys(q)
-
-    # 1) n-gram 得分（标题 2x + 内容 1x）
-    ng_scores: dict[str, float] = {}
-    for m in materials:
-        title = m.get("title", "")
-        content = m.get("content", "")
-        t_hit = len(q_keys & _n_gram_keys(title))
-        c_hit = len(q_keys & _n_gram_keys(content))
-        score = t_hit * 2.0 + c_hit
-        if score > 0:
-            ng_scores[m["id"]] = score
+    # 1) n-gram 得分（标题 2x + 内容 1x）——与 n_gram_scores 同一口径
+    ng_scores = n_gram_scores(q, materials)
 
     # 2) 向量得分（语义补充）
     vec_scores: dict[str, float] = {}

@@ -8,7 +8,10 @@ const GOALS = ['提升AI推荐概率', '推广产品', '建立行业权威', '�
 const CONTENT_TYPES = ['企业介绍', '行业解决方案', 'FAQ问答', '对比文章', '客户案例', '新闻动态']
 const STYLES = ['专业权威', '技术专家', '营销转化', '新闻报道', '白皮书']
 const LENGTHS = ['500字', '1500字', '3000字']
-/** 展示名 → :3002 platform id；「通用」不传平台 */
+/**
+ * 展示名 → 平台 id；「通用」不传平台。
+ * 审计 B12：后端 ALL_PLATFORMS 共 14 个，前端以前只接了 10 个（缺落地页/产品页/新闻稿/博客）。
+ */
 const PLATFORMS: Array<{ name: string; id: string | null }> = [
   { name: '通用', id: null },
   { name: '知乎', id: 'zhihu' },
@@ -20,13 +23,74 @@ const PLATFORMS: Array<{ name: string; id: string | null }> = [
   { name: '搜狐', id: 'sohu' },
   { name: '微博', id: 'weibo' },
   { name: 'SEO文章', id: 'seo_article' },
+  { name: '落地页文案', id: 'seo_landing' },
+  { name: '产品介绍页', id: 'seo_product' },
+  { name: '新闻稿/软文', id: 'seo_news' },
+  { name: '博客文章', id: 'seo_blog' },
   { name: '问答/帮助', id: 'seo_qa' },
 ]
+
+/**
+ * Fact Gate 事实核验模式（后端 `mode`）。
+ * 审计 A2：后端三档一直存在，前端从不传 → 恒 creative，用户永远拿不到「哪句话没依据」。
+ * 默认仍是 creative（严谨模式是否改默认待 Owner 拍板）。
+ */
+const MODES: Array<{ label: string; value: 'creative' | 'strict' | 'draft'; hint: string }> = [
+  { label: '创作', value: 'creative', hint: '未验证的公司声明会标注「据企业宣传」，不写成已验证事实' },
+  { label: '严谨', value: 'strict', hint: '凡未在企业知识库 / 内容资产找到依据的声明 → 直接拒绝生成' },
+  { label: '草稿', value: 'draft', hint: '未验证声明按草稿构思处理，明确不代表企业已确认事实' },
+]
+
+/** 认知编译器结构（后端 `structure`）：geo = 可抽取结构模板（五节，便于 AI 摘要引用） */
+const STRUCTURES: Array<{ label: string; value: 'free' | 'geo' }> = [
+  { label: '自由长文', value: 'free' },
+  { label: 'GEO 结构（认知编译器）', value: 'geo' },
+]
+
+/** 后端 SEO_PLATFORM_CONFIGS 的 6 个平台：选中时展示 SEO 参数（keywords/密度/调性/受众） */
+const SEO_PLATFORM_IDS = new Set([
+  'seo_article',
+  'seo_landing',
+  'seo_product',
+  'seo_news',
+  'seo_blog',
+  'seo_qa',
+])
+
+interface ContextSource {
+  kind: string
+  label: string
+  items: unknown[]
+}
+
+interface FactCheckResult {
+  score: number
+  hit_facts?: string[]
+  missing_facts?: string[]
+  needs_rewrite?: boolean
+  suggestion?: string
+}
+
+interface UnverifiedFact {
+  claim: string
+  level?: string
+  score?: number
+  evidence?: string
+}
 
 interface GenResult {
   ok: boolean
   title: string
   content: string
+  company_name?: string
+  materials_used?: number
+  context_sources?: ContextSource[]
+  sections?: Record<string, string> | null
+  fact_check?: FactCheckResult | null
+  unverified_facts?: UnverifiedFact[]
+  mode?: string
+  structure?: string
+  error?: string
 }
 
 interface ScoreResult {
@@ -58,6 +122,15 @@ export function GeoContentGenForm() {
   const [style, setStyle] = useState<string | null>(null)
   const [length, setLength] = useState<string>('1500字')
   const [platform, setPlatform] = useState<string>('通用')
+  // 审计 A2：认知编译器结构 / Fact Gate 模式 / 行业 / SEO 参数——后端一直有，前端以前无入口。
+  const [structure, setStructure] = useState<'free' | 'geo'>('free')
+  const [mode, setMode] = useState<'creative' | 'strict' | 'draft'>('creative')
+  const [industry, setIndustry] = useState('')
+  const [seoKeywords, setSeoKeywords] = useState('')
+  const [seoLongTail, setSeoLongTail] = useState('')
+  const [seoDensity, setSeoDensity] = useState('3')
+  const [seoTone, setSeoTone] = useState('professional')
+  const [seoAudience, setSeoAudience] = useState('')
   const [result, setResult] = useState<GenResult | null>(null)
   const [score, setScore] = useState<ScoreResult | null>(null)
   const [scoring, setScoring] = useState(false)
@@ -98,7 +171,17 @@ export function GeoContentGenForm() {
     setError(null)
     setScore(null)
     try {
-      const platformId = PLATFORMS.find((p) => p.name === platform)?.id ?? null
+      const density = Number.parseInt(seoDensity, 10)
+      const seo =
+        platformId && SEO_PLATFORM_IDS.has(platformId)
+          ? {
+              target_keywords: seoKeywords.trim() || undefined,
+              long_tail_keywords: seoLongTail.trim() || undefined,
+              keyword_density: Number.isFinite(density) ? density : 3,
+              content_tone: seoTone,
+              target_audience: seoAudience.trim() || undefined,
+            }
+          : null
       const d = await geoPost<GenResult>('/content/generate', {
         goal,
         content_type: contentType,
@@ -106,7 +189,17 @@ export function GeoContentGenForm() {
         length: length.replace('字', ''),
         platform: platformId,
         question: topic.trim(),
+        structure,
+        mode,
+        industry: industry.trim() || null,
+        seo,
       })
+      if (d.ok === false) {
+        // 严谨模式拒绝生成（未验证声明）：把原因留在第四步，不进结果页
+        setResult(d)
+        setError(d.error || '生成被拒绝（严谨模式）')
+        return
+      }
       setResult(d)
       setStep(5)
       // 生成后自动评分（可发布度）
@@ -169,6 +262,16 @@ export function GeoContentGenForm() {
         ? 'border-accent bg-accent text-on-accent'
         : 'border-border bg-input text-muted hover:border-border-strong hover:text-foreground',
     )
+
+  // 后端 score.total 是 0–1 权重和；此前直接 Math.round(0.85) → 显示「1 分」，与各维度百分比自相矛盾。
+  const scoreTotalPct = score ? Math.round(score.total <= 1 ? score.total * 100 : score.total) : 0
+
+  const inputClass =
+    'w-full rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]'
+
+  const platformId = PLATFORMS.find((p) => p.name === platform)?.id ?? null
+  const seoPlatform = platformId != null && SEO_PLATFORM_IDS.has(platformId)
+  const activeMode = MODES.find((m) => m.value === mode)
 
   const options = (list: string[], selected: string | null, onPick: (v: string) => void) => (
     <div className="flex flex-wrap gap-1.5" role="radiogroup">
@@ -289,8 +392,81 @@ export function GeoContentGenForm() {
           {options(LENGTHS, length, setLength)}
           <div className="pt-1 text-[11px] text-muted">发布平台</div>
           {options(PLATFORMS.map((p) => p.name), platform, setPlatform)}
+          <div className="pt-1 text-[11px] text-muted">正文结构</div>
+          {options(STRUCTURES.map((s) => s.label), STRUCTURES.find((s) => s.value === structure)?.label ?? null, (v) =>
+            setStructure(STRUCTURES.find((s) => s.label === v)?.value ?? 'free'),
+          )}
+          <div className="pt-1 text-[11px] text-muted">事实核验</div>
+          {options(MODES.map((m) => m.label), activeMode?.label ?? null, (v) =>
+            setMode(MODES.find((m) => m.label === v)?.value ?? 'creative'),
+          )}
+          {activeMode ? <p className="text-[10.5px] text-[var(--yayu-faint)]">{activeMode.hint}</p> : null}
+          <div className="pt-1 text-[11px] text-muted">行业（可留空，用于贴合行业语境的表达）</div>
+          <input
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            placeholder="例如：家装 / 工业质检 / 企业服务"
+            className={inputClass}
+          />
+          {seoPlatform ? (
+            <div className="space-y-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">SEO 参数（当前平台为 SEO 站内页）</div>
+              <input
+                value={seoKeywords}
+                onChange={(e) => setSeoKeywords(e.target.value)}
+                placeholder="目标关键词（留空则用主题）"
+                className={inputClass}
+              />
+              <input
+                value={seoLongTail}
+                onChange={(e) => setSeoLongTail(e.target.value)}
+                placeholder="长尾关键词（逗号分隔，可留空）"
+                className={inputClass}
+              />
+              <div className="flex items-center gap-2">
+                <span className="shrink-0 text-[10.5px] text-[var(--yayu-muted)]">关键词密度 %</span>
+                <input
+                  value={seoDensity}
+                  onChange={(e) => setSeoDensity(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="3"
+                  className={cn(inputClass, 'w-20')}
+                />
+                <span className="shrink-0 text-[10.5px] text-[var(--yayu-muted)]">调性</span>
+                <select
+                  value={seoTone}
+                  onChange={(e) => setSeoTone(e.target.value)}
+                  className={cn(inputClass, 'w-32')}
+                >
+                  <option value="professional">专业</option>
+                  <option value="casual">通俗</option>
+                  <option value="news">新闻</option>
+                  <option value="authoritative">权威</option>
+                </select>
+              </div>
+              <input
+                value={seoAudience}
+                onChange={(e) => setSeoAudience(e.target.value)}
+                placeholder="目标受众（可留空）"
+                className={inputClass}
+              />
+            </div>
+          ) : null}
           {loading ? <GeoLoading text="内容生成中（约 30 秒）…" /> : null}
           {error ? <GeoError message={error} onRetry={() => setError(null)} /> : null}
+          {result && result.ok === false ? (
+            <div className="space-y-1 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">严谨模式已拒绝生成</div>
+              <ul className="space-y-0.5">
+                {(result.unverified_facts ?? []).map((u, i) => (
+                  <li key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">· {u.claim}</li>
+                ))}
+              </ul>
+              <p className="text-[10.5px] text-[var(--yayu-faint)]">
+                如这些声明是真实事实，请先补充到企业知识库 / 内容资产，或切换「创作」模式后重新生成。
+              </p>
+            </div>
+          ) : null}
           <GeoButtonRow>
             <Button size="sm" disabled={loading} onClick={() => void generate()}>
               {loading ? '生成中…' : '生成内容'}
@@ -302,7 +478,7 @@ export function GeoContentGenForm() {
         </div>
       ) : null}
 
-      {step === 5 && result ? (
+      {step === 5 && result && result.ok !== false ? (
         <div className="space-y-2">
           <div className="flex items-center gap-1.5 text-[12px] text-[var(--yayu-muted)]">
             <Check className="size-3.5" /> 生成完成
@@ -313,12 +489,90 @@ export function GeoContentGenForm() {
               {result.content}
             </div>
           </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] text-[var(--yayu-faint)]">
+            {result.company_name ? <span>企业：{result.company_name}</span> : null}
+            <span>知识库引用：{result.materials_used ?? 0} 条</span>
+            <span>结构：{result.structure === 'geo' ? 'GEO 结构' : '自由长文'}</span>
+            <span>
+              事实核验：
+              {MODES.find((m) => m.value === (result.mode ?? 'creative'))?.label ?? result.mode ?? '创作'}
+            </span>
+          </div>
+          {result.context_sources && result.context_sources.length > 0 ? (
+            <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">本篇引用的上下文来源</div>
+              <div className="mt-0.5 space-y-0.5">
+                {result.context_sources.map((s) => (
+                  <div key={s.kind} className="flex items-center justify-between text-[10.5px] text-[var(--yayu-muted)]">
+                    <span>{s.label}</span>
+                    <span className="text-[var(--yayu-faint)]">{(s.items ?? []).length} 条</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {result.unverified_facts && result.unverified_facts.length > 0 ? (
+            <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">
+                未验证声明（{result.unverified_facts.length} 条）
+              </div>
+              <ul className="mt-0.5 space-y-0.5">
+                {result.unverified_facts.map((u, i) => (
+                  <li key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">· {u.claim}</li>
+                ))}
+              </ul>
+              <p className="mt-0.5 text-[10.5px] text-[var(--yayu-faint)]">
+                这些声明未在企业知识库或内容资产中找到依据，正文中不得写成已验证事实。
+              </p>
+            </div>
+          ) : null}
+          {result.fact_check ? (
+            <div className="space-y-1 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-[var(--yayu-foreground)]">事实密度</span>
+                <span className="text-[11px] font-semibold text-[var(--yayu-foreground)]">
+                  {Math.round((result.fact_check.score ?? 0) * 100)}%
+                </span>
+              </div>
+              {result.fact_check.needs_rewrite ? (
+                <>
+                  <div className="text-[10.5px] text-[var(--yayu-muted)]">
+                    知识库里的带数据事实还没全部写进正文，建议补充：
+                  </div>
+                  <ul className="space-y-0.5">
+                    {(result.fact_check.missing_facts ?? []).slice(0, 5).map((m, i) => (
+                      <li key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">· {m}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <div className="text-[10.5px] text-[var(--yayu-muted)]">已覆盖知识库中的带数据事实</div>
+              )}
+            </div>
+          ) : null}
+          {result.sections && Object.keys(result.sections).length > 0 ? (
+            <details className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <summary className="cursor-pointer text-[11px] font-medium text-[var(--yayu-foreground)]">
+                结构化分节（{Object.keys(result.sections).length} 节，点击展开）
+              </summary>
+              <div className="mt-1 space-y-1.5">
+                {Object.entries(result.sections).map(([name, body]) => (
+                  <div key={name}>
+                    <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">{name}</div>
+                    <div className="whitespace-pre-wrap text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
+                      {body}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          ) : null}
           {scoring ? <GeoLoading text="评分中…" /> : null}
           {score ? (
             <div className="space-y-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-medium text-[var(--yayu-foreground)]">可发布度</span>
-                <span className="text-[12px] font-semibold text-[var(--yayu-foreground)]">{Math.round(score.total)} 分</span>
+                <span className="text-[12px] font-semibold text-[var(--yayu-foreground)]">{scoreTotalPct} 分</span>
               </div>
               {(
                 [

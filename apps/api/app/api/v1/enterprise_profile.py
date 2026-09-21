@@ -350,11 +350,27 @@ def _match_question(qtext: str, rules: list[str], intent: str = "", entities: li
 # ══════════════════════════════════════════════════════════════════
 # 知识匹配：Kernel 知识 → 子项相关知识
 # ══════════════════════════════════════════════════════════════════
+#: 48 子项 knowledge_match_rules.object_types 写的类型词表来自旧 Kernel
+#: （company/product/service/material/customer/competitor/person/...）。
+#: EIOS 知识对象只有 ``entity`` / ``fact`` 两种类型（2026-09-21 实测 171/29），
+#: 拿旧词表当硬约束 → 每个子项的「已有资料」恒为 0（审计 B3/B5）。
+_KNOWN_OBJECT_TYPES = frozenset({
+    "company", "product", "service", "material", "project", "brand",
+    "customer", "competitor", "person", "department", "policy", "procedure",
+    "supplier", "external",
+})
+
+
 def _match_knowledge(knowledge: list[dict], rules: dict) -> list[dict]:
     """按 object_type/predicate/关键词 从知识列表筛出属于该子项的知识。
 
     匹配语义：类型命中 AND（predicate 命中 OR 关键词命中）——
-    predicates/keywords 是"或"（任一内容维度沾边即归入），类型是硬约束。
+    predicates/keywords 是"或"（任一内容维度沾边即归入）。
+
+    类型词表不在 EIOS 词汇表里时（``entity`` / ``fact``）不再硬排除：
+    改为只用 predicate/关键词 判定，并在 ``match_basis`` 上如实标注
+    「按内容关键词归类，非类型断言」。若知识本身没有类型断言、又不含子项关键词，
+    仍然不归入（不猜）。
     """
     if not knowledge or not rules:
         return []
@@ -368,15 +384,17 @@ def _match_knowledge(knowledge: list[dict], rules: dict) -> list[dict]:
         name = k.get("canonical_name") or k.get("name") or ""
         val = k.get("value") or ""
         blob = f"{name} {pred} {val}"
-        hit_type = (not object_types) or ktype in object_types
-        if not hit_type:
-            continue
+        typed = ktype in _KNOWN_OBJECT_TYPES
+        if object_types and typed and ktype not in object_types:
+            continue  # 有类型断言且与子项不符 → 不归入
         hit_pred = (not predicates) or any(p and p in pred for p in predicates)
         hit_kw = (not keywords) or any(kw and kw in blob for kw in keywords)
         # predicates/keywords 任一命中即算内容沾边（两者都空=不限内容）
         if (predicates or keywords) and not (hit_pred or hit_kw):
             continue
-        out.append(k)
+        item = dict(k)
+        item["match_basis"] = "object_type" if (object_types and typed) else "content_keywords"
+        out.append(item)
     return out
 
 
@@ -567,7 +585,7 @@ async def _load_knowledge() -> dict:
         logger.warning("load knowledge cache failed: %s", e)
 
     # 3) 拉 Kernel
-    from adapters.eios import get_entities, search_knowledge, search_relations
+    from adapters.eios import get_entities, hits_of, search_knowledge, search_relations
 
     entities: list[dict] = []
     facts: list[dict] = []
@@ -578,12 +596,20 @@ async def _load_knowledge() -> dict:
         entities = [e for e in entities if (e.get("status") or "active") == "active"]
     except Exception as e:
         logger.warning("get_entities failed: %s", e)
-    try:
-        res = await search_knowledge("", top_k=100)
-        hits = res.get("hits") or []
-        facts = [h for h in hits if (h.get("predicate") or "") or (h.get("value") or "")]
-    except Exception as e:
-        logger.warning("search_knowledge failed: %s", e)
+    # 事实型知识：EIOS 只有 entity / fact 两种对象类型，``fact`` 对象的 canonical_name
+    # 本身就是一句事实（如「成都演示间 负责 StoryClaw终端」）。旧实现走空查询检索，
+    # 而空查询返回的是对象目录（value 恒空）→ facts 过滤条件恒不成立 → 「事实 0」（审计 B5）。
+    facts = [
+        {
+            "canonical_name": e.get("canonical_name") or e.get("name") or "",
+            "object_type": e.get("object_type") or e.get("type") or "",
+            "predicate": None,
+            "value": "",
+            "evidence_ids": list(e.get("evidence_ids") or []),
+        }
+        for e in entities
+        if (e.get("object_type") or e.get("type")) == "fact"
+    ]
     # relations：按企业/核心实体名查询（空查询不可靠）
     try:
         names = [e.get("canonical_name") or e.get("name") for e in entities[:20] if e.get("canonical_name") or e.get("name")]
@@ -731,8 +757,10 @@ async def profile_item(item_id: str):
         if kws:
             res = await search_knowledge(" ".join(kws), top_k=8)
             seen = set()
-            for h in (res.get("hits") or []):
-                txt = (h.get("text") or h.get("content") or "").strip()
+            for h in hits_of(res):
+                # 审计 B5：命中里放正文的是 ``value``/``snippet``（``_map_hit`` 的字段），
+                # 旧代码读 ``text``/``content`` → 相关文档块恒空。
+                txt = (h.get("value") or h.get("snippet") or "").strip()
                 if not txt or txt in seen:
                     continue
                 seen.add(txt)

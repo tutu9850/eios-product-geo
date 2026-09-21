@@ -140,7 +140,7 @@ def _trend_points(history: List[dict], window: int = 6) -> List[dict]:
 def _question_stage_map(questions: List[dict]) -> Dict[str, dict]:
     """客户问题地图：按 intent/customer_stage 分组统计问题数与覆盖（AI 回答含企业依据比例）。"""
     stages = ["认知", "搜索", "比较", "选择", "决策", "信任"]
-    out = {s: {"count": 0, "covered": 0, "coverage_pct": None} for s in stages}
+    out = {s: {"count": 0, "covered": 0, "judged": 0, "coverage_pct": None} for s in stages}
     # intent → V3 六阶段映射（覆盖现有问题池的 intent 取值）
     _STAGE_MAP = {
         "认知": "认知", "awareness": "认知", "认知了解": "认知", "了解": "认知",
@@ -157,11 +157,16 @@ def _question_stage_map(questions: List[dict]) -> Dict[str, dict]:
         if bucket is None:
             continue
         bucket["count"] += 1
-        if q.get("evidence_level") == "grounded":
+        level = q.get("evidence_level")
+        if level in ("grounded", "partial", "none"):
+            bucket["judged"] += 1
+        if level == "grounded":
             bucket["covered"] += 1
     for s in stages:
-        if out[s]["count"]:
-            out[s]["coverage_pct"] = round(out[s]["covered"] / out[s]["count"] * 100)
+        # 审计 B1：只按「已做过知识判定」的问题算覆盖；一个都没判定 → None（未判定），
+        # 不再把「没写过的字段」渲染成 0%。
+        judged = out[s].get("judged") or 0
+        out[s]["coverage_pct"] = round(out[s]["covered"] / judged * 100) if judged else None
     return out
 
 

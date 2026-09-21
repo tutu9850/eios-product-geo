@@ -208,6 +208,38 @@ async def gen_questions(payload: QuestionsIn):
     return ok({"added": added, "total": len(items), "error": None, "auto_source": auto_source, "source_keywords": seeds if auto_source else []})
 
 
+# 审计 B1：``evidence_level`` 的取值是知识判定结果（grounded / partial / none）。
+# 一个问题是「grounded」= AI 回答这类问题时企业资料够用。**没判定过的问题不能被当成 0%**，
+# 所以漏斗按「已判定的问题」算比例，一个都没判定时给 None（诚实空态），不给 0%。
+_LEVELS = ("grounded", "partial", "none")
+_STAGE_CN = {"awareness": "认知", "consideration": "比较", "decision": "决策", "retention": "留存", "purchase": "采购", "trust": "信任"}
+
+
+def _funnel_rows(questions: list[dict]) -> list[dict]:
+    """问题池 → 认知阶段漏斗（每阶段：问题数 / 已判定数 / 企业覆盖%）"""
+    stages: dict[str, dict] = {}
+    for q in questions:
+        raw = (q.get("customer_stage") or "").strip()
+        st = _STAGE_CN.get(raw.lower()) if raw else "其他"
+        g = stages.setdefault(st, {"stage": st, "question_count": 0, "grounded_count": 0, "judged_count": 0})
+        g["question_count"] += 1
+        lv = q.get("evidence_level")
+        if lv in _LEVELS:
+            g["judged_count"] += 1
+            if lv == "grounded":
+                g["grounded_count"] += 1
+    rows = []
+    for g in stages.values():
+        judged = g.pop("judged_count")
+        covered = g.pop("grounded_count")
+        g["judged_count"] = judged
+        g["coverage_pct"] = round(covered / judged * 100) if judged else None
+        rows.append(g)
+    order = {"认知": 0, "比较": 1, "信任": 2, "采购": 3}
+    rows.sort(key=lambda x: (order.get(x["stage"], 99), x["stage"]))
+    return rows
+
+
 @router.get("/cognition-map")
 async def cognition_map():
     """蒸馏中心·客户认知地图：问题池按决策阶段聚合 + 企业覆盖
@@ -216,26 +248,11 @@ async def cognition_map():
     纯规则聚合零调用；无数据阶段标 null（诚实空态）。
     """
     qs = _load_questions()
-    stages: dict[str, dict] = {}
-    # customer_stage 可能存英文（awareness/consideration/decision/retention）→ 中文展示
-    _stage_cn = {"awareness": "认知", "consideration": "比较", "decision": "决策", "retention": "留存", "purchase": "采购", "trust": "信任"}
-    for q in qs:
-        raw = (q.get("customer_stage") or "").strip()
-        st = _stage_cn.get(raw.lower()) if raw else "其他"
-        g = stages.setdefault(st, {"stage": st, "question_count": 0, "grounded_count": 0, "coverage_pct": None})
-        g["question_count"] += 1
-        if q.get("evidence_level") == "grounded":
-            g["grounded_count"] += 1
-    rows = []
-    for st, g in stages.items():
-        if g["question_count"] > 0:
-            g["coverage_pct"] = round(g["grounded_count"] / g["question_count"] * 100)
-        del g["grounded_count"]
-        rows.append(g)
-    # 固定阶段顺序（认知/比较/信任/采购/其他）
-    order = {"认知": 0, "比较": 1, "信任": 2, "采购": 3}
-    rows.sort(key=lambda x: (order.get(x["stage"], 99), x["stage"]))
-    return ok({"stages": rows, "note": "企业覆盖 = 该阶段问题中 AI 回答含企业依据的比例（规则估算）"})
+    rows = _funnel_rows(qs)
+    return ok({
+        "stages": rows,
+        "note": "企业覆盖 = 该阶段**已做过知识判定**的问题里有企业依据（grounded）的比例；未判定为 null，不按 0% 计（规则估算）",
+    })
 
 
 @router.get("/questions")
@@ -272,15 +289,16 @@ async def list_questions(status: str | None = None, limit: int = 100, validated:
             for ed in q.get("engine_detail") or []:
                 if ed.get("mentioned"):
                     q_mentioned[qt] = q_mentioned.get(qt, 0) + 1
-    # evidence_level → 企业覆盖（grounded 80 / partial 50 / none 20 / 未知 null）
+    # evidence_level → 企业覆盖（grounded 80 / partial 50 / none 20 / 未判定 null）
     _cov_map = {"grounded": 80, "partial": 50, "none": 20}
     for q in items:
         qt = q.get("question") or ""
         freq = q_count.get(qt, 0)
         vis = round(q_mentioned.get(qt, 0) / freq * 100) if freq else None
         cov = _cov_map.get(q.get("evidence_level"))
-        att = q.get("priority") or 50
-        opp = round((100 - cov) * att / 100) if cov is not None else None
+        # 审计 B2：attention 以前兜底 50 —— 数据缺了就写 0 分是编造。没填 priority 就是 None。
+        att = q.get("priority")
+        opp = round((100 - cov) * att / 100) if (cov is not None and att is not None) else None
         q["attention"] = att
         q["ai_visibility"] = vis
         q["coverage"] = cov
@@ -301,10 +319,33 @@ async def list_questions(status: str | None = None, limit: int = 100, validated:
 @router.delete("/questions/{qid}")
 async def delete_question(qid: str):
     items = _load_questions()
+    target = next((q for q in items if q.get("id") == qid), None)
+    if target is None:
+        return ok({"removed": 0, "total": len(items), "error": "问题不存在"})
+    qtext = str(target.get("question") or "").strip()
     kept = [q for q in items if q.get("id") != qid]
     removed = len(items) - len(kept)
     _save_questions(kept)
-    return ok({"removed": removed, "total": len(kept)})
+    # 审计 B12：删除问题要一并清理引用它的数据，否则计划/缺口里会留下指向已删问题的
+    # 悬空 target_question。缺口是按问题粒度的知识缺口记录，问题没了即失效 → 删除；
+    # 内容计划是用户的生产任务，不连坐删除，只清掉悬空的问题引用（topic/subitem 自描述）。
+    cleaned = {"gaps": 0, "plans": 0}
+    if qtext:
+        gaps = _load_gaps()
+        kept_gaps = [g for g in gaps if str(g.get("question") or "").strip() != qtext]
+        if len(kept_gaps) != len(gaps):
+            _save_gaps(kept_gaps)
+            cleaned["gaps"] = len(gaps) - len(kept_gaps)
+        plans = _load_plans()
+        touched = 0
+        for p in plans:
+            if str(p.get("target_question") or "").strip() == qtext:
+                p["target_question"] = ""
+                touched += 1
+        if touched:
+            _save_plans(plans)
+            cleaned["plans"] = touched
+    return ok({"removed": removed, "total": len(kept), "cleaned_refs": cleaned})
 
 
 @router.get("/questions/{qid}/platforms")
@@ -437,6 +478,10 @@ async def faq(payload: DistillIn):
             )
             try:
                 atext = await chat(aprompt, max_tokens=400)
+            except LLMNotConfiguredError:
+                # 审计 B12：LLMNotConfiguredError 不是 LLMError 的子类，
+                # 只捕 LLMError 会让「模型未配置」冒成 500。这里降级为空回答（下面兜底文案）。
+                atext = ""
             except LLMError:
                 atext = ""
             m = re.search(r"\{[\s\S]*\}", atext or "")
@@ -697,17 +742,28 @@ async def detect_gaps(limit: int = 30):
     added = []
     now = datetime.now(timezone.utc).isoformat()
     mi_map: dict[str, str] = {}
+    # 审计 B1/B2：问题的 evidence_level 此前**没有任何地方写过**（gen_questions 只写 "C"），
+    # 而认知漏斗/认知地图/PDF 报告都按 `== "grounded"` 统计 → 恒 0%，还被当成结论展示。
+    # 这里把已经算出来的知识判定结果如实写回问题本行：grounded / partial / none（同一批 kc，不重查）。
+    levels: dict[str, str] = {}
     for q in questions:
-        if q.get("question") in existing_q:
-            continue
         qtext = str(q.get("question") or "").strip()
+        if not qtext:
+            continue
+        has_gap = q.get("question") in existing_q
+        already_leveled = q.get("evidence_level") in ("grounded", "partial", "none")
+        # 已有缺口且已判定过 → 不重查（省 Kernel 调用）。**不能因为「已有缺口」就跳过判定**：
+        # 老问题正是这样被漏掉的——库存问题永远拿不到 evidence_level，漏斗恒 0%。
+        if has_gap and already_leveled:
+            continue
         intent = str(q.get("intent") or "")
         entities = q.get("related_entities") or []
         kc = await _knowledge_check(qtext, entities)
         if kc.get("kernel_down"):
-            continue  # Kernel 不可达 → 不判缺口（防「宕机」被当成「缺知识」）
-        if kc["has_knowledge"]:
-            continue  # 企业已有知识 → 不是缺口
+            continue  # Kernel 不可达 → 不判缺口（防「宕机」被当成「缺知识」），也不写 level
+        levels[qtext] = kc.get("level") or "none"
+        if has_gap or kc["has_knowledge"]:
+            continue  # 已有缺口 / 企业已有知识 → 不重复建缺口
         # 子项粒度：该问题命中哪些 48 子项 → 缺的就是这些子项的信息
         hit_items = [
             it for it in ep_items
@@ -785,6 +841,16 @@ async def detect_gaps(limit: int = 30):
             "created_at": now,
         })
     _save_gaps(gaps)
+    if levels:
+        all_questions = _load_questions()
+        changed = False
+        for q in all_questions:
+            lv = levels.get(str(q.get("question") or "").strip())
+            if lv and q.get("evidence_level") != lv:
+                q["evidence_level"] = lv
+                changed = True
+        if changed:
+            _save_questions(all_questions)
     # 内容计划不再由缺口直译生成（2026-08-19 拍板：旧「补齐:xxx」直译被内容计划算法取代，
     # 由 POST /distill/content-plan 按 48 认知子项压力统一输出：待生产/待补知识）
     return ok({"added": len(added), "total": len(gaps), "plans_added": 0, "error": None})
@@ -1020,35 +1086,22 @@ async def distill_overview():
     gaps = [g for g in _load_gaps() if g.get("status") == "open"]
     top_gaps = sorted(gaps, key=lambda g: -(g.get("priority") or 0))[:5]
     plans = _load_plans()
-    # 认知漏斗（复用 cognition_map 口径）
-    _stage_cn = {"awareness": "认知", "consideration": "比较", "decision": "决策", "retention": "留存", "purchase": "采购", "trust": "信任"}
-    stages: dict[str, dict] = {}
-    for q in qs:
-        raw = (q.get("customer_stage") or "").strip()
-        st = _stage_cn.get(raw.lower()) if raw else "其他"
-        g = stages.setdefault(st, {"stage": st, "question_count": 0, "grounded_count": 0, "coverage_pct": None})
-        g["question_count"] += 1
-        if q.get("evidence_level") == "grounded":
-            g["grounded_count"] += 1
-    funnel = []
-    for st, g in stages.items():
-        if g["question_count"] > 0:
-            g["coverage_pct"] = round(g["grounded_count"] / g["question_count"] * 100)
-        del g["grounded_count"]
-        funnel.append(g)
-    order = {"认知": 0, "比较": 1, "决策": 2, "留存": 3}
-    funnel.sort(key=lambda x: (order.get(x["stage"], 99), x["stage"]))
-    # 最大机会阶段：覆盖最低且有问题
+    # 审计 B12：机会数以前 = len(plans)，把 archived/published/completed 也算进去。
+    # 只数「在办」的机会（未归档、未发布、未完成）。
+    open_plans = [p for p in plans if p.get("status") not in ("archived", "published", "completed")]
+    # 认知漏斗（口径见 _funnel_rows：只按「已判定过的问题」算，未判定给 null）
+    funnel = _funnel_rows(qs)
+    # 最大机会阶段：覆盖最低且有问题（未判定 = 不在此列，不拿 0% 当结论）
     ai_judgment = None
     with_cov = [s for s in funnel if s["coverage_pct"] is not None]
     if with_cov:
         worst = min(with_cov, key=lambda s: s["coverage_pct"])
         if worst["coverage_pct"] < 50:
-            samples = [q.get("question") for q in qs if _stage_cn.get((q.get("customer_stage") or "").lower(), "其他") == worst["stage"]][:3]
+            samples = [q.get("question") for q in qs if _STAGE_CN.get((q.get("customer_stage") or "").lower(), "其他") == worst["stage"]][:3]
             ai_judgment = {
                 "stage": worst["stage"],
                 "coverage_pct": worst["coverage_pct"],
-                "reason": f"客户已进入「{worst['stage']}」阶段，但企业资料覆盖仅 {worst['coverage_pct']}%——AI 回答该类问题时无法引用企业",
+                "reason": f"客户已进入「{worst['stage']}」阶段，{worst['judged_count']} 个已判定问题里只有 {worst['coverage_pct']}% 有企业资料可引用",
                 "samples": samples,
             }
     return ok({
@@ -1057,8 +1110,8 @@ async def distill_overview():
         "verified_questions": verified,
         "unverified_questions": unverified,
         "top_gaps": top_gaps,
-        "opportunities_count": len(plans),
-        "note": "总览为现有数据聚合（问题池/缺口/计划），无 AI 猜测",
+        "opportunities_count": len(open_plans),
+        "note": "总览为现有数据聚合（问题池/缺口/计划），无 AI 猜测；企业覆盖只按已判定过的问题算，未判定为 null",
     })
 
 
@@ -1176,9 +1229,10 @@ async def cognition_evaluate():
     from adapters.eios import get_entities, search_knowledge
 
     store = get_store()
-    # 覆盖重跑：先清空旧评估（避免重复累积）
-    for old in store.load("cognition_evaluations"):
-        store.delete("cognition_evaluations", old.get("id") or old.get("answer_id") or "")
+    # 审计 B9：旧代码「先清空旧评估 → 再逐批调 LLM」，任一批失败就提前退出，
+    # 用户看到「部分成功」，但历史评估已经全没了。改为「全部算完再替换」：
+    # 旧数据在本函数末尾、确认全部批次成功之后才删除。
+    previous = store.load("cognition_evaluations")
     hist = store.load("monitor_history")
     # 收集回答（去 engine_detail 缺失的）
     answers: list[dict] = []
@@ -1285,11 +1339,19 @@ async def cognition_evaluate():
                 except Exception:  # noqa: BLE001
                     out = {}
         except Exception as e:  # noqa: BLE001
-            return ok({"evaluated": len(results), "error": f"LLM 调用失败（第 {i//batch_size+1} 批）: {e}"})
+            # 审计 B9：失败时不落半份结果——保留上一轮完整评估（previous 未被删除）。
+            return ok({
+                "evaluated": 0,
+                "total_answers": len(answers),
+                "previous_kept": len(previous),
+                "error": f"LLM 调用失败（第 {i//batch_size+1} 批）: {e}；已保留上一轮评估，未覆盖",
+            })
         items = (out or {}).get("items") or []
         results.extend(items)
 
-    # 存表
+    # 全部批次成功后，才原子替换旧评估（先删后插；此时已拿到完整新结果）
+    for old in previous:
+        store.delete("cognition_evaluations", old.get("id") or old.get("answer_id") or "")
     saved = 0
     for item in results:
         aid = item.get("answer_id") or ""
@@ -1795,13 +1857,29 @@ def _attach_score(p: dict, weak_set: set, materials: list[dict], history: list[d
 
 @router.delete("/plans/{plan_id}")
 async def delete_plan(plan_id: str):
-    """删除内容计划（用户拍板：计划只加不减不行，每条可删）"""
+    """删除内容计划（用户拍板：计划只加不减不行，每条可删）
+
+    审计 B12：连带清理引用该计划的复测记录（content_impacts.plan_id），
+    否则复测页会留下指向已删计划的孤儿记录。
+    """
     plans = _load_plans()
     kept = [p for p in plans if p.get("id") != plan_id]
     if len(kept) == len(plans):
         return ok({"deleted": False, "total": len(kept), "error": "计划不存在"})
     _save_plans(kept)
-    return ok({"deleted": True, "total": len(kept), "error": None})
+    impacts_removed = 0
+    try:
+        from app.services.store import get_store
+
+        store = get_store()
+        impacts = [i for i in store.load("content_impacts") if str(i.get("plan_id") or "") == plan_id]
+        for i in impacts:
+            if i.get("id"):
+                store.delete("content_impacts", i["id"])
+                impacts_removed += 1
+    except Exception:  # noqa: BLE001
+        impacts_removed = 0
+    return ok({"deleted": True, "total": len(kept), "impacts_removed": impacts_removed, "error": None})
 
 
 @router.get("/plans")
@@ -1825,9 +1903,11 @@ async def list_plans(status: str | None = None, limit: int = 100, sort: str = "p
             items.sort(key=lambda p: (-p["score_breakdown"]["weak"]["score"], -p.get("priority", 0)))
         else:
             items.sort(key=lambda p: (-p["score"], -p.get("priority", 0)))
-    # 刷新即重查竞品缺口标注（跟随最新 factor-gaps；对完整列表标注并写回持久化）
-    _attach_factor_notes(all_plans)
-    _save_plans(all_plans)
+    # 审计 B10：读接口不得写库。原实现在 GET 里 `_attach_factor_notes(all_plans)`
+    # + `_save_plans(all_plans)`：并发下整表互相覆盖（后写的把先写的整体顶掉，
+    # 甚至复活已删除的行）。现在只对本次返回的 items 即时标注，不落库；
+    # 竞品缺口标注的落库只发生在写入型接口（POST /opportunities）。
+    _attach_factor_notes(items)
     return ok({"items": items, "total": len(items)})
 
 
@@ -2139,10 +2219,21 @@ async def content_publish(payload: PublishIn):
     target["status"] = "published"
     target["state"] = "已发布"
     target["published_at"] = now
-    target.setdefault("before_snapshot", {})
-    target["before_snapshot"]["published_at"] = now
+    snap = target.setdefault("before_snapshot", {})
+    snap["published_at"] = now
+    # 审计 B8：复测要算「差值」，就必须在**发布这一刻**把基线逐问存下来。
+    # 旧实现只存了 questions 列表，复测时无基线可比 → delta 恒 null，impact 退化成
+    # 「发布后的绝对正向率分档」，和发布前什么样无关。
+    base_questions = [q for q in (snap.get("questions") or []) if q] or [target.get("target_question") or ""]
+    snap["stats"] = {q: _question_monitor_stats(q) for q in base_questions if q}
     _save_plans(plans)
-    return ok({"published": True, "plan_id": payload.plan_id, "published_at": now})
+    return ok({
+        "published": True,
+        "plan_id": payload.plan_id,
+        "published_at": now,
+        "baseline_questions": len(snap["stats"]),
+        "note": "已记录发布时基线（逐问监测统计），复测按基线算差值",
+    })
 
 
 class RecheckIn(BaseModel):
@@ -2167,40 +2258,65 @@ async def content_recheck(payload: RecheckIn):
         return ok({"error": "计划未发布，先 POST /distill/content-publish", "impact": None})
 
     before = target.get("before_snapshot") or {}
+    before_stats = before.get("stats") or {}
     qs = before.get("questions") or [target.get("target_question") or ""]
-    after_questions = []
-    total_mention_delta = 0.0
-    measured = 0
+    after_questions: list[dict] = []
+    deltas: list[float] = []
     for qtext in qs:
         if not qtext:
             continue
         stats = _question_monitor_stats(qtext)
         if not stats["freq"]:
             continue  # 复测后仍无监测 → 跳过（不编造）
-        after_questions.append({"question": qtext, "mention_rate": stats["mention_rate"], "positive_rate": stats["positive_rate"]})
-        # 基线：发布时的提及率（before_snapshot 未存明细 → 用当前问题池记录兜底）
-        qrec = next((x for x in _load_questions() if str(x.get("question") or "") == qtext), None)
-        base_rate = None
-        if qrec:
-            base_rate = float(qrec.get("monitor_count") or 0)  # 兜底字段，可能不准
-        measured += 1
-    # 简化 impact：能测到的问题数占比 + 平均正向率
-    if measured == 0:
-        impact = {"level": "neutral", "note": "复测后无新增监测数据——先跑一轮监测再复测", "delta": None}
+        base = before_stats.get(qtext)
+        delta = None
+        if base and base.get("freq"):
+            delta = round((stats["mention_rate"] or 0) - (base["mention_rate"] or 0), 1)
+            deltas.append(delta)
+        after_questions.append({
+            "question": qtext,
+            "mention_rate": stats["mention_rate"],
+            "positive_rate": stats["positive_rate"],
+            "baseline_mention_rate": (base or {}).get("mention_rate"),
+            "delta_mention_rate": delta,
+        })
+    # 审计 B8：impact 用**发布前基线算出的真实差值**；没有基线就不许编结论。
+    if not after_questions:
+        impact = {"level": "unknown", "note": "复测后仍无监测数据——先跑一轮监测再复测", "delta": None}
+    elif not deltas:
+        impact = {
+            "level": "unknown",
+            "note": "缺发布时基线（该计划发布早于基线记录功能）——重发一次或重新发布打点后可比",
+            "delta": None,
+            "measured": 0,
+        }
     else:
-        avg_positive = round(sum((x["positive_rate"] or 0) for x in after_questions) / measured, 1)
-        level = "high" if avg_positive >= 50 else "medium" if avg_positive >= 20 else "neutral"
-        impact = {"level": level, "avg_positive_rate": avg_positive, "measured": measured, "delta": None}
+        avg_delta = round(sum(deltas) / len(deltas), 1)
+        level = "high" if avg_delta >= 20 else "medium" if avg_delta > 0 else "neutral" if avg_delta == 0 else "negative"
+        impact = {
+            "level": level,
+            "delta": avg_delta,  # 平均提及率变化（百分点）
+            "measured": len(deltas),
+            "note": "与发布时基线相比的平均提及率变化（百分点）",
+        }
 
     store = get_store()
+    # 幂等：同一计划反复复测只保留最新一条（旧实现每次追加一行，表里会堆重复记录）
+    for old_row in store.load("content_impacts"):
+        if old_row.get("plan_id") == payload.plan_id and old_row.get("id"):
+            store.delete("content_impacts", old_row["id"])
     store.insert("content_impacts", {
         "plan_id": payload.plan_id,
         "subitem": target.get("subitem"),
         "topic": target.get("topic"),
         "published_at": target.get("published_at"),
         "rechecked_at": datetime.now(timezone.utc).isoformat(),
-        "before": before,
+        "before": {"questions": before.get("questions"), "stats": before_stats},
         "after": after_questions,
         "impact": impact,
     })
-    return ok({"impact": impact, "after": after_questions, "note": "规则映射（真实监测差值），后续数据积累后反哺算法"})
+    return ok({
+        "impact": impact,
+        "after": after_questions,
+        "note": "impact = 复测提及率 − 发布时基线提及率（真实监测差值）；无基线则如实报 unknown",
+    })

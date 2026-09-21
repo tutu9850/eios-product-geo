@@ -4,7 +4,7 @@
 适配：企业资料自动读取（Kernel）、模型走 GEO 专用模型（服务端转发）、不自动发布。
 流程：企业知识(自动) + 用户问题 + 内容目标/类型 + 平台 → GEO Prompt 编译 → 生成
 """
-from adapters.eios import get_entities, search_knowledge
+from adapters.eios import get_entities, hits_of, search_knowledge
 from adapters.llm import chat
 import re
 
@@ -169,6 +169,29 @@ _TYPE_PROMPTS = {
 # ============ 意图解析（AI 自动配置表单） ============
 _PLATFORM_NAME_TO_ID = {p["name"]: pid for pid, p in ALL_PLATFORMS.items()}
 
+
+def _target_word_count(length: str, platform_cfg: dict) -> int:
+    """平台字数区间 → 目标字数（审计 A4）。
+
+    旧实现 `length if length in ("500","1500","3000") else p["wordCount"][0]`：
+    length 由表单/parse_intent 归一后**永远**是这三个值之一 → 平台自带区间是死代码
+    （小红书配 600–1000 字，实际按 1500 字下单）。现在按平台区间把请求长度夹进去。
+    """
+    try:
+        want = int(str(length).strip())
+    except (TypeError, ValueError):
+        want = 0
+    rng = platform_cfg.get("wordCount") or []
+    lo = int(rng[0]) if len(rng) >= 1 and rng[0] else 0
+    hi = int(rng[1]) if len(rng) >= 2 and rng[1] else 0
+    if want <= 0:
+        want = lo or 1500
+    if lo and want < lo:
+        want = lo
+    if hi and want > hi:
+        want = hi
+    return want
+
 _PARSE_SYSTEM = """你是 GEO 内容配置助手。用户会用一句话描述内容需求，你要把它解析成结构化的 GEO 配置。
 
 可选值（必须从中选择，不能自创）：
@@ -328,7 +351,7 @@ async def _auto_company(tenant_id: str) -> tuple[str | None, list[str]]:
     materials: list[str] = []
     try:
         res = await search_knowledge(company_name, tenant_id=tenant_id, top_k=8, include_candidates=False)
-        items = res.get("results") or res.get("objects") or res.get("items") or []
+        items = hits_of(res)
         for it in items[:8]:
             name = it.get("canonical_name") or it.get("name") or ""
             val = str(it.get("value") or it.get("summary") or "")[:200]
@@ -351,22 +374,43 @@ async def _auto_company(tenant_id: str) -> tuple[str | None, list[str]]:
 #   kernel（强：Kernel 检索命中）→ material（中：内容资产素材命中）→ none（弱：无依据）
 # 三种模式：strict（严谨：无依据拒绝生成）/ creative（创作：生成但标注待核验）/ draft（草稿：完全开放标注非事实）
 _FACT_VERBS = ("获得", "通过", "荣获", "评为", "入选", "认证", "取得", "达到", "拥有", "成为", "获评", "认定", "获批", "授予", "拿下", "中标")
+# 审计 B12：原截尾词表只有中文，英文/口语化输入提取不到声明。补英文动词与请求尾词。
+_FACT_VERBS_EN = (
+    "obtained", "certified", "certification", "awarded", "accredited", "achieved",
+    "holds", "has obtained", "has passed", "won", "ranked", "recognized", "registered",
+    "passed", "selected", "partnered", "authorized", "qualified",
+)
+_CLAIM_TAIL_KEYWORDS = (
+    "，请", "，帮", "，麻烦", "请帮我们", "请帮我", "帮我", "，写", "，制作", "，生成", "，出", "，做",
+    ", please", " and write", " please write", " please help", " write a", " write an",
+    " create a", " create an", " produce a", " generate a", " make a",
+)
 
 
 def _extract_fact_claims(text: str) -> list[str]:
-    """从用户输入提取声明性语句（事实候选）"""
+    """从用户输入提取声明性语句（事实候选）
+
+    审计 B12：原实现只在中文标点分句（`.` 不分句）+ 只有中文动词/截尾词，
+    英文或口语化输入提取不到声明。现在补齐英文分句与英文声明动词。
+    """
     if not text:
         return []
     claims = []
-    for sent in re.split(r"[。！？!?\n；;]", text):
-        sent = sent.strip()
-        # 截掉请求尾巴（"，请帮我们写…"等），只留声明本身
-        for kw in ["，请", "，帮", "，麻烦", "请帮我们", "请帮我", "帮我", "，写", "，制作", "，生成", "，出", "，做"]:
+    # 分句：中英文标点 + 换行；英文句号只在后接空白/结尾时算边界（不切 3.5 / v1.0）
+    for sent in re.split(r"[。！？!?；;\n]+|\.(?=\s|$)", text):
+        sent = (sent or "").strip().strip("．.,，;；：:")
+        # 截掉请求尾巴（"，请帮我们写…" / ", please write…"），只留声明本身
+        for kw in _CLAIM_TAIL_KEYWORDS:
             i = sent.find(kw)
             if i > 0:
                 sent = sent[:i].strip()
                 break
-        if any(v in sent for v in _FACT_VERBS) and 6 <= len(sent) <= 80:
+        if not sent:
+            continue
+        has_verb = any(v in sent for v in _FACT_VERBS) or any(
+            v in sent.lower() for v in _FACT_VERBS_EN
+        )
+        if has_verb and 6 <= len(sent) <= 80:
             claims.append(sent)
     return claims[:5]
 
@@ -389,21 +433,22 @@ async def _fact_gate(text: str) -> dict:
         best, hit_name, hit_blob = 0.0, "", ""
         try:
             res = await search_knowledge(c, top_k=3, include_candidates=False)
-            hits = res.get("hits") or []
-            for h in hits:
+            for h in hits_of(res):
                 try:
-                    sc = float(h.get("score", 0))
+                    sc = float(h.get("score") or 0)
                 except (TypeError, ValueError):
                     sc = 0.0
-                if sc > best:
+                if sc >= best:
                     best, hit_name = sc, h.get("canonical_name") or ""
                     hit_blob = f"{h.get('canonical_name') or ''}{h.get('predicate') or ''}{h.get('value') or ''}"
         except Exception:  # noqa: BLE001
             best = 0.0
         # 实体相关性：命中知识必须与声明实质相关（防"认证→智能体部署"式向量虚高）
+        # 审计 B7：旧条件 ``best >= 0.5`` 是按旧 Kernel 的 0–1 分定的；EIOS 的 score 是
+        # 排序分（实测 13.5~14.0），该条件恒真、等于没有。真正把关的是下面的 related。
         claim_core = c.replace("我们", "").replace("本公司", "").replace("公司", "").replace("企业", "").replace("刚", "").replace("已", "").replace("了", "")
         related = bool(hit_name and (hit_name in c or claim_core[:12] in hit_blob))
-        if best >= 0.5 and related:
+        if hit_name and related:
             results.append({"claim": c, "level": "kernel", "score": round(best, 2), "evidence": hit_name})
             continue
         core = c.replace("我们", "").replace("公司", "").replace("企业", "").replace("本公司", "")
@@ -416,11 +461,26 @@ async def _fact_gate(text: str) -> dict:
     return {"claims": results, "unverified": unverified, "verified": verified}
 
 
-def _overlap_score(a: str, b: str) -> int:
-    """简单相关性：字符重叠计数（第一版，不引入 embedding）"""
-    if not a or not b:
-        return 0
-    return sum(1 for ch in a if ch in b and not ch.isspace())
+def _relevance_order(query: str, docs: list[dict], text_key: str) -> list[dict]:
+    """按问句相关性重排文档（审计 A5）。
+
+    旧实现 `_overlap_score` 只比对 title 的**字符重叠计数**：共用常用字越多分越高，
+    不看向量也不看正文。改为复用 services/embed 的 n-gram 打分（与素材页
+    /knowledge/materials/search 的 hybrid_search 同一主路径口径：核心词 2-gram，
+    标题 2x + 正文 1x）。无命中（含 query 为空）→ 保持原顺序，稳定退化。
+    """
+    docs = list(docs)
+    if not query or not docs:
+        return docs
+    try:
+        from services.embed import n_gram_scores
+
+        scores = n_gram_scores(query, docs, title_key=text_key, content_key="content")
+    except Exception:  # noqa: BLE001
+        return docs
+    if not scores:
+        return docs
+    return sorted(docs, key=lambda d: -scores.get(str(d.get("id") or ""), 0.0))
 
 
 async def build_context(
@@ -447,7 +507,7 @@ async def build_context(
         # 2026-08-19 用户拍板：GEO 消息来源含部门库浅抽深抽的 candidate（未发布也算），
         # 显式包含候选——此前写死 False 导致候选知识读不到
         res = await search_knowledge(company_name, tenant_id=tenant_id, include_candidates=True)
-        items = res.get("results") or res.get("objects") or res.get("items") or []
+        items = hits_of(res)
         for it in items[:8]:
             name = it.get("canonical_name") or it.get("name") or ""
             val = str(it.get("value") or "")[:200]
@@ -464,10 +524,8 @@ async def build_context(
         assets = []
     faq_assets = [a for a in assets if a.get("source_type") == "faq"]
     other_assets = [a for a in assets if a.get("source_type") in ("generated", "text", "url")]
-    faq_assets.sort(key=lambda a: _overlap_score(question, str(a.get("title") or "")), reverse=True)
-    other_assets.sort(key=lambda a: _overlap_score(question, str(a.get("title") or "")), reverse=True)
-    faq_assets = faq_assets[:max_faq]
-    other_assets = other_assets[:max_assets]
+    faq_assets = _relevance_order(question, faq_assets, "title")[:max_faq]
+    other_assets = _relevance_order(question, other_assets, "title")[:max_assets]
 
     # 客户问题池（相关性排序 + 类型分组：用户会问 / 对比 / 决策 —— 生成式搜索入口；统一读 store.questions）
     try:
@@ -476,8 +534,7 @@ async def build_context(
         pool = get_store().load("questions")
     except Exception:  # noqa: BLE001
         pool = []
-    pool.sort(key=lambda q: _overlap_score(question, str(q.get("question") or "")), reverse=True)
-    pool_questions = pool[:max_pool]
+    pool_questions = _relevance_order(question, pool, "question")[:max_pool]
     for q in pool_questions:
         qtext = str(q.get("question") or "")
         if any(k in qtext for k in ("对比", "区别", "vs", "还是")):
@@ -620,7 +677,7 @@ async def generate(
         p = ALL_PLATFORMS[platform]
         if is_seo:
             seo = seo or {}
-            word_count = length if length in ("500", "1500", "3000") else str(p["wordCount"][0])
+            word_count = _target_word_count(length, p)  # 审计 A4：平台区间生效
             prompt = _SEO_GENERATE_PROMPT.format(
                 contentType=p["name"],
                 contentDescription=p.get("description", ""),
@@ -636,7 +693,7 @@ async def generate(
                 companyBlock=company_block,
             )
         else:
-            word_count = length if length in ("500", "1500", "3000") else str(p["wordCount"][0])
+            word_count = _target_word_count(length, p)  # 审计 A4：平台区间生效
             prompt = _DEFAULT_GENERATE_PROMPT.format(
                 platform=p["name"],
                 platformFeatures=p["features"],
@@ -681,13 +738,25 @@ async def generate(
 
         prompt += STRUCTURE_GEO_INSTRUCTION.format(length=length)
 
-    # 生成（失败自动重试 1 次：瞬时限流/网络抖动降级）
+    # 生成（失败重试：瞬时限流/网络抖动；审计 B12——原实现同 prompt 原样立刻重发一次，
+    # 对限流窗口没有意义。改为指数退避重试，最多 3 次尝试，最终仍失败则抛出最后一次错误。）
+    import asyncio
+
     from adapters.llm import LLMError as _LLMError
 
-    try:
-        text = await chat(prompt, system=_SYSTEM, max_tokens=3000)
-    except _LLMError:
-        text = await chat(prompt, system=_SYSTEM, max_tokens=3000)
+    last_err: Exception | None = None
+    text = ""
+    for attempt in range(3):
+        try:
+            text = await chat(prompt, system=_SYSTEM, max_tokens=3000)
+            last_err = None
+            break
+        except _LLMError as e:
+            last_err = e
+            if attempt < 2:
+                await asyncio.sleep(2**attempt)  # 1s, 2s 退避
+    if last_err is not None:
+        raise last_err
 
     title = ""
     first_line = text.strip().split("\n")[0] if text.strip() else ""

@@ -135,12 +135,29 @@ class Store:
 
     def save(self, table: str, items: list[dict], tenant_id: str | None = None) -> None:
         """整表替换（单事务原子）：删除该租户全部行 → 插入新行。
-        与原 JSON 整文件写回语义一致，但具备事务性。"""
+        与原 JSON 整文件写回语义一致，但具备事务性。
+
+        审计 B10：整表替换会把**所有行**的 created_at 刷成同一时刻，
+        于是「最新 N 条」的排序实际上依赖 SQLite 行序，不是设计保证。
+        这里按 id 保留已存在行的原始 created_at（JSON 负载与列值都保留），
+        只有真正的新行才写当前时刻。
+        """
         tenant_id = tenant_id or current_tenant()
         model = TABLES.get(table)
         if model is None:
             return
         now = datetime.now(timezone.utc)
+        keep_created: dict[str, tuple[object, object]] = {}
+        for r in (
+            self.db.query(model.id, model.data_json, model.created_at)
+            .filter(model.tenant_id == tenant_id)
+            .all()
+        ):
+            try:
+                d = json.loads(r.data_json or "{}")
+            except Exception:
+                d = {}
+            keep_created[r.id] = (d.get("created_at"), r.created_at)
         self.db.query(model).filter(model.tenant_id == tenant_id).delete(
             synchronize_session=False
         )
@@ -153,11 +170,14 @@ class Store:
             # HTTP payload. Retain no tenant field inside the JSON body either:
             # it is legacy authority metadata, not product data.
             payload.pop("tenant_id", None)
+            prev_json_created, prev_col_created = keep_created.get(row_id, (None, None))
+            if prev_json_created and not payload.get("created_at"):
+                payload["created_at"] = prev_json_created
             row = model(
                 id=row_id,
                 data_json=json.dumps(payload, ensure_ascii=False),
                 tenant_id=tenant_id,
-                created_at=now,
+                created_at=prev_col_created or now,
             )
             for col, v in _hot_kwargs(table, payload).items():
                 setattr(row, col, v)

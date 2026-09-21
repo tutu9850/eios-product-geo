@@ -24,8 +24,14 @@ class GenerateRequest(BaseModel):
 
 class ScoreIn(BaseModel):
     content: str
-    company_name: str = ""
+    # 审计 A3：前端「内容评分」只发 title/content/goal/question/platform，从不发企业名，
+    # 旧代码 company_name 缺省空串 → build_company_profile("") 返回空画像 → 评分恒 0。
+    # 改为留空即自动识别当前企业（与 /content/generate 同口径）。
+    company_name: str | None = None
     question: str = ""
+    title: str = ""  # 前端携带（评分不使用；显式声明避免契约歧义）
+    goal: str = ""  # 前端携带（同上）
+    platform: str | None = None  # 前端携带（同上）
     tenant_id: str = "tenant_corp_01"
 
 
@@ -67,7 +73,14 @@ async def score_content(req: ScoreIn):
     from services.content.templates import parse_sections
     from app.services.company_profile import build_company_profile
 
-    profile = await build_company_profile(req.company_name, tenant_id=req.tenant_id) if req.company_name.strip() else {}
+    company_name = (req.company_name or "").strip()
+    if not company_name:
+        # 审计 A3：没给企业名时不再拿空画像评分，自动识别当前企业（读 Kernel 实体）
+        from services.content import _auto_company
+
+        company_name, _materials = await _auto_company(req.tenant_id)
+        company_name = (company_name or "").strip()
+    profile = await build_company_profile(company_name, tenant_id=req.tenant_id) if company_name else {}
     kernel_facts = profile.get("facts", []) if profile else []
     sections = parse_sections(req.content)
     result = score_geo_content(
@@ -75,8 +88,10 @@ async def score_content(req: ScoreIn):
         kernel_facts=kernel_facts,
         pool_questions=profile.get("questions", []) if profile else [],
         sections=sections,
-        company_name=req.company_name,  # 审计 P1-9：实体核心词剥离企业名前缀（参数化）
+        company_name=company_name,  # 审计 P1-9：实体核心词剥离企业名前缀（参数化）
     )
+    result["company_name"] = company_name or ""
+    result["profile_resolved"] = bool(company_name)
     return ok(result)
 
 

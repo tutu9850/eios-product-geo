@@ -13,7 +13,7 @@ import logging
 import re
 from datetime import datetime, timezone
 
-from adapters.eios import search_knowledge, search_relations
+from adapters.eios import hits_of, search_knowledge, search_relations
 
 logger = logging.getLogger("eios.geo.profile")
 
@@ -87,7 +87,7 @@ async def build_company_profile(
     kernel_error = None
     try:
         res = await search_knowledge(company_name, tenant_id=tenant_id, top_k=top_facts, include_candidates=False)
-        items = res.get("results") or res.get("objects") or res.get("items") or []
+        items = hits_of(res)
         for it in items:
             if it.get("kind") != "chunk":
                 # 相关性过滤：企业名须出现在 name/value/text（第二层：text 归属——

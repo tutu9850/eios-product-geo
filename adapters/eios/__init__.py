@@ -207,6 +207,23 @@ def _map_hit(hit: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def hits_of(result: Any) -> list[dict[str, Any]]:
+    """从 ``search_knowledge`` 的返回里取命中列表。
+
+    2026-09-21 审计 A1：返回的顶层键是 ``hits``。三个调用点此前读
+    ``results`` / ``objects`` / ``items``，全部恒空 —— 内容生成的「企业事实」
+    因此永远是 0 条，正文里写着「知识库暂无该企业资料」。这里只留一个入口，
+    不再让调用点各自猜键名（旧键仅作兼容兜底）。
+    """
+    if not isinstance(result, dict):
+        return []
+    for key in ("hits", "results", "objects", "items"):
+        value = result.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
 async def search_knowledge(
     query: str,
     tenant_id: str | None = None,
@@ -424,6 +441,7 @@ async def write_candidate(*args: Any, **kwargs: Any) -> dict[str, Any]:
 
 
 __all__ = [
+    "hits_of",
     "AuthorityWriteNotAllowed",
     "EIOSKnowledgeError",
     "KernelError",

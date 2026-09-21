@@ -13,7 +13,7 @@ import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
-from adapters.eios import search_knowledge
+from adapters.eios import hits_of, search_knowledge
 from adapters.llm import LLMNotConfiguredError, chat
 
 from services.intelligence import aggregator, repo
@@ -23,22 +23,24 @@ from services.intelligence.prompts import PROMPT_VERSION, REASONING_PROMPT, REAS
 logger = logging.getLogger("eios.intelligence.reasoning")
 
 DEFAULT_TENANT = "tenant_corp_01"
-KERNEL_HIT_THRESHOLD = 0.5  # 保守：hits 最高分低于阈值视为 Kernel 无此能力
 
 
 async def _kernel_has(dimension: str) -> bool | None:
     """Kernel 是否有该维度对应能力（只读 active；保守判定，防编造）。
 
-    三态：True=有能力 / False=无能力（检索无命中）/ None=Kernel 不可达（无法判定）。
+    三态：True=有能力（检索命中）/ False=无能力（检索无命中）/ None=Kernel 不可达（无法判定）。
     None 与 False 必须区分——Kernel 宕机不等于企业没能力。
+
+    审计 B7：旧实现用 ``best >= 0.5`` —— 那个 0.5 是按旧 Kernel 的 0–1 余弦分定的。
+    换成 EIOS 检索后 ``score`` 是排序分（实测 13.5~14.0），条件恒真、阈值成了摆设。
+    这里不再假装有个可校准的阈值：以权威侧给的事实为准 —— 命中即有能力。
     """
     try:
         r = await search_knowledge(dimension, top_k=3, include_candidates=False)
-        hits = r.get("hits") or []
-        if not hits:
-            return False
-        best = max((h.get("score") or 0) for h in hits)
-        return best >= KERNEL_HIT_THRESHOLD
+        hits = hits_of(r)
+        if "matched" in r:
+            return bool(r.get("matched")) or bool(hits)
+        return bool(hits)
     except Exception as exc:  # noqa: BLE001
         logger.warning("kernel check failed for %r: %s", dimension, str(exc)[:120])
         return None  # Kernel 不可达 → 无法判定（≠ 企业无能力）
@@ -49,19 +51,18 @@ async def _kernel_summary(company: str, limit: int = 50) -> str:
     lines: list[str] = []
     try:
         r = await search_knowledge(company or "企业", top_k=limit, include_candidates=False)
-        for h in (r.get("hits") or [])[:limit]:
-            kind = h.get("kind")
-            if kind == "fact":
-                name = h.get("canonical_name") or ""
-                pred = h.get("predicate") or ""
-                val = h.get("value") or ""
-                line = f"{name}：{pred} {val}".strip().rstrip("：")
-                lines.append(line if len(line) > len(name) else name)
-            elif kind == "chunk":
-                t = (h.get("text") or "").strip()
-                lines.append(t[:80] if t else (h.get("id") or ""))
+        for h in hits_of(r)[:limit]:
+            # 审计 B6：``_map_hit`` 不产出 ``kind`` 字段，旧代码按 kind == "fact"/"chunk"
+            # 分流 → 全部落兜底分支，只带实体名、丢掉 predicate/value。
+            # 现在按「命中里有没有正文」分流：有正文就用正文，否则至少带上实体名。
+            name = (h.get("canonical_name") or h.get("name") or "").strip()
+            pred = (h.get("predicate") or "").strip()
+            val = (h.get("value") or h.get("snippet") or "").strip()
+            if val:
+                head = ": ".join(p for p in (name, " ".join(p for p in (pred, val) if p)) if p)
+                lines.append(head[:160])
             else:
-                lines.append(h.get("canonical_name") or h.get("id") or "")
+                lines.append(name or str(h.get("object_id") or h.get("document_id") or ""))
     except Exception as exc:  # noqa: BLE001
         lines.append(f"（Kernel 不可达：{str(exc)[:60]}）")
     return "\n".join([l for l in lines if l][:limit]) or "（Kernel 无 active 内容）"

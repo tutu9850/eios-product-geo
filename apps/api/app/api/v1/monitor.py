@@ -1789,10 +1789,14 @@ async def run_batch_items(items: list[dict], company_name: str | None = None, en
                 _ = qr  # 问题池（gen_questions 内部兜底：种子空则 _auto_keywords）
                 await D.detect_gaps(limit=30)
                 await D.gen_opportunities(limit=15)
-                await D.gen_plans(limit=15)
+                # 审计 B11：自动链以前跑的是 gen_plans（缺口 → LLM 直接编计划的旧算法），
+                # 而 2026-08-19 拍板的新算法（问题价值×AI缺口 → 48 子项压力 → 内容计划）
+                # 只有 UI 手动点才跑 → 同一张表两种口径，自动来的没有 subitem/before_snapshot，
+                # 复测无从对比。自动链改为跑新算法，与 UI 手动口径一致。
+                await D.gen_content_plan(limit=10)
                 import logging
 
-                logging.getLogger("eios.monitor").info("[distill hook] 监测后蒸馏闭环完成（缺口/计划/机会）")
+                logging.getLogger("eios.monitor").info("[distill hook] 监测后蒸馏闭环完成（缺口/机会/内容计划V1）")
             except Exception:  # noqa: BLE001
                 import logging
 
