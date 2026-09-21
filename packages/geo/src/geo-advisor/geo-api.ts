@@ -235,6 +235,9 @@ export interface GeoPlan {
   category?: string
   subitem_pressure?: number
   covered_questions?: number
+  // 发布登记（Owner 2026-09-21）：发布链接与时间
+  published_url?: string
+  published_at?: string
 }
 
 export interface GeoMonitorItem {

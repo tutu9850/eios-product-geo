@@ -21,6 +21,10 @@ export function GeoPlansListCard() {
   const [manualOpen, setManualOpen] = useState(false)
   const [manualTopic, setManualTopic] = useState('')
   const [manualQuestion, setManualQuestion] = useState('')
+  // 发布登记（Owner 2026-09-21）：登记时补发布链接与时间
+  const [publishFor, setPublishFor] = useState<string | null>(null)
+  const [pubUrl, setPubUrl] = useState('')
+  const [pubAt, setPubAt] = useState('')
 
   const load = useCallback(async (s: Sort = sort) => {
     setLoading(true)
@@ -97,8 +101,17 @@ export function GeoPlansListCard() {
   const publishPlan = async (pid: string) => {
     setRunningId(pid)
     try {
-      const d = await geoPost<{ published?: boolean; error?: string }>('/distill/content-publish', { plan_id: pid })
+      const d = await geoPost<{ published?: boolean; error?: string }>('/distill/content-publish', {
+        plan_id: pid,
+        published_url: pubUrl.trim(),
+        published_at: pubAt.trim(),
+      })
       setGenMsg(d.error || '已登记为发布；GEO 只记录发布，不会自动上线。')
+      if (!d.error) {
+        setPublishFor(null)
+        setPubUrl('')
+        setPubAt('')
+      }
       await load()
     } catch (e) { setError(e instanceof Error ? e.message : '发布登记失败') } finally { setRunningId(null) }
   }
@@ -206,7 +219,23 @@ export function GeoPlansListCard() {
                     优先级 {p.priority}
                   </span>
                   <Button variant="secondary" size="sm" onClick={() => go?.('content', { seed: p.topic })} disabled={!go}>进入内容生成</Button>
-                  {p.status === 'published' || p.state === '已发布' ? <Button variant="secondary" size="sm" disabled={runningId === p.id} onClick={() => void recheckPlan(p.id)}><RotateCcw className="size-3.5" />复测</Button> : <Button variant="secondary" size="sm" disabled={runningId === p.id} onClick={() => void publishPlan(p.id)}><CheckCircle2 className="size-3.5" />登记发布</Button>}
+                  {p.status === 'published' || p.state === '已发布' ? (
+                    <Button variant="secondary" size="sm" disabled={runningId === p.id} onClick={() => void recheckPlan(p.id)}><RotateCcw className="size-3.5" />复测</Button>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={runningId === p.id}
+                      onClick={() => {
+                        const next = publishFor === p.id ? null : p.id
+                        setPublishFor(next)
+                        setPubUrl('')
+                        setPubAt('')
+                      }}
+                    >
+                      <CheckCircle2 className="size-3.5" />登记发布
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -217,6 +246,41 @@ export function GeoPlansListCard() {
                   </Button>
                 </div>
               </div>
+              {publishFor === p.id ? (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <input
+                    value={pubUrl}
+                    onChange={(e) => setPubUrl(e.target.value)}
+                    placeholder="发布链接（可选，http(s)://…）"
+                    className="min-w-0 flex-1 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[11px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+                  />
+                  <input
+                    value={pubAt}
+                    onChange={(e) => setPubAt(e.target.value)}
+                    placeholder="发布时间（可选，如 2026-09-21）"
+                    className="w-44 shrink-0 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[11px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+                  />
+                  <Button size="sm" disabled={runningId === p.id} onClick={() => void publishPlan(p.id)}>
+                    {runningId === p.id ? '登记中…' : '确认登记'}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setPublishFor(null)}>
+                    取消
+                  </Button>
+                </div>
+              ) : null}
+              {p.published_at || p.published_url ? (
+                <div className="mt-0.5 text-[10px] text-[var(--yayu-faint)]">
+                  已发布：{p.published_at ? p.published_at.slice(0, 16).replace('T', ' ') : '（未记时间）'}
+                  {p.published_url ? (
+                    <>
+                      {' · '}
+                      <a href={p.published_url} target="_blank" rel="noreferrer" className="underline">
+                        查看链接
+                      </a>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
               {impact[p.id] ? <div className="plan-impact">复测结论：{impact[p.id]}</div> : null}
             </div>
           ))}

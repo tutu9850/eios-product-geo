@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, LoaderCircle, Search, Server, Sparkles, X } from 'lucide-react'
+import { CheckCircle2, LoaderCircle, Search, Server, Sparkles, Trash2, X } from 'lucide-react'
 import { geoGet, geoPost } from './geo-api'
-import { GeoBars, GeoKpis, GeoTable, shortDay } from './shared'
+import { GeoBars, GeoKpis, GeoTable, askGeoConfirm, shortDay } from './shared'
 
 type Row=Record<string,any>
 export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
@@ -14,11 +14,20 @@ export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
   }
   useEffect(()=>{void load()},[])
   async function act(key:string,fn:()=>Promise<any>,done:string){setBusy(key);setNotice('');try{const d=await fn();setNotice(d?.error||d?.skipped||done);await load()}catch(e){setNotice(e instanceof Error?e.message:'操作失败')}finally{setBusy('')}}
+  /** 出厂重置：两次确认后带 confirm=true 调用（后端不带 confirm 会直接拒绝） */
+  async function resetGeoData(){
+    if(!(await askGeoConfirm('这是最高危操作：将清空本 GEO 的全部业务数据（问题池 / 知识缺口 / 内容计划 / 监测历史 / 内容资产 / 关注与采集 / 链接 / 素材向量），恢复出厂状态，且不可撤销。企业知识库与其他产品不受影响。','继续')))return
+    if(!(await askGeoConfirm('最后确认：现在就清空 GEO 数据？清空后无法找回。','确认清空')))return
+    await act('reset',()=>geoPost('/knowledge/reset?confirm=true',{}),'GEO 数据已重置为出厂状态')
+  }
   return <aside className="advanced-drawer"><header><div><span>ADVANCED OPERATIONS</span><h2>高级工具</h2><p>低频、可能消耗模型额度或需要技术判断的能力集中在这里。</p></div><button onClick={onClose} aria-label="关闭高级工具"><X/></button></header>{notice&&<div className="geo-notice">{notice}</div>}
     <section><header><Server/><div><h3>模型引擎</h3><p>显示企业部署登记的国产模型；连通性以实测为准。</p></div></header><div className="engine-list">{engines.map((e,i)=><article key={e.id??e.engine_id??i}><div><b>{String(e.name??e.engine_name??e.id??'模型')}</b><small>{String(e.provider??e.status??'已登记')}</small></div><button disabled={busy===String(e.id??e.engine_id)} onClick={()=>void act(String(e.id??e.engine_id),()=>geoPost(`/meta/engines/${e.id??e.engine_id}/ping`,{}),'连通性检测完成')}>{busy===String(e.id??e.engine_id)?<LoaderCircle className="spin"/>:<CheckCircle2/>}实测</button></article>)}</div></section>
     <section><header><Search/><div><h3>外网证据补搜</h3><p>证据不足时使用，采集内容与企业正式资料保持分离。</p></div></header><div className="advanced-form"><input value={company} onChange={e=>setCompany(e.target.value)} placeholder="企业名称"/><input value={keywords} onChange={e=>setKeywords(e.target.value)} placeholder="关键词，逗号分隔"/><select value={platform} onChange={e=>setPlatform(e.target.value)}><option value="sogou">搜狗</option><option value="baidu">百度</option><option value="weibo">微博</option></select><button className="geo-btn primary" disabled={busy==='harvest'||!company.trim()||!keywords.trim()} onClick={()=>void act('harvest',()=>geoPost('/intelligence/harvest/search',{company:company.trim(),keywords:keywords.split(/[，,]/).map(x=>x.trim()).filter(Boolean),platform,max_per_keyword:10}),'补搜任务已完成采集')}>{busy==='harvest'?<LoaderCircle className="spin"/>:<Search/>}开始补搜</button></div></section>
     <section><header><Sparkles/><div><h3>自动内容闭环</h3><p>从待生产计划自动生成内容并存入素材库；不会自动发布到外部平台。</p></div></header><div className="loop-control"><label>本次最多处理 <select value={limit} onChange={e=>setLimit(Number(e.target.value))}><option value={1}>1 条</option><option value={3}>3 条</option><option value={5}>5 条</option></select></label><button className="geo-btn primary" disabled={busy==='loop'} onClick={()=>void act('loop',()=>geoPost(`/distill/loop/run?limit=${limit}`,{}),'自动生产完成')}>{busy==='loop'?<LoaderCircle className="spin"/>:<Sparkles/>}运行自动生产</button></div></section>
     <section><header><CheckCircle2/><div><h3>素材索引与企业画像</h3><p>索引由系统维护；这里提供人工补跑和画像状态检查。</p></div></header><div className="profile-preview"><ProfileBody profile={profile}/><button className="geo-btn secondary" disabled={busy==='vector'} onClick={()=>void act('vector',()=>geoPost('/knowledge/materials/vectorize',{}),'素材索引已更新')}>更新素材索引</button></div></section>
+    {/* Owner 2026-09-21：重置接口已在产品门放行，前端补入口（原先只有接口没有按钮）。
+        出厂重置是最高危操作，点两次才算数——第一次说明范围，第二次是真正确认，然后才带 confirm=true 调用。 */}
+    <section className="disabled-tool"><header><Trash2/><div><h3>重置 GEO 数据</h3><p>恢复出厂状态：清空问题池、知识缺口、内容计划、监测历史、内容资产、关注/采集/链接与素材向量。<b>不可撤销</b>；不动企业知识库（Kernel）与其他产品。</p></div></header><div className="loop-control"><button className="geo-btn secondary" disabled={busy==='reset'} onClick={()=>void resetGeoData()}>{busy==='reset'?<LoaderCircle className="spin"/>:<Trash2/>}重置 GEO 数据</button></div></section>
     <section className="disabled-tool"><header><Search/><div><h3>官网诊断</h3><p>后端当前仍是 P0 占位接口，尚未产生真实诊断报告，因此不开放运行按钮。</p></div></header></section>
   </aside>
 }

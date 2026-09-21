@@ -78,6 +78,23 @@ interface UnverifiedFact {
   evidence?: string
 }
 
+/** 审计 A6（Owner 2026-09-21 拍板「喂」）：生成时据以写作的市场现状 */
+interface MarketSignals {
+  available?: boolean
+  ai_answers?: Array<{
+    engine: string
+    question: string
+    mentioned: boolean
+    rank_est?: number | null
+    sentiment?: string | null
+    snippet: string
+  }>
+  citations?: Array<{ title: string; count: number; questions?: string[] }>
+  hallucinations?: Array<{ claim: string; engine?: string; question?: string }>
+  competitor_edges?: Array<{ factor: string; competitor?: string; mentions?: number }>
+  report_findings?: Array<{ kind: string; title?: string; dimension?: string; competitor?: string; factors?: string[]; gap_type?: string }>
+}
+
 interface GenResult {
   ok: boolean
   title: string
@@ -88,6 +105,7 @@ interface GenResult {
   sections?: Record<string, string> | null
   fact_check?: FactCheckResult | null
   unverified_facts?: UnverifiedFact[]
+  market_signals?: MarketSignals
   mode?: string
   structure?: string
   error?: string
@@ -525,6 +543,63 @@ export function GeoContentGenForm() {
                 这些声明未在企业知识库或内容资产中找到依据，正文中不得写成已验证事实。
               </p>
             </div>
+          ) : null}
+          {result.market_signals?.available ? (
+            <details className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <summary className="cursor-pointer text-[11px] font-medium text-[var(--yayu-foreground)]">
+                本篇依据的市场现状（
+                {[
+                  result.market_signals.ai_answers?.length ? `AI 当前回答 ${result.market_signals.ai_answers.length}` : null,
+                  result.market_signals.hallucinations?.length ? `AI 编造 ${result.market_signals.hallucinations.length}` : null,
+                  result.market_signals.competitor_edges?.length ? `竞品优势 ${result.market_signals.competitor_edges.length}` : null,
+                  result.market_signals.report_findings?.length ? `报告结论 ${result.market_signals.report_findings.length}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+                ，点击展开）
+              </summary>
+              <div className="mt-1 space-y-1.5">
+                {result.market_signals.ai_answers?.length ? (
+                  <div>
+                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">AI 现在这样回答客户</div>
+                    {result.market_signals.ai_answers.slice(0, 4).map((a, i) => (
+                      <div key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
+                        · [{a.engine}] {a.mentioned ? '已提及本企业' : '未提及本企业'}：{a.question}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {result.market_signals.hallucinations?.length ? (
+                  <div>
+                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">AI 编造过（正文须纠正）</div>
+                    {result.market_signals.hallucinations.map((h, i) => (
+                      <div key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">· {h.claim}</div>
+                    ))}
+                  </div>
+                ) : null}
+                {result.market_signals.competitor_edges?.length ? (
+                  <div>
+                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">竞品被夸而你没被夸</div>
+                    {result.market_signals.competitor_edges.map((c, i) => (
+                      <div key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
+                        · {c.factor}
+                        {c.competitor ? `（${c.competitor}）` : ''}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                {result.market_signals.report_findings?.length ? (
+                  <div>
+                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">周期报告结论</div>
+                    {result.market_signals.report_findings.slice(0, 4).map((f, i) => (
+                      <div key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
+                        · {f.title ?? (f.factors ? `竞品 ${f.competitor} 胜出：${f.factors.join('、')}` : `${f.dimension ?? ''} ${f.gap_type ?? ''}`)}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </details>
           ) : null}
           {result.fact_check ? (
             <div className="space-y-1 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">

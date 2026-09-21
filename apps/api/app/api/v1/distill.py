@@ -2200,6 +2200,10 @@ async def gen_content_plan(limit: int = 10):
 
 class PublishIn(BaseModel):
     plan_id: str = ""
+    # Owner 2026-09-21：发布登记要能记「发到哪、什么时候发的」——没有这两项，
+    # 复测只能靠计划内基线，无法回头核对这篇到底发在哪。
+    published_url: str = ""
+    published_at: str = ""  # ISO 时间；留空 = 用登记时刻
 
 
 @router.post("/content-publish")
@@ -2216,11 +2220,26 @@ async def content_publish(payload: PublishIn):
     if target.get("status") == "published":
         return ok({"published": True, "dup": True, "plan_id": payload.plan_id})
     now = datetime.now(timezone.utc).isoformat()
+    published_url = (payload.published_url or "").strip()
+    if published_url and not published_url.lower().startswith(("http://", "https://")):
+        return ok({"error": "发布链接需以 http:// 或 https:// 开头", "published": False})
+    published_at = now
+    raw_at = (payload.published_at or "").strip()
+    if raw_at:
+        try:
+            parsed = datetime.fromisoformat(raw_at.replace("Z", "+00:00"))
+        except ValueError:
+            return ok({"error": "发布时间格式无法识别，请用 ISO（如 2026-09-21 或 2026-09-21T10:30:00+08:00）", "published": False})
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        published_at = parsed.astimezone(timezone.utc).isoformat()
     target["status"] = "published"
     target["state"] = "已发布"
-    target["published_at"] = now
+    target["published_at"] = published_at
+    if published_url:
+        target["published_url"] = published_url
     snap = target.setdefault("before_snapshot", {})
-    snap["published_at"] = now
+    snap["published_at"] = published_at
     # 审计 B8：复测要算「差值」，就必须在**发布这一刻**把基线逐问存下来。
     # 旧实现只存了 questions 列表，复测时无基线可比 → delta 恒 null，impact 退化成
     # 「发布后的绝对正向率分档」，和发布前什么样无关。
@@ -2230,9 +2249,10 @@ async def content_publish(payload: PublishIn):
     return ok({
         "published": True,
         "plan_id": payload.plan_id,
-        "published_at": now,
+        "published_at": published_at,
+        "published_url": published_url or None,
         "baseline_questions": len(snap["stats"]),
-        "note": "已记录发布时基线（逐问监测统计），复测按基线算差值",
+        "note": "已记录发布时间/链接 + 发布时基线（逐问监测统计），复测按基线算差值",
     })
 
 

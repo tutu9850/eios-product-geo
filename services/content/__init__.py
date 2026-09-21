@@ -544,6 +544,16 @@ async def build_context(
         else:
             q["pool_type"] = "用户会问"
 
+    # 市场现状信号（审计 A6 · Owner 2026-09-21 拍板）：AI 现在怎么答 / 引用过什么 /
+    # 编造过什么 / 竞品被夸在哪 / 周期报告结论。只读自己的库，不写、不调 LLM。
+    try:
+        from services.content.signals import build_market_signals
+
+        signals = await build_market_signals(question=question, tenant_id=tenant_id)
+    except Exception:  # noqa: BLE001
+        signals = {"ai_answers": [], "citations": [], "hallucinations": [], "competitor_edges": [],
+                   "report_findings": [], "available": False}
+
     context_sources = [
         {"kind": "kernel", "label": "企业知识库（Kernel）", "items": materials[:6]},
         {"kind": "faq_asset", "label": "FAQ 内容资产", "items": [
@@ -555,6 +565,13 @@ async def build_context(
         {"kind": "question_pool", "label": "客户问题池", "items": [
             {"question": q.get("question"), "priority": q.get("priority")} for q in pool_questions
         ]},
+        {"kind": "market_signal", "label": "市场现状（监测 / 认知评估）", "items": [
+            {"signal": "AI 当前回答", "count": len(signals.get("ai_answers") or [])},
+            {"signal": "AI 引用过的内容", "count": len(signals.get("citations") or [])},
+            {"signal": "AI 编造过的说法", "count": len(signals.get("hallucinations") or [])},
+            {"signal": "竞品被夸因子", "count": len(signals.get("competitor_edges") or [])},
+            {"signal": "周期报告结论", "count": len(signals.get("report_findings") or [])},
+        ]},
     ]
     return {
         "company_name": auto_name,
@@ -563,6 +580,7 @@ async def build_context(
         "other_assets": other_assets,
         "pool_questions": pool_questions,
         "context_sources": context_sources,
+        "signals": signals,
     }
 
 
@@ -655,6 +673,13 @@ async def generate(
             asset_lines.append(f"- {q.get('question')}（优先级 {q.get('priority')}）")
     if asset_lines:
         company_block += "\n\n## 内容资产引用（补充素材，不得作为企业事实编造）\n" + "\n".join(asset_lines)
+
+    # 2.5) 市场现状（审计 A6）：AI 现在怎么答 / 编造过什么 / 竞品被夸在哪 / 报告结论
+    from services.content.signals import render_market_signals
+
+    market_block = render_market_signals(ctx.get("signals") or {})
+    if market_block:
+        company_block += "\n\n" + market_block
 
     # 3) Fact Gate 模式约束：未验证声明按模式处理（写进 prompt）
     if fg["unverified"]:
@@ -799,6 +824,7 @@ async def generate(
         "sections": sections,          # GEO 结构分节（前端分节渲染）
         "fact_check": fact_check,      # 事实密度 {score, needs_rewrite, suggestion}
         "unverified_facts": fg["unverified"],
+        "market_signals": ctx.get("signals") or {},  # 审计 A6：本篇据以写作的市场现状（只读实测）
         "keywords": [],
         "geo_score": None,
         "status": "draft",
