@@ -5,6 +5,7 @@
 > **权威路由清单以运行实例 openapi.json 为准**（http://localhost:3002/openapi.json）。
 > 产品门对外的可见面（哪几条能被 Client 调到、各签哪个 scope）见 `docs/GEO_PRODUCT_DOOR_MATRIX.md`：
 > 2026-09-21 起是整张老 v1 面（139 条里的 136 条），顾问交接面 `geo/consumer/*` 不在其中。
+> 给前端 UI 设计用的「按用户任务重排 + 性质/入口」全清单见 `docs/GEO_FUNCTION_INVENTORY.md`。
 > 存储：SQLite geo.db（2026-08-07 起，JSON 文件库已退役删除）。
 
 ## Envelope

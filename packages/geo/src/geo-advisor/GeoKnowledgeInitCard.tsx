@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Button } from '@yayu/ui'
 import { Database, RefreshCw } from 'lucide-react'
 import {
+  geoGet,
   geoPost,
   type GeoKbInitApply,
   type GeoKbInitScan,
+  type GeoProfileCategory,
+  type GeoProfileOverview,
 } from './geo-api'
 import { GeoCardShell, GeoError, GeoLoading } from './shared'
 
@@ -19,6 +22,12 @@ import { GeoCardShell, GeoError, GeoLoading } from './shared'
  * 1. 候选是**读**出来的（GEO 只读知识库，不写）；
  * 2. 落库落的是 **GEO 自己的快照** —— 正本仍在知识库，界面要这么写；
  * 3. 第一次是全量，后面再点只补新的（增量刷新）；「和上次一样」是正常结果，不是错误。
+ *
+ * 2026-09-21 Owner 拍板「3要」：把企业资料体检（enterprise-profile）跟这张卡摆到一起 ——
+ * 不合并成同一个动作（一个是「你现在缺什么」，一个是「把你有的先搬进来」），而是
+ * **初始化做完顺手给一张体检结论**：同一张卡下半部分，只读地显示 8 大类 48 子项
+ * 的 足够 / 部分 / 太少 与总覆盖率，告诉人「搬完以后哪儿还缺」。体检走的是现成的
+ * `GET /enterprise-profile/overview` 与 `/categories`，读，不写，不新增任何后端面。
  */
 
 type Pick = { companies: Set<string>; products: Set<string>; documents: Set<string> }
@@ -75,6 +84,25 @@ export function GeoKnowledgeInitCard() {
   const [error, setError] = useState<string | null>(null)
   const [applying, setApplying] = useState(false)
   const [result, setResult] = useState<GeoKbInitApply | null>(null)
+  // 体检结论：与初始化同卡（Owner 2026-09-21「3要」）。读，不写。
+  const [checkup, setCheckup] = useState<GeoProfileOverview | null>(null)
+  const [checkupCats, setCheckupCats] = useState<GeoProfileCategory[] | null>(null)
+  const [checkupOpen, setCheckupOpen] = useState(false)
+
+  const loadCheckup = useCallback(async () => {
+    try {
+      const [ov, cats] = await Promise.all([
+        geoGet<GeoProfileOverview>('/enterprise-profile/overview'),
+        geoGet<{ categories: GeoProfileCategory[] }>('/enterprise-profile/categories'),
+      ])
+      setCheckup(ov)
+      setCheckupCats(cats.categories ?? [])
+    } catch {
+      // 体检读不到不该把「扫描知识库」整卡带崩：这一块如实留空，下面会说明。
+      setCheckup(null)
+      setCheckupCats(null)
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -83,12 +111,13 @@ export function GeoKnowledgeInitCard() {
       const d = await geoPost<GeoKbInitScan>('/kb-init/scan')
       setScan(d)
       setPicked(allPicked(d))
+      await loadCheckup()
     } catch (e) {
       setError(e instanceof Error ? e.message : '扫描知识库失败')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [loadCheckup])
 
   useEffect(() => {
     void load()
@@ -114,6 +143,7 @@ export function GeoKnowledgeInitCard() {
       })
       setResult(d)
       await load()
+      setCheckupOpen(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : '写入 GEO 失败')
     } finally {
@@ -124,6 +154,19 @@ export function GeoKnowledgeInitCard() {
   if (loading) return <GeoLoading text="正在扫描企业知识库…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
   if (!scan) return null
+
+  const allItems = (checkupCats ?? []).flatMap((c) => c.items)
+  const tooLittle = allItems.filter((i) => i.level === '太少')
+  const checkupAdvice =
+    !checkup || checkup.total_items === 0
+      ? '体检还没算出结果（后端没返回子项）。'
+      : checkup.overall_coverage_pct === null
+        ? '客户问题池还是空的，总覆盖率算不出来 —— 先去「问题池 / 监测」生成客户问题，再回来看这张结论。'
+        : checkup.too_little_count === checkup.total_items
+          ? `${checkup.total_items} 个子项全部「太少」。先补知识库，或去「内容计划」按子项生成要补的内容。`
+          : `还差 ${checkup.too_little_count} 个子项${
+              tooLittle.length ? `（例如 ${tooLittle.slice(0, 3).map((i) => i.name).join('、')}）` : ''
+            }；去「内容计划」可以按子项一键生成要补的内容。`
 
   const pickedCount = picked.companies.size + picked.products.size + picked.documents.size
   const newCount =
@@ -229,6 +272,68 @@ export function GeoKnowledgeInitCard() {
           </div>
         </div>
       )}
+
+      {checkup ? (
+        <div className="space-y-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-surface-raised)] px-2 py-1.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-[11.5px] font-semibold text-[var(--yayu-foreground)]">🩺 顺手体检</span>
+            <span className="text-[11px] text-[var(--yayu-muted)]">
+              企业资料总覆盖率{' '}
+              <span className="font-medium text-[var(--yayu-foreground)]">
+                {checkup.overall_coverage_pct === null ? '算不出来' : `${checkup.overall_coverage_pct}%`}
+              </span>
+              （规则估算）
+            </span>
+            <span className="text-[11px] text-[var(--yayu-muted)]">
+              共 {checkup.total_items} 个子项：足够 {checkup.enough_count} / 部分 {checkup.partial_count} / 太少{' '}
+              {checkup.too_little_count}
+            </span>
+            {checkupCats && checkupCats.length > 0 ? (
+              <button
+                type="button"
+                className="text-[11px] text-[var(--yayu-muted)] underline decoration-dotted underline-offset-2"
+                onClick={() => setCheckupOpen((v) => !v)}
+              >
+                {checkupOpen ? '收起 8 大类' : `展开 8 大类（${checkupCats.length}）`}
+              </button>
+            ) : null}
+          </div>
+          <p className="text-[11px] leading-snug text-[var(--yayu-muted)]">建议：{checkupAdvice}</p>
+          {checkupOpen && checkupCats ? (
+            <div className="space-y-1">
+              {checkupCats.map((c) => {
+                const lv = (k: string) => c.items.filter((i) => i.level === k).length
+                const short = c.items.filter((i) => i.level !== '足够').map((i) => i.name)
+                return (
+                  <div
+                    key={c.category}
+                    className="rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1"
+                  >
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="text-[11.5px] text-[var(--yayu-foreground)]">{c.name}</span>
+                      <span className="text-[10.5px] text-[var(--yayu-muted)]">
+                        足够 {lv('足够')} / 部分 {lv('部分')} / 太少 {lv('太少')}
+                      </span>
+                    </div>
+                    {short.length > 0 ? (
+                      <div className="mt-px text-[10.5px] leading-snug text-[var(--yayu-muted)]">
+                        要补：{short.slice(0, 6).join('、')}
+                        {short.length > 6 ? ` 等 ${short.length} 项` : ''}
+                      </div>
+                    ) : (
+                      <div className="mt-px text-[10.5px] leading-snug text-[var(--yayu-muted)]">这一类都够</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+          <p className="text-[10px] leading-snug text-[var(--yayu-muted)]">
+            三档 = 子项相关问题覆盖率 ≥70% 足够 / ≥30% 部分 / &lt;30% 太少；覆盖率 = 全部客户问题里能被知识支撑的比例
+            （COVERED=1、部分=0.5，规则估算，不是模型打分）。体检只读，不改任何数据。
+          </p>
+        </div>
+      ) : null}
 
       <p className="text-[10.5px] leading-snug text-[var(--yayu-muted)]">
         存进的是 GEO 自己的快照（带来源与时间），正本仍在企业知识库；GEO 只读知识库，不往里写。

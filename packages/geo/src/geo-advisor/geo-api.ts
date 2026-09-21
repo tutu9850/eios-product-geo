@@ -357,6 +357,37 @@ export interface GeoKbInitApply {
   note: string
 }
 
+/**
+ * GET /enterprise-profile/overview：企业资料体检总览（规则估算，非 LLM）。
+ * total_items = 48 子项 + 合并进来的自定义子项；overall_coverage_pct 为 null 表示问题池还空着，
+ * 「算不出来」不等于 0。
+ */
+export interface GeoProfileOverview {
+  overall_coverage_pct: number | null
+  total_items: number
+  enough_count: number
+  partial_count: number
+  too_little_count: number
+  note: string
+}
+
+/** 单子项档位：足够 / 部分 / 太少；related_state=none 表示问题池还没覆盖到它 */
+export interface GeoProfileItemBrief {
+  id: string
+  name: string
+  level: string
+  related_state: string
+  coverage_pct: number | null
+  related_count: number
+}
+
+/** GET /enterprise-profile/categories：8 大类大纲（左树数据） */
+export interface GeoProfileCategory {
+  category: string
+  name: string
+  items: GeoProfileItemBrief[]
+}
+
 export interface GeoDiscoverResult {
   competitors: Array<{ name: string; company?: string; reason?: string }>
   empty?: boolean
