@@ -38,6 +38,7 @@ interface Humanize {
   sample_note: SampleNote
 }
 interface SovBrand { brand: string; is_self: boolean; mention_count: number; mention_share: number; recommend_count: number; recommend_share: number; missing_count: number }
+interface BrandOverview { company: string | null; mode: string; total_evidence: number; self_name: string; brands: Array<{ name: string; is_self: boolean; mentions: number; rate: number }> }
 interface Sov {
   period_days: number
   total_mention: number
@@ -98,6 +99,7 @@ const BAND_TONE: Record<string, 'good' | 'warn' | 'bad'> = { green: 'good', red:
 export function GeoInsightWorkspace() {
   const [d, setD] = useState<{
     humanize: Humanize | null
+    overview: BrandOverview | null
     sov: Sov | null
     'trend-delta': TrendDelta | null
     matrix: Matrix | null
@@ -106,7 +108,7 @@ export function GeoInsightWorkspace() {
     keywords: { keywords: Keyword[] } | null
     perception: Perception | null
     strategies: Strategies | null
-  }>({ humanize: null, sov: null, 'trend-delta': null, matrix: null, 'factor-gaps': null, 'gap-analysis': null, keywords: null, perception: null, strategies: null })
+  }>({ humanize: null, overview: null, sov: null, 'trend-delta': null, matrix: null, 'factor-gaps': null, 'gap-analysis': null, keywords: null, perception: null, strategies: null })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [factor, setFactor] = useState<string | null>(null)
@@ -117,7 +119,7 @@ export function GeoInsightWorkspace() {
   async function load() {
     setLoading(true)
     setError('')
-    const paths = ['humanize', 'sov', 'trend-delta', 'matrix', 'factor-gaps', 'gap-analysis', 'keywords', 'perception', 'strategies'] as const
+    const paths = ['humanize', 'overview', 'sov', 'trend-delta', 'matrix', 'factor-gaps', 'gap-analysis', 'keywords', 'perception', 'strategies'] as const
     const settled = await Promise.allSettled(paths.map((path) => geoGet(`/intelligence/${path}`)))
     const next: typeof d = { ...d }
     paths.forEach((path, index) => {
@@ -150,6 +152,7 @@ export function GeoInsightWorkspace() {
   }
 
   const human = d.humanize
+  const brandOverview = d.overview
   const sov = d.sov
   const delta = d['trend-delta']
   const matrix = d.matrix
@@ -201,6 +204,16 @@ export function GeoInsightWorkspace() {
       </section>
 
       {note ? <p className="geo-note">样本 {note.total} 条 · 可靠度「{note.reliability}」：{note.note}</p> : null}
+
+      {brandOverview?.brands.length ? <section className="insight-panel">
+        <div className="geo-subhead"><h3>品牌提及概览</h3><small>{brandOverview.total_evidence} 条推荐/对比类有效回答 · 同一分母</small></div>
+        <GeoTable
+          columns={['品牌', '身份', '被提及回答', '提及率']}
+          template="minmax(0,1fr) 84px 96px 80px"
+          rows={brandOverview.brands.slice(0, 12).map((row) => [<b>{row.name}</b>, <em>{row.is_self ? '我方' : '其他企业'}</em>, <em>{row.mentions}</em>, <b>{row.rate}%</b>])}
+        />
+        <p className="geo-note">只统计推荐或对比场景中的已解析回答；提及表示回答中出现该品牌，不等于推荐或正面评价。</p>
+      </section> : null}
 
       {delta && (delta.gained.length || delta.lost.length || delta.rising.length) ? (
         <section className="insight-panel">
