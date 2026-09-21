@@ -53,7 +53,8 @@ DOCS = [
 ]
 
 
-def _patch_kb(monkeypatch, *, detect=None, documents=None, documents_error=None):
+def _patch_kb(monkeypatch, *, detect=None, documents=None, documents_error=None,
+              chunks=None, chunks_error=None, chunks_truncated=False):
     from app.api.v1 import onboard
     import adapters.eios as eios
 
@@ -65,8 +66,21 @@ def _patch_kb(monkeypatch, *, detect=None, documents=None, documents_error=None)
             raise RuntimeError(documents_error)
         return list(documents if documents is not None else DOCS)
 
+    async def _list_document_chunks(document_id: str, *, limit: int = 20):
+        """文档切块读接口：测试里不许打真网络（8040 是活的，会真发请求）。"""
+        if chunks_error is not None:
+            raise RuntimeError(chunks_error)
+        return {
+            "document_id": document_id,
+            "source": "knowledge",
+            "items": list((chunks or {}).get(document_id, [])),
+            "truncated": chunks_truncated,
+            "warnings": [],
+        }
+
     monkeypatch.setattr(onboard, "_step_detect", _detect)
     monkeypatch.setattr(eios, "list_documents", _list_documents)
+    monkeypatch.setattr(eios, "list_document_chunks", _list_document_chunks)
 
 
 def test_scan_offers_companies_products_and_documents(monkeypatch, tenant):
@@ -240,3 +254,102 @@ def test_kb_init_never_touches_the_knowledge_write_path():
     source = inspect.getsource(kb_init)
     assert "write_candidate" not in source
     assert "publish" not in source
+
+
+def test_scan_offers_documents_geo_already_read_but_the_knowledge_base_has_not_published(monkeypatch, tenant):
+    """Owner 2026-09-21 的发现：两份未发布的 docx，切块检索得到、文档读接口被拒。
+
+    「未发布」意味着它不在知识库的文档列表里；但 GEO 已经读到过它的切块并存在自己台账里，
+    所以同步时它也必须在候选里出现（``listed: false`` 如实标出来处）。
+    """
+    from app.api.v1 import kb_init
+    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+
+    _patch_kb(monkeypatch)
+    record(
+        kind="chunks",
+        payload=chunk_snapshot_payload([{
+            "document_id": "doc_unpublished",
+            "document_title": "亚宇臻隆_商业模式方案V3_纯利润500万.docx",
+            "chunk_id": "chk_1",
+            "text": "OPC孵化园 × 三大渠道 × 纯利润保底500万",
+            "layer": "material",
+        }]),
+    )
+    data = asyncio.run(kb_init.kb_init_scan())["data"]
+
+    docs = {d["document_id"]: d for d in data["candidates"]["documents"]}
+    assert docs["doc_1"]["listed"] is True
+    assert docs["doc_unpublished"]["listed"] is False
+    assert docs["doc_unpublished"]["chunks_stored"] == 1
+    assert docs["doc_unpublished"]["title"].endswith("纯利润500万.docx")
+    assert [d["document_id"] for d in data["documents_from_snapshot"]] == ["doc_unpublished"]
+    assert "没发布" in data["snapshot_note"]
+
+
+def test_apply_accepts_a_document_it_only_knows_from_geos_own_chunk_snapshot(monkeypatch, tenant):
+    """只在自己快照里的未发布文档：不是 unknown，切块也要一并带过来存下。"""
+    from app.api.v1 import kb_init
+    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+
+    _patch_kb(monkeypatch, chunks={"doc_unpublished": [{"chunk_id": "chk_1", "text": "读到过的正文"}]})
+    record(
+        kind="chunks",
+        payload=chunk_snapshot_payload([{
+            "document_id": "doc_unpublished",
+            "document_title": "亚宇臻隆_商业模式方案V3_纯利润500万.docx",
+            "chunk_id": "chk_1",
+            "text": "读到过的正文",
+        }]),
+    )
+    data = asyncio.run(
+        kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_unpublished"]))
+    )["data"]
+
+    assert data["unknown_documents"] == []
+    assert [d["document_id"] for d in data["added"]["documents"]] == ["doc_unpublished"]
+    assert data["chunks_pulled"] == [{"document_id": "doc_unpublished", "chunks": 1}]
+    assert data["chunks_total"] == 1
+
+
+def test_apply_reports_the_chunks_it_brought_over_for_every_picked_document(monkeypatch, tenant):
+    """「同步的时候一并带过来存起来」：选中的每份文档都要报带回了多少块。"""
+    from app.api.v1 import kb_init
+
+    _patch_kb(monkeypatch, chunks={
+        "doc_1": [{"chunk_id": "chk_a", "text": "薪酬制度正文"}],
+        "doc_2": [{"chunk_id": "chk_b", "text": "产品说明正文"}, {"chunk_id": "chk_c", "text": "又一段"}],
+    })
+    data = asyncio.run(
+        kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1", "doc_2"]))
+    )["data"]
+
+    assert data["chunks_pulled"] == [
+        {"document_id": "doc_1", "chunks": 1},
+        {"document_id": "doc_2", "chunks": 2},
+    ]
+    assert data["chunks_total"] == 3
+
+
+def test_a_document_whose_chunks_cannot_be_read_is_still_recorded_but_reported(monkeypatch, tenant):
+    """切块拉不到（门关着又没有快照）不能把「选中文档」这件事弄失败，但必须如实报 0。"""
+    from app.api.v1 import kb_init
+
+    _patch_kb(monkeypatch, chunks_error="resource is not available in the caller's view")
+    data = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1"])))["data"]
+
+    assert [d["document_id"] for d in data["added"]["documents"]] == ["doc_1"]
+    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 0}]
+    assert data["chunks_total"] == 0
+
+
+def test_apply_reports_when_a_documents_chunks_were_only_partly_brought_over(monkeypatch, tenant):
+    """切块翻页到上限只带回一部分：如实标 ``truncated``，不把少带说成带全了。"""
+    from app.api.v1 import kb_init
+
+    _patch_kb(monkeypatch, chunks={"doc_1": [{"chunk_id": "chk_a", "text": "只带回来的一块"}]},
+              chunks_truncated=True)
+    data = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1"])))["data"]
+
+    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 1, "truncated": True}]
+    assert data["chunks_truncated"] == ["doc_1"]

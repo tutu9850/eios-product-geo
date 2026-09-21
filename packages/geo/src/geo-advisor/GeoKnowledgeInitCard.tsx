@@ -5,6 +5,7 @@ import {
   geoGet,
   geoPost,
   type GeoKbInitApply,
+  type GeoKbInitDocument,
   type GeoKbInitScan,
   type GeoProfileCategory,
   type GeoProfileOverview,
@@ -174,6 +175,14 @@ export function GeoKnowledgeInitCard() {
     scan.candidates.products.filter((p) => !p.in_profile && picked.products.has(p.name)).length +
     scan.candidates.documents.filter((d) => !d.in_profile && picked.documents.has(d.document_id)).length
 
+  // 文档这一桶：「未发布·快照」= 知识库里还没发布（文档列表看不到），候选来自 GEO 读到过的切块。
+  const docBadge = (d: GeoKbInitDocument) =>
+    d.listed === false
+      ? `未发布·快照${d.chunks_stored ? ` ${d.chunks_stored} 块` : ''}`
+      : d.in_profile
+        ? '已纳入'
+        : '新增'
+
   const resultLine = result
     ? result.first_time
       ? `第一次初始化完成：新增公司 ${result.added.companies.length} / 产品 ${result.added.products.length} / 文档 ${result.added.documents.length}，共 ${result.total.companies + result.total.products + result.total.documents} 项`
@@ -205,6 +214,14 @@ export function GeoKnowledgeInitCard() {
       </div>
 
       {resultLine ? <p className="text-[11px] text-[var(--yayu-muted)]">{resultLine}</p> : null}
+      {result && (result.chunks_total ?? 0) > 0 ? (
+        <p className="text-[11px] text-[var(--yayu-muted)]">
+          同步时一并带回 {result.chunks_total} 块文档切块，存进 GEO 自己的库（正本仍在知识库）
+          {(result.chunks_truncated?.length ?? 0) > 0
+            ? `；其中 ${result.chunks_truncated!.length} 份文档还有没读完的切块，这次只带回了前一部分`
+            : ''}
+        </p>
+      ) : null}
       {result && result.unknown_documents.length > 0 ? (
         <p className="text-[11px] text-[var(--yayu-muted)]">
           这些文档在知识库里查不到，没记（{result.unknown_documents.join('、')}）
@@ -258,16 +275,23 @@ export function GeoKnowledgeInitCard() {
             {scan.candidates.documents.length === 0 ? (
               <p className="text-[11px] text-[var(--yayu-muted)]">知识库里没有文档</p>
             ) : (
-              scan.candidates.documents.map((d) => (
-                <Row
-                  key={d.document_id}
-                  label={d.title || d.document_id}
-                  checked={picked.documents.has(d.document_id)}
-                  badge={d.in_profile ? '已纳入' : '新增'}
-                  tone={d.in_profile ? 'mine' : 'new'}
-                  onToggle={() => toggle('documents', d.document_id)}
-                />
-              ))
+              <>
+                {scan.candidates.documents.map((d) => (
+                  <Row
+                    key={d.document_id}
+                    label={d.title || d.document_id}
+                    checked={picked.documents.has(d.document_id)}
+                    badge={docBadge(d)}
+                    tone={d.listed === false ? 'new' : d.in_profile ? 'mine' : 'new'}
+                    onToggle={() => toggle('documents', d.document_id)}
+                  />
+                ))}
+                {scan.snapshot_note ? (
+                  <p className="px-0.5 text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
+                    {scan.snapshot_note}
+                  </p>
+                ) : null}
+              </>
             )}
           </div>
         </div>

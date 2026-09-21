@@ -335,6 +335,10 @@ export interface GeoKbInitDocument {
   title: string
   version?: number | string | null
   in_profile: boolean
+  /** false = 知识库里**还没发布**（文档列表看不到它），候选来自 GEO 自己读到过的切块快照 */
+  listed?: boolean
+  /** GEO 台账里读到过几个**不同**的切块（未发布文档靠这个也能被点选） */
+  chunks_stored?: number
 }
 
 export interface GeoKbInitScan {
@@ -354,6 +358,10 @@ export interface GeoKbInitScan {
   }
   classification_source?: string | null
   industry?: string | null
+  /** 只在 GEO 快照里的文档：知识库未发布、文档读接口 fail-closed，但切块正文已在 GEO 台账 */
+  documents_from_snapshot?: Array<{ document_id: string; title: string; chunks: number }>
+  /** 上面那种文档存在时的一句话说明；没有则为空串 */
+  snapshot_note?: string
   empty: boolean
   error?: string | null
   hint?: string | null
@@ -371,6 +379,11 @@ export interface GeoKbInitApply {
   kept: { companies: number; products: number; documents: number }
   total: { companies: number; products: number; documents: number }
   unknown_documents: string[]
+  /** 同步时一并带回来存下的切块数（门开着=权威给的；门关着=GEO 已存快照） */
+  chunks_pulled?: Array<{ document_id: string; chunks: number; truncated?: boolean }>
+  chunks_total?: number
+  /** 翻页到上限还有没读完的文档 id —— 这些只是「带回来的一部分」 */
+  chunks_truncated?: string[]
   recorded: boolean
   revision: string | null
   read_count?: number | null

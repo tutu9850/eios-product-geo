@@ -143,16 +143,36 @@ async def kb_init_scan():
         {"name": n, "in_profile": n in have_products}
         for n in _clean_names([*(detect.get("products") or []), *(detect.get("services") or [])])
     ]
+    # GEO 读到过切块的文档（含知识库里**未发布**、文档列表看不到的那些）。
+    # Owner 2026-09-21：切块既然读得到并已存进 GEO 台账，同步时就该一并出现在候选里。
+    read_docs = knowledge_snapshot.documents_with_chunks()
+    seen_ids = {str(d.get("document_id") or "") for d in documents}
     document_items = [
         {
             "document_id": str(d.get("document_id") or ""),
             "title": str(d.get("title") or ""),
             "version": d.get("version"),
             "in_profile": str(d.get("document_id") or "") in have_documents,
+            "listed": True,          # 知识库文档列表里有它（已发布）
+            "chunks_stored": next(
+                (int(c["chunks"]) for c in read_docs if c["document_id"] == str(d.get("document_id") or "")), 0
+            ),
         }
         for d in documents
         if d.get("document_id")
-    ][:MAX_CANDIDATES]
+    ] + [
+        {
+            "document_id": c["document_id"],
+            "title": c["title"] or c["document_id"],
+            "version": None,
+            "in_profile": c["document_id"] in have_documents,
+            "listed": False,        # 只在 GEO 快照里有（知识库未发布，读文档会被拒）
+            "chunks_stored": int(c["chunks"]),
+        }
+        for c in read_docs
+        if c["document_id"] and c["document_id"] not in seen_ids
+    ]
+    document_items = document_items[:MAX_CANDIDATES]
 
     empty = not companies and not products and not document_items
     return ok(
@@ -171,6 +191,17 @@ async def kb_init_scan():
                 "products": products,
                 "documents": document_items,
             },
+            "documents_from_snapshot": [
+                {"document_id": c["document_id"], "title": c["title"], "chunks": c["chunks"]}
+                for c in read_docs
+                if c["document_id"] not in seen_ids
+            ],
+            "snapshot_note": (
+                "有些文档在知识库里还没发布，读它的文档门会被拒（fail-closed）；"
+                "它们的切块文本 GEO 已经读到并存进自己的台账，所以这里也能点选。"
+                if any(c["document_id"] not in seen_ids for c in read_docs)
+                else ""
+            ),
             "classification_source": detect.get("classification_source"),
             "industry": detect.get("industry"),
             "empty": empty,
@@ -190,7 +221,7 @@ async def kb_init_apply(payload: KbInitApplyIn):
     - 文档标题由 GEO 自己去知识库核对：客户端只报 id。核不到的 id 不静默丢掉，
       原样列进 ``unknown_documents``。
     """
-    from adapters.eios import list_documents
+    from adapters.eios import list_document_chunks, list_documents
 
     companies = _clean_names(payload.companies)
     products = _clean_names(payload.products)
@@ -202,16 +233,38 @@ async def kb_init_apply(payload: KbInitApplyIn):
 
     documents: list[dict] = []
     unknown: list[str] = []
+    chunks_pulled: list[dict] = []
     if wanted_ids:
         try:
             known = {str(d.get("document_id") or ""): d for d in (await list_documents(limit=100) or [])}
         except Exception as exc:  # noqa: BLE001 — 核不了标题就不能假装存了
             return err("knowledge_unreadable", f"读知识库核对文档失败：{str(exc)[:200]}")
+        # 知识库未发布的文档不在 documents 列表里，但 GEO 读到过它的切块 —— 也认。
+        for c in knowledge_snapshot.documents_with_chunks():
+            known.setdefault(
+                c["document_id"],
+                {"document_id": c["document_id"], "title": c["title"], "version": None,
+                 "source": "geo_snapshot"},
+            )
         for doc_id in wanted_ids:
             item = known.get(doc_id)
             if item is None:
                 unknown.append(doc_id)
                 continue
+            # 同步时把切块正文一并带过来存下（权威门开着读权威；门关着用 GEO 已存的快照）。
+            pulled = 0
+            truncated = False
+            try:
+                got = await list_document_chunks(doc_id)
+                pulled = len(got.get("items") or [])
+                truncated = bool(got.get("truncated"))
+            except Exception as exc:  # noqa: BLE001 — 拉不到切块不影响「选中文档」这件事，但要如实报
+                logger.warning("kb-init apply: chunks for %s failed: %s", doc_id, exc)
+            entry = {"document_id": doc_id, "chunks": pulled}
+            if truncated:
+                # 翻页到上限还有下一页：如实说「这只是其中一部分」，不把少带说成带全了。
+                entry["truncated"] = True
+            chunks_pulled.append(entry)
             documents.append(
                 {
                     "document_id": doc_id,
@@ -261,6 +314,10 @@ async def kb_init_apply(payload: KbInitApplyIn):
                 "documents": len(merged_documents),
             },
             "unknown_documents": unknown,
+            # 同步时带回来的切块数（权威门开着=权威给的；门关着=GEO 已存快照）
+            "chunks_pulled": chunks_pulled,
+            "chunks_total": sum(c["chunks"] for c in chunks_pulled),
+            "chunks_truncated": [c["document_id"] for c in chunks_pulled if c.get("truncated")],
             # recorded=false = 这份选择和上次一模一样（台账去重命中了）——「增量刷新」
             # 里什么都没变就该是这个结果，不是错误。
             "recorded": bool(outcome.get("recorded")),

@@ -300,6 +300,7 @@ async def search_knowledge(
         kind="search", query=text[:512], query_id=data.get("query_id"), layers=layers
     )
     result["snapshot_recorded"] = _record("search", payload)
+    _record_read_chunks(hits)
     return result
 
 
@@ -407,6 +408,139 @@ async def list_enterprise_facts(limit: int = 400) -> list[dict[str, Any]]:
     return facts
 
 
+def _record_read_chunks(hits: list[dict[str, Any]]) -> bool:
+    """把这次检索读到的**文档切块**单独落一条台账（kind=chunks）。
+
+    Owner 2026-09-21：「读到的所有信息存进自己的数据库里存着」+「同步知识库的时候
+    就能看得到一并带过来存起来」。切块正文是内容生成最要紧的材料，单独成条之后
+    ``chunks_for_document()`` 才按文档取得回来（未发布文档的门关了也不至于丢材料）。
+    """
+    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+
+    items = [
+        {
+            "document_id": hit.get("document_id"),
+            "document_title": hit.get("document_title") or "",
+            "chunk_id": hit.get("chunk_id"),
+            "layer": hit.get("layer") or hit.get("authority"),
+            "text": hit.get("snippet") or hit.get("value") or "",
+        }
+        for hit in hits
+    ]
+    payload = chunk_snapshot_payload(items)
+    if not payload["items"]:
+        return False
+    try:
+        info = record(kind="chunks", payload=payload, source_url=knowledge_url())
+        return bool(info.get("snapshot_id"))
+    except Exception as exc:  # noqa: BLE001 — 快照失败不能让读失败
+        import logging
+
+        logging.getLogger("eios.geo.eios_adapter").warning("切块快照未落库: %s", exc)
+        return False
+
+
+#: 读一份文档的切块时最多翻几页（每页最多 ``MAX_LIMIT`` 条）。到顶就如实标 ``truncated``，
+#: 而不是把前几页当成全部 —— 「带过来存起来」不能把不完整说成完整。
+_MAX_CHUNK_PAGES = 5
+
+
+async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str, Any]:
+    """读某份文档的切块原文：先走权威的门，门关了就用 GEO 自己存下的切块。
+
+    权威的门（``GET /api/v1/knowledge/documents/{id}/chunks``）对**未发布**文档额外要求
+    治理 scope；GEO 只有读 scope，所以未发布文档在那里是 404（fail-closed，权威侧有意为之，
+    不是 GEO 能改的）。但同一份文档的切块，检索的 material 层按契约是给有权限的读者的，
+    GEO 也已经按「读到的都存下来」把它落在自己的台账里。这条通道就是那个回退：
+
+    - ``source="knowledge"``：权威给的（正本，``authoritative`` 仍为 false —— GEO 不冒充权威）；
+    - ``source="geo_snapshot"``：GEO 读过的快照（带 ``note`` 说明正本在知识库）；
+    - 两边都没有 → 原样抛权威的错误，不伪造空内容。
+
+    ``limit`` 是**每页**条数；权威给了 ``next_cursor`` 就继续翻（最多 ``_MAX_CHUNK_PAGES`` 页）。
+    翻到上限还有下一页时 ``truncated=true``，如实说明「这些不是全部」，不静默少带。
+    """
+    doc = (document_id or "").strip()
+    if not doc:
+        raise EIOSKnowledgeError("INVALID_PARAMETER", "document_id 不能为空", 400)
+    page_limit = max(1, min(int(limit), MAX_LIMIT))
+    path = f"/api/v1/knowledge/documents/{doc}/chunks"
+    authority_error: Exception | None = None
+    try:
+        items: list[dict[str, Any]] = []
+        cursor: str | None = None
+        for _page in range(_MAX_CHUNK_PAGES):
+            params: dict[str, Any] = {"limit": page_limit}
+            if cursor:
+                params["cursor"] = cursor
+            data = await _request("GET", path, params=params)
+            items.extend(
+                {
+                    "document_id": doc,
+                    "chunk_id": str(item.get("id") or ""),
+                    "ordinal": item.get("ordinal"),
+                    "text": str(item.get("content") or ""),
+                    "document_title": "",
+                    "source": "knowledge",
+                    "authoritative": False,
+                    "note": "来自企业知识库的正式读接口；GEO 只读，不冒充权威",
+                }
+                for item in (data.get("items") or [])
+            )
+            cursor = data.get("next_cursor")
+            if not cursor:
+                break
+        truncated = bool(cursor)
+        if items:
+            _record_read_chunks([{**i, "snippet": i["text"]} for i in items])
+            warnings = (
+                [
+                    "authority_chunks_truncated",
+                    f"这份文档还有没读完的切块（翻到第 {_MAX_CHUNK_PAGES} 页上限），"
+                    "这里只是其中一部分",
+                ]
+                if truncated
+                else []
+            )
+            return {
+                "document_id": doc,
+                "source": "knowledge",
+                "items": items,
+                "truncated": truncated,
+                "warnings": warnings,
+                "provenance": _provenance(kind="document_chunks"),
+            }
+    except Exception as exc:  # noqa: BLE001 — 门关了不是错，去自己的台账找
+        authority_error = exc
+
+    from app.services.knowledge_snapshot import chunks_for_document
+
+    stored = chunks_for_document(doc)
+    if stored:
+        return {
+            "document_id": doc,
+            "source": "geo_snapshot",
+            "items": stored,
+            "truncated": False,
+            "warnings": [
+                "authority_document_chunks_denied",
+                f"权威文档读接口不可用（{type(authority_error).__name__ if authority_error else 'unknown'}），"
+                "以下切块来自 GEO 自己读过的快照",
+            ],
+            "provenance": _provenance(kind="document_chunks", source="geo_snapshot"),
+        }
+    if authority_error is not None:
+        raise authority_error
+    return {
+        "document_id": doc,
+        "source": "knowledge",
+        "items": [],
+        "truncated": False,
+        "warnings": [],
+        "provenance": _provenance(kind="document_chunks"),
+    }
+
+
 async def list_documents(limit: int = 50) -> list[dict[str, Any]]:
     """企业文档列表（只读）。用于回答「企业有没有上传过资料」。"""
     require_outbound_network("eios_knowledge")
@@ -484,6 +618,7 @@ __all__ = [
     "knowledge_url",
     "list_documents",
     "list_enterprise_facts",
+    "list_document_chunks",
     "list_knowledge_objects",
     "search_knowledge",
     "search_relations",

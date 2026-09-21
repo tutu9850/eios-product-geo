@@ -138,6 +138,135 @@ def list_recent(*, kind: str | None = None, limit: int = 50) -> list[dict[str, A
         db.close()
 
 
+def _iter_items(kind: str):
+    """按 kind 遍历台账里每一条 payload 的 items（新读到的排前面）。"""
+    for row in list_recent(kind=kind, limit=200):
+        for item in row["payload"].get("items") or []:
+            yield row, item
+
+
+def chunks_for_document(document_id: str) -> list[dict[str, Any]]:
+    """GEO 自己存下来的、某份文档的切块文本（正本在知识库，这是 GEO 读过的快照）。
+
+    为什么需要它：知识库里**未发布**文档（``status=chunked`` 之类）的切块，检索的
+    material 层会照给有权限的读者，但 ``GET /documents/{id}/chunks`` 对未发布文档
+    额外要求治理 scope —— GEO 只有读 scope，于是那道门 404（fail-closed，不是 bug）。
+    GEO 不能改权威的门，但**读到过的切块文本已经在自己的台账里**，这里提供按文档
+    取回的通道，接口上如实标 ``authoritative=false``。
+
+    合并顺序：先 ``kind=chunks``（每次读都专门记的），再兜底扫 ``kind=search``
+    （早期版本只把切块存在检索命中里）。同一个 chunk_id 只留第一次见到的。
+    """
+    if not document_id:
+        return []
+    found: dict[str, dict[str, Any]] = {}
+
+    def _collect(item: dict[str, Any], *, origin: str) -> None:
+        if str(item.get("document_id") or "") != document_id:
+            return
+        text = str(item.get("text") or item.get("content") or item.get("snippet") or item.get("value") or "")
+        chunk_id = str(item.get("chunk_id") or "")
+        if not chunk_id or not text.strip() or chunk_id in found:
+            return
+        found[chunk_id] = {
+            "document_id": document_id,
+            "chunk_id": chunk_id,
+            "document_title": str(item.get("document_title") or ""),
+            "text": text,
+            "ordinal": item.get("ordinal"),
+            "layer": item.get("layer") or item.get("authority"),
+            "source": "geo_snapshot",
+            "origin": origin,
+            "authoritative": False,
+            "note": "GEO 从企业知识库读到并留下的切块快照；正本在知识库，可能已经更新",
+        }
+
+    for _row, item in _iter_items("chunks"):
+        _collect(item, origin="snapshot:chunks")
+    for _row, item in _iter_items("search"):
+        _collect(item, origin="snapshot:search")
+    return list(found.values())
+
+
+def documents_with_chunks() -> list[dict[str, Any]]:
+    """GEO 读到过切块的文档（含知识库里**未发布**、在文档列表里看不到的那些）。
+
+    为什么需要：``GET /documents`` 只列已发布文档，而 GEO 从检索的 material 层
+    读到过未发布文档的切块（实测两份 docx）。同步/初始化时如果只看文档列表，
+    这些「已经读得到、也存下来了」的资料就永远不出现在候选里。
+
+    ``chunks`` 数的是**读到过几个不同的切块**（同一个 chunk 在 ``chunks`` 与
+    ``search`` 两种台账里都出现过也只算一次），否则后面每读一次检索这个数就虚涨。
+    """
+    docs: dict[str, dict[str, Any]] = {}
+    for kind, origin in (("chunks", "snapshot:chunks"), ("search", "snapshot:search")):
+        for row, item in _iter_items(kind):
+            doc_id = str(item.get("document_id") or "")
+            chunk_id = str(item.get("chunk_id") or "")
+            if not doc_id:
+                continue
+            entry = docs.setdefault(
+                doc_id,
+                {
+                    "document_id": doc_id,
+                    "title": str(item.get("document_title") or ""),
+                    "chunk_ids": set(),
+                    "sources": set(),
+                    "layer": None,
+                    "last_read_at": row.get("last_read_at"),
+                },
+            )
+            if chunk_id:
+                entry["chunk_ids"].add(chunk_id)
+            entry["sources"].add(origin)
+            if not entry["title"] and item.get("document_title"):
+                entry["title"] = str(item["document_title"])
+            if not entry["layer"] and (item.get("layer") or item.get("authority")):
+                entry["layer"] = item.get("layer") or item.get("authority")
+            if row.get("last_read_at") and (
+                not entry["last_read_at"] or row["last_read_at"] > entry["last_read_at"]
+            ):
+                entry["last_read_at"] = row["last_read_at"]
+    out = []
+    for entry in docs.values():
+        out.append(
+            {
+                "document_id": entry["document_id"],
+                "title": entry["title"] or entry["document_id"],
+                "chunks": len(entry["chunk_ids"]),
+                "layer": entry["layer"] or "material",
+                "sources": sorted(entry["sources"]),
+                "last_read_at": entry["last_read_at"],
+                "readable_from": ["geo_snapshot"],
+                "snapshot_only": True,  # 文档门可能关着；切块文本在 GEO 台账里
+                "note": "GEO 读到过切块的文档；正本在知识库，这份是快照",
+            }
+        )
+    out.sort(key=lambda d: (d["title"] or d["document_id"]))
+    return out
+
+
+def chunk_snapshot_payload(chunks: list[dict[str, Any]]) -> dict[str, Any]:
+    """把一次读到的切块整理成台账 payload（稳定字段，重复读不堆行）。"""
+    items = []
+    for c in chunks:
+        chunk_id = str(c.get("chunk_id") or "")
+        text = str(c.get("text") or c.get("snippet") or c.get("value") or "")
+        if not chunk_id or not text.strip():
+            continue
+        items.append(
+            {
+                "document_id": c.get("document_id"),
+                "document_title": c.get("document_title") or "",
+                "chunk_id": chunk_id,
+                "ordinal": c.get("ordinal"),
+                "layer": c.get("layer") or c.get("authority"),
+                "text": text,
+            }
+        )
+    return {"contract": "geo.knowledge_chunks/v1", "items": items}
+
+
 def summary() -> dict[str, Any]:
     """企业资料就绪度：GEO 到底从知识库读到过什么（本地读，不去打知识库）。
 
