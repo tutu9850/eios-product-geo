@@ -200,8 +200,36 @@ async def list_items(include_archived: bool = False):
     items = _load_items()
     if not include_archived:
         items = [i for i in items if i.get("status") != "archived"]
-    items.sort(key=lambda x: x.get("created_time", ""), reverse=True)
-    return ok({"items": items, "total": len(items)})
+    # 配置状态（active/paused）与运行结果是两回事。按最新一批包含该对象的历史记录
+    # 计算结果状态，避免「监测中」让用户误以为已经拿到过有效回答。
+    latest_by_id: dict[str, dict] = {}
+    for batch in reversed(_load_history()):
+        for question in batch.get("questions") or []:
+            mid = question.get("monitor_id")
+            if mid and mid not in latest_by_id:
+                latest_by_id[mid] = {"batch": batch, "questions": []}
+            if mid and latest_by_id.get(mid, {}).get("batch") is batch:
+                latest_by_id[mid]["questions"].append(question)
+    enriched = []
+    for item in items:
+        latest = latest_by_id.get(item.get("monitor_id"))
+        if not latest:
+            run = {"state": "never", "label": "从未成功", "last_run_at": item.get("last_run_at"), "answered": 0, "failed": 0}
+        else:
+            engines = [e for q in latest["questions"] for e in (q.get("engine_detail") or [])]
+            answered = sum(1 for e in engines if e.get("mentioned") is not None)
+            failed = sum(1 for e in engines if e.get("error") or e.get("mentioned") is None)
+            state = "success" if answered else "failed"
+            run = {
+                "state": state,
+                "label": "已有有效结果" if state == "success" else "最近运行失败",
+                "last_run_at": latest["batch"].get("created_at") or latest["batch"].get("ts"),
+                "answered": answered,
+                "failed": failed,
+            }
+        enriched.append({**item, "run_result": run})
+    enriched.sort(key=lambda x: x.get("created_time", ""), reverse=True)
+    return ok({"items": enriched, "total": len(enriched)})
 
 
 @router.post("/items")
@@ -1772,6 +1800,7 @@ async def run_batch_items(items: list[dict], company_name: str | None = None, en
                         "subjects": er.get("subjects"),  # 双主体（竞品探针）：company/competitor 各 mentioned/rank/sentiment
                         "snippet": (er.get("snippet") or "")[:240],
                         "answer": er.get("answer") or "",  # 全文（监测报告展开用；full=True 时采集）
+                        "error": er.get("error"),  # 运行状态审计：失败原因必须跟历史一起保存
                     }
                     for er in x.get("engine_results") or []
                 ],

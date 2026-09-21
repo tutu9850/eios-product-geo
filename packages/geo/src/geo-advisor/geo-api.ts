@@ -256,6 +256,13 @@ export interface GeoMonitorItem {
   status: string
   created_time: string
   updated_time: string
+  run_result?: {
+    state: 'success' | 'failed' | 'never'
+    label: string
+    last_run_at?: string | null
+    answered: number
+    failed: number
+  }
 }
 
 export interface GeoTasks {

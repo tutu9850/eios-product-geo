@@ -201,6 +201,33 @@ def test_industry_mentions_keep_evidence_and_do_not_double_count(monkeypatch):
     assert "不代表真实市场份额" in data["note"]
 
 
+def test_monitor_items_expose_real_run_result_states(monkeypatch):
+    from app.api.v1 import monitor
+
+    items = [
+        {"monitor_id": "ok", "status": "active", "created_time": "3"},
+        {"monitor_id": "failed", "status": "active", "created_time": "2"},
+        {"monitor_id": "never", "status": "paused", "created_time": "1"},
+    ]
+    history = [{
+        "created_at": "2026-09-22T01:00:00+00:00",
+        "questions": [
+            {"monitor_id": "ok", "engine_detail": [{"mentioned": False, "error": None}]},
+            {"monitor_id": "failed", "engine_detail": [{"mentioned": None, "error": "timeout"}]},
+        ],
+    }]
+    monkeypatch.setattr(monitor, "_load_items", lambda: items)
+    monkeypatch.setattr(monitor, "_load_history", lambda: history)
+
+    rows = {row["monitor_id"]: row for row in _run(monitor.list_items())["data"]["items"]}
+    assert rows["ok"]["run_result"] == {
+        "state": "success", "label": "已有有效结果", "last_run_at": "2026-09-22T01:00:00+00:00", "answered": 1, "failed": 0,
+    }
+    assert rows["failed"]["run_result"]["state"] == "failed"
+    assert rows["failed"]["run_result"]["failed"] == 1
+    assert rows["never"]["run_result"]["state"] == "never"
+
+
 # ── 2. 竞品对比：共 N 条回答 / 胜负桶也只算真作答 ────────────────
 
 

@@ -400,6 +400,10 @@ export function GeoMonitorObjectsCard() {
                   <div className="truncate text-[10px] text-[var(--yayu-faint)]">
                     {formatMonitorProductLine(i.config_json?.product, monitorTypeText(i.type))}
                   </div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[10px]">
+                    <span data-status={i.run_result?.state} className="monitor-run-state">{i.run_result?.label ?? '从未成功'}</span>
+                    {i.run_result?.last_run_at ? <span className="text-[var(--yayu-faint)]">{shortDay(i.run_result.last_run_at)} · {i.run_result.answered} 条有效回答</span> : null}
+                  </div>
                 </div>
                 <span className="shrink-0 rounded bg-[var(--yayu-surface-raised)] px-1.5 py-0.5 text-[10px] text-[var(--yayu-muted)]">
                   {i.status === 'active' ? '监测中' : '已暂停'}

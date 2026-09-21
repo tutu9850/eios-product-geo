@@ -392,6 +392,12 @@
 .geo-trend>i:last-child{background:#638d24}
 .geo-note{margin-top:6px;color:#8b9184;font-size:9.5px;line-height:1.5}
 .geo-empty{padding:22px;border:1px dashed #dfe2da;border-radius:9px;color:#8b9184;font-size:11px;text-align:center}
+.analysis-empty{display:flex;min-height:138px;flex-direction:column;align-items:center;justify-content:center;gap:7px;background:rgba(255,255,255,.45)}
+.analysis-empty b{color:#343a32;font-size:14px;font-weight:600}
+.analysis-empty span{max-width:560px;line-height:1.7}
+.monitor-run-state{border-radius:999px;padding:1px 6px;background:#eef0eb;color:#70776b}
+.monitor-run-state[data-status="success"]{background:#eaf4e6;color:#4f6f42}
+.monitor-run-state[data-status="failed"]{background:#f9e9e6;color:#a64e43}
 .geo-quote{padding:8px 10px;border-left:2px solid #c4d5a8;border-radius:0 6px 6px 0;background:#f7f8f5;color:#4f564c;font-size:11px;line-height:1.55}
 .geo-subhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:7px}
 .geo-subhead h3{margin:0;font-size:12.5px;font-weight:700}

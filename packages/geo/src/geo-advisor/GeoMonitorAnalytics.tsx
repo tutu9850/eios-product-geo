@@ -105,6 +105,10 @@ interface Sources {
   note?: string
 }
 
+function AnalysisEmpty({ title, next }: { title: string; next: string }) {
+  return <div className="geo-empty analysis-empty"><b>{title}</b><span>{next}</span></div>
+}
+
 export function GeoMonitorAnalytics() {
   const [tab, setTab] = useState<Analysis>('public-opinion')
   const [data, setData] = useState<PublicOpinion | Sentiment | FactCheck | Competitor | Industry | Sources | null>(null)
@@ -184,7 +188,7 @@ export function GeoMonitorAnalytics() {
 
 /** 品牌舆情：健康分 + 四指标 + 负面趋势 + 平台分布 + 高风险问题 */
 function PublicOpinionView({ data }: { data: PublicOpinion | null }) {
-  if (!data?.health) return <div className="geo-empty">还没有监测记录，先跑一轮监测。</div>
+  if (!data?.health) return <AnalysisEmpty title="还没有品牌舆情数据" next="先到“监测工作台”运行一个品牌或产品监测对象；模型产生有效回答后，这里会自动汇总。" />
   const { health, metrics } = data
   return (
     <div className="analysis-stack">
@@ -218,7 +222,7 @@ function PublicOpinionView({ data }: { data: PublicOpinion | null }) {
 
 /** 评价分析：正负中分布 + 趋势 + 逐问题评价 + 负面高频词与样例 */
 function SentimentView({ data }: { data: Sentiment | null }) {
-  if (!data?.overview) return <div className="geo-empty">还没有评价数据，先跑一轮监测。</div>
+  if (!data?.overview) return <AnalysisEmpty title="还没有可分析的评价" next="先运行监测；只有模型真实作答且完成评价判定后，才会进入正面、负面和中性统计。" />
   const { overview } = data
   return (
     <div className="analysis-stack">
@@ -276,7 +280,7 @@ function SentimentView({ data }: { data: Sentiment | null }) {
 
 /** 事实核验：知识库命中 + 失真排行 + 失真明细 */
 function FactCheckView({ data }: { data: FactCheck | null }) {
-  if (!data?.truth) return <div className="geo-empty">还没有可核验的监测回答。</div>
+  if (!data?.truth) return <AnalysisEmpty title="还没有可核验的回答" next="先运行监测，并确保 GEO 内容资产中有可用于核对的企业事实；没有证据时不会生成核验结论。" />
   const { truth } = data
   return (
     <div className="analysis-stack">
@@ -337,7 +341,7 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
 
 /** 竞品分析：我方 vs 竞品提及率对照 + 同题对比原话 */
 function CompetitorView({ data }: { data: Competitor | null }) {
-  if (!data?.pairs?.length) return <div className="geo-empty">还没有竞品对比数据，先建立竞品监测对象并跑一轮。</div>
+  if (!data?.pairs?.length) return <AnalysisEmpty title="还没有竞品对比数据" next="在“监测工作台”新建竞争关系对象，填写我方与竞品名称，然后至少成功运行一次。" />
   return (
     <div className="analysis-stack">
       {data.pairs.slice(0, 8).map((pair, index) => (
@@ -378,8 +382,8 @@ function CompetitorView({ data }: { data: Competitor | null }) {
 
 /** AI 回答中的企业提及：规则识别结果 + 可核验回答原文 */
 function IndustryView({ data }: { data: Industry | null }) {
-  if (!data) return <div className="geo-empty">还没有行业分析数据。</div>
-  if (data.empty) return <div className="geo-empty">{data.hint ?? '还没有行业/关键词类型的监测对象。'}</div>
+  if (!data) return <AnalysisEmpty title="还没有企业提及数据" next="先运行行业市场监测对象；这里只展示真实回答中识别到的企业名称。" />
+  if (data.empty) return <AnalysisEmpty title="还没有行业市场监测对象" next={data.hint ?? '到“监测工作台”新建行业市场对象并运行一次。'} />
   return (
     <div className="analysis-stack">
       <GeoKpis
@@ -404,7 +408,7 @@ function IndustryView({ data }: { data: Industry | null }) {
 
 /** 信源分析：各模型（信源）的表现排行 */
 function SourcesView({ data }: { data: Sources | null }) {
-  if (!data?.sources?.length) return <div className="geo-empty">还没有信源数据，先跑一轮监测。</div>
+  if (!data?.sources?.length) return <AnalysisEmpty title="还没有模型信源数据" next="先运行监测；未接通或调用失败的模型不会被当作 0% 参与排行。" />
   return (
     <div className="analysis-stack">
       <div className="geo-subhead"><h3>模型提及率</h3><small>谁更容易提到我</small></div>
