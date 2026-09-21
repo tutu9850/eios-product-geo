@@ -2460,8 +2460,6 @@ async def industry():
             for c in comp[:2]:
                 if c:
                     cands[str(c)] = "competitor"
-    _SUFFIXES = ("有限公司", "集团", "股份", "科技", "智能", "技术")
-
     # 收集行业对象回答（单遍扫描；文本截前 800 字防大文本拖慢正则）
     kw_ids = {i["monitor_id"] for i in kw_items}
     mentions: dict[str, dict] = {}
@@ -2477,26 +2475,33 @@ async def industry():
                     continue
                 total_answers += 1
                 qtext = q.get("question") or ""
+                engine = ed.get("engine_name") or "未知模型"
+                seen_in_answer: set[str] = set()
                 # 已知候选匹配
                 for name, cat in cands.items():
                     if name and name in text:
-                        m = mentions.setdefault(name, {"name": name, "category": cat, "count": 0, "questions": set()})
-                        m["count"] += 1
-                        if qtext:
-                            m["questions"].add(qtext)
+                        mentions.setdefault(name, {"name": name, "category": cat, "count": 0, "questions": set(), "evidence": []})
+                        seen_in_answer.add(name)
                 # 通用企业名探测（XX有限公司/集团）
-                for m in re.finditer(r"([\u4e00-\u9fa5A-Za-z0-9]{2,20}?(?:有限公司|集团|股份公司|科技公司))", text):
-                    nm = m.group(0)
-                    if nm not in cands and nm not in mentions:
-                        mentions[nm] = {"name": nm, "category": "other", "count": 0, "questions": set()}
-                    if nm in mentions:
-                        mentions[nm]["count"] += 1
-                        if qtext:
-                            mentions[nm]["questions"].add(qtext)
+                for match in re.finditer(r"([\u4e00-\u9fa5A-Za-z0-9]{2,20}?(?:有限公司|集团|股份公司|科技公司))", text):
+                    nm = match.group(0)
+                    if nm not in cands:
+                        mentions.setdefault(nm, {"name": nm, "category": "other", "count": 0, "questions": set(), "evidence": []})
+                        seen_in_answer.add(nm)
+                # 同一回答重复出现同一企业只算一次，并保留可核验原文。
+                for name in seen_in_answer:
+                    record = mentions[name]
+                    record["count"] += 1
+                    if qtext:
+                        record["questions"].add(qtext)
+                    if len(record["evidence"]) < 3:
+                        at = text.find(name)
+                        start = max(0, at - 60)
+                        record["evidence"].append({"question": qtext, "engine": engine, "snippet": text[start:start + 180], "ts": ts})
 
     rows = []
     for m in mentions.values():
-        rows.append({"name": m["name"], "category": m["category"], "count": m["count"], "questions": len(m["questions"])})
+        rows.append({"name": m["name"], "category": m["category"], "count": m["count"], "questions": len(m["questions"]), "evidence": m["evidence"]})
     rows.sort(key=lambda x: -x["count"])
     total_mention = sum(r["count"] for r in rows)
 
@@ -2506,7 +2511,7 @@ async def industry():
         "total_answers": total_answers,
         "total_mention": total_mention,
         "players": rows[:15],
-        "note": "规则词频估算：按回答文本中企业名出现次数统计，提及≠推荐/好评，非 LLM 精判",
+        "note": "规则估算：每条回答中识别到企业名即记 1 次提及，并保留回答原文；同一回答重复出现不重复计数。提及≠推荐/好评，也不代表真实市场份额。",
         "empty": not kw_items,
         "hint": "暂无行业监测对象——先在监测中心建「行业/关键词」对象（如：工业AI质检）后跑监测" if not kw_items else None,
     })

@@ -19,7 +19,7 @@ const TABS: Array<[Analysis, string]> = [
   ['sentiment', '评价分析'],
   ['fact-check', '事实核验'],
   ['competitor', '竞品分析'],
-  ['industry', '行业格局'],
+  ['industry', '企业提及'],
   ['sources', '信源分析'],
 ]
 
@@ -94,7 +94,7 @@ interface Industry {
   objects: number
   total_answers: number
   total_mention: number
-  players: Array<{ name: string; category: string; count: number; questions: number }>
+  players: Array<{ name: string; category: string; count: number; questions: number; evidence?: Array<{ question: string; engine: string; snippet: string; ts: string }> }>
   note?: string
   empty: boolean
   hint?: string | null
@@ -376,7 +376,7 @@ function CompetitorView({ data }: { data: Competitor | null }) {
   )
 }
 
-/** 行业格局：行业对象与玩家词频 */
+/** AI 回答中的企业提及：规则识别结果 + 可核验回答原文 */
 function IndustryView({ data }: { data: Industry | null }) {
   if (!data) return <div className="geo-empty">还没有行业分析数据。</div>
   if (data.empty) return <div className="geo-empty">{data.hint ?? '还没有行业/关键词类型的监测对象。'}</div>
@@ -386,16 +386,17 @@ function IndustryView({ data }: { data: Industry | null }) {
         items={[
           { label: '行业', value: data.industry ?? '未标注', detail: `${data.objects} 个行业对象` },
           { label: '行业回答', value: `${data.total_answers}`, detail: '条' },
-          { label: '玩家提及', value: `${data.total_mention}`, detail: '次（规则词频）' },
+          { label: '企业提及', value: `${data.total_mention}`, detail: '条回答（规则识别）' },
         ]}
       />
-      <div className="geo-subhead"><h3>行业玩家</h3><small>按回答中出现次数排序</small></div>
+      <div className="geo-subhead"><h3>AI 回答中的企业提及</h3><small>按包含企业名的回答数排序，不代表推荐或市场份额</small></div>
       <GeoTable
-        columns={['名称', '类别', '出现次数', '覆盖问题']}
+        columns={['名称', '来源类型', '提及回答', '覆盖问题']}
         template="minmax(0,1fr) 90px 78px 78px"
-        rows={data.players.map((row) => [<b>{row.name}</b>, <em>{row.category}</em>, <em>{row.count}</em>, <em>{row.questions}</em>])}
-        empty="这一轮没有出现可识别的行业玩家"
+        rows={data.players.map((row) => [<b>{row.name}</b>, <em>{row.category === 'self' ? '我方' : row.category === 'competitor' ? '已配置竞品' : '规则识别'}</em>, <em>{row.count}</em>, <em>{row.questions}</em>])}
+        empty="这一轮回答中没有识别到企业名称"
       />
+      {data.players.flatMap((row) => (row.evidence ?? []).slice(0, 1).map((sample) => ({ ...sample, name: row.name }))).slice(0, 5).map((sample, index) => <div key={`${sample.name}-${index}`}><p className="geo-note">{sample.name} · {sample.engine} · {sample.question}</p><GeoQuote>{sample.snippet}</GeoQuote></div>)}
       {data.note ? <p className="geo-note">{data.note}</p> : null}
     </div>
   )

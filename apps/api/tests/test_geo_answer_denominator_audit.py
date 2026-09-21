@@ -172,6 +172,35 @@ def test_cognition_coverage_is_null_when_nobody_answered(monkeypatch):
     assert know["coverage"] is None, "没人作答 → 覆盖未判定（null），不编 0%"
 
 
+def test_industry_mentions_keep_evidence_and_do_not_double_count(monkeypatch):
+    from app.api.v1 import monitor
+
+    items = [
+        {"monitor_id": "kw_1", "type": "keyword", "status": "active", "entity": "GEO 行业"},
+        {"monitor_id": "brand_1", "type": "brand", "config_json": {"company": "亚宇臻隆科技有限公司"}},
+    ]
+    history = [{
+        "created_at": "2026-09-22T01:00:00+00:00",
+        "questions": [{
+            "monitor_id": "kw_1",
+            "question": "GEO 服务商有哪些？",
+            "engine_detail": [{
+                "engine_name": "DeepSeek",
+                "answer": "亚宇臻隆科技有限公司提供 GEO 服务。亚宇臻隆科技有限公司也提供内容服务。",
+            }],
+        }],
+    }]
+    monkeypatch.setattr(monitor, "_load_items", lambda: items)
+    monkeypatch.setattr(monitor, "_load_history", lambda: history)
+
+    data = _run(monitor.industry())["data"]
+    row = next(item for item in data["players"] if item["name"] == "亚宇臻隆科技有限公司")
+    assert row["count"] == 1, "同一回答重复企业名，且同时命中已知候选与通用正则，也只能算一条提及回答"
+    assert row["evidence"][0]["engine"] == "DeepSeek"
+    assert "亚宇臻隆科技有限公司" in row["evidence"][0]["snippet"]
+    assert "不代表真实市场份额" in data["note"]
+
+
 # ── 2. 竞品对比：共 N 条回答 / 胜负桶也只算真作答 ────────────────
 
 
