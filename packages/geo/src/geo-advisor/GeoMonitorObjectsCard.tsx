@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BarChart3, Play, Plus, Trash2 } from 'lucide-react'
+import { BarChart3, Play, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoDelete, geoGet, geoPatch, geoPost, type GeoMonitorItem, type GeoTasks } from './geo-api'
 import { formatMonitorProductLine } from './monitor-item-label'
@@ -9,6 +9,10 @@ type Schedule = 'daily' | 'weekly'
 
 interface TaskRunResult {
   summary?: { total_questions?: number; mentioned_questions?: number; score?: number }
+}
+interface QuickCheckResult {
+  summary?: { mentioned?: number; not_mentioned?: number; score?: number; rank_avg?: number | null }
+  results?: Array<{ engine_name?: string; mentioned?: boolean | null; error?: string | null }>
 }
 
 /** 跨次趋势（GET /monitor/items/{id}/trend）：每次监测一个点，指标口径见 monitor.py */
@@ -69,6 +73,8 @@ export function GeoMonitorObjectsCard() {
   const [runningId, setRunningId] = useState<string | null>(null)
   const [compLabels, setCompLabels] = useState<Record<string, string>>({})
   const [detailPanel, setDetailPanel] = useState<DetailPanel | null>(null)
+  const [quickQuestion, setQuickQuestion] = useState('')
+  const [quickResult, setQuickResult] = useState<QuickCheckResult | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -134,6 +140,23 @@ export function GeoMonitorObjectsCard() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const runQuickQuestion = async () => {
+    const question = quickQuestion.trim()
+    if (!question) return
+    const brand = (items ?? []).find((item) => item.type === 'brand')
+    const company = brand?.config_json?.company || brand?.entity
+    if (!company) { setMsg('请先创建企业品牌监测对象，明确要判断哪家企业是否被提及'); return }
+    setRunningId('quick-check')
+    setQuickResult(null)
+    try {
+      const result = await geoPost<QuickCheckResult>('/monitor/check', { question, company_name: company, full: false })
+      setQuickResult(result)
+      setMsg(`即时监测完成：${result.results?.filter((row) => row.mentioned != null).length ?? 0} 个模型有效回答`)
+    } catch (e) {
+      setMsg(`即时监测失败：${e instanceof Error ? e.message : '未知错误'}`)
+    } finally { setRunningId(null) }
   }
 
   const runItem = async (it: GeoMonitorItem) => {
@@ -363,6 +386,11 @@ export function GeoMonitorObjectsCard() {
       {msg ? <p className="text-[12px] text-[var(--yayu-muted)]">{msg}</p> : null}
 
       <GeoRow label="监测对象" value={`${items?.length ?? 0} 个`} />
+      <div className="monitor-quick-check">
+        <div><b>单问题即时监测</b><span>以企业品牌对象为判断主体，立即询问当前已接通的国产模型</span></div>
+        <div><input value={quickQuestion} onChange={(event) => setQuickQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void runQuickQuestion() }} placeholder="例如：国内 GEO 服务商有哪些？" /><Button size="sm" disabled={!quickQuestion.trim() || runningId === 'quick-check'} onClick={() => void runQuickQuestion()}><Search className="size-3" />{runningId === 'quick-check' ? '监测中…' : '立即监测'}</Button></div>
+        {quickResult?.summary ? <p>提及 {quickResult.summary.mentioned ?? 0} · 未提及 {quickResult.summary.not_mentioned ?? 0} · 提及率 {quickResult.summary.score ?? 0}%</p> : null}
+      </div>
       {items && items.length > 0 ? (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -375,8 +403,8 @@ export function GeoMonitorObjectsCard() {
               />
               全选
             </label>
-            <Button size="sm" disabled={busy || selected.size === 0} onClick={() => void runSelected()}>
-              {busy ? '运行中…' : `运行选中（${selected.size}）`}
+            <Button size="sm" disabled={busy || selected.size === 0} onClick={() => void runSelected()} title="批量运行所选监测对象生成的全部探针问题">
+              {busy ? '批量监测中…' : `批量监测选中项（${selected.size}）`}
             </Button>
           </div>
           {items.map((i) => (
