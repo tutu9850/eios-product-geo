@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Search, Trash2, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Plus, Search, Trash2, Upload, X } from 'lucide-react'
 import { Button } from '@yayu/ui'
-import { geoDelete, geoGet, geoPut, type GeoMaterial } from './geo-api'
+import { geoDelete, geoGet, geoPost, geoPut, geoUpload, type GeoMaterial } from './geo-api'
 import { GeoCardShell, GeoError, GeoLoading } from './shared'
+
+/**
+ * 老 v1 的软失败：HTTP 200、`ok:true`，原因写在 `data.error` 里（envelope.py 的 `ok()`）。
+ * 只看 HTTP 成功会把「文件太大」「提不出文本」当成上传成功，所以这里必须读它。
+ */
+function softError(data: { error?: unknown } | null): string | null {
+  const message = data?.error
+  return typeof message === 'string' && message ? message : null
+}
 
 /** 内容资产卡：搜索 + 详情展开 + 删除（交互对齐 Builder GeoKb） */
 export function GeoAssetsListCard() {
@@ -16,6 +25,12 @@ export function GeoAssetsListCard() {
   // S4 发布打点：素材 → 已发布 URL（监测引用对上 citation）
   const [urlDraft, setUrlDraft] = useState<Record<string, string>>({})
   const [savingUrl, setSavingUrl] = useState<string | null>(null)
+  // 新建 / 上传：Owner 2026-09-21「2要」—— 这一页能看能删，就得能往里放东西。
+  const [creating, setCreating] = useState(false)
+  const [title, setTitle] = useState('')
+  const [content, setContent] = useState('')
+  const [adding, setAdding] = useState(false)
+  const fileInput = useRef<HTMLInputElement | null>(null)
 
   const load = useCallback(async (q: string = '') => {
     setLoading(true)
@@ -92,6 +107,51 @@ export function GeoAssetsListCard() {
     }
   }
 
+  const createMaterial = async () => {
+    const t = title.trim()
+    if (!t || adding) return
+    setAdding(true)
+    setError(null)
+    try {
+      const d = await geoPost<{ error?: string }>('/knowledge/materials', {
+        title: t,
+        content,
+        source_type: 'text',
+      })
+      const soft = softError(d)
+      if (soft) {
+        setError(soft)
+        return
+      }
+      setTitle('')
+      setContent('')
+      setCreating(false)
+      await load(query)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '新建素材失败')
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  const uploadFile = async (file: File) => {
+    setError(null)
+    setAdding(true)
+    try {
+      const d = await geoUpload<{ error?: string }>('/knowledge/materials/upload', file)
+      const soft = softError(d)
+      if (soft) {
+        setError(soft)
+        return
+      }
+      await load(query)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '上传失败')
+    } finally {
+      setAdding(false)
+    }
+  }
+
   if (loading) return <GeoLoading text="内容资产加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
@@ -119,6 +179,55 @@ export function GeoAssetsListCard() {
           ) : null}
         </div>
       </form>
+
+      {/* 新建 / 上传：直接存进 GEO 自己的素材库（不走企业知识库的治理链） */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Button variant="secondary" size="sm" onClick={() => setCreating((v) => !v)}>
+          <Plus className="size-3.5" /> 新建素材
+        </Button>
+        <Button variant="secondary" size="sm" disabled={adding} onClick={() => fileInput.current?.click()}>
+          <Upload className="size-3.5" /> {adding ? '处理中…' : '上传文件'}
+        </Button>
+        <span className="text-[10.5px] leading-snug text-[var(--yayu-muted)]">
+          文件支持 txt / md / csv / pdf / docx / xlsx / 图片（20MB 内），解析不出文本会如实报错。
+        </span>
+        <input
+          ref={fileInput}
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            e.target.value = ''
+            if (file) void uploadFile(file)
+          }}
+        />
+      </div>
+
+      {creating ? (
+        <div className="space-y-1.5 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1.5">
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="素材标题（必填）"
+            className="w-full rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+          />
+          <textarea
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            rows={4}
+            placeholder="素材正文（可留空，后面再补）"
+            className="w-full resize-y rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[11.5px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+          />
+          <div className="flex items-center gap-1.5">
+            <Button variant="primary" size="sm" disabled={adding || !title.trim()} onClick={() => void createMaterial()}>
+              {adding ? '保存中…' : '保存'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setCreating(false)}>
+              取消
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       {!items || items.length === 0 ? (
         <p className="text-[12px] text-[var(--yayu-muted)]">暂无素材，先上传知识材料。</p>

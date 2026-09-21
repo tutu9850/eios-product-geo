@@ -1,6 +1,7 @@
 import { AutoConfigFlow } from './AutoConfigFlow'
 import { GeoActionPlanCard } from './GeoActionPlanCard'
 import { GeoAssetsListCard } from './GeoAssetsListCard'
+import { GeoBattleCard } from './GeoBattleCard'
 import { GeoCognitionCard } from './GeoCognitionCard'
 import { GeoContentGenForm } from './GeoContentGenForm'
 import { GeoGapsListCard } from './GeoGapsListCard'
@@ -21,6 +22,7 @@ export type GeoFlowKind =
   | 'gaps'
   | 'cognition'
   | 'content'
+  | 'battle'
   | 'report'
   | 'plans'
   | 'action-plan'
@@ -38,6 +40,7 @@ export function matchGeoTrigger(text: string): GeoFlowKind | null {
   if (/(知识缺口|缺口)/.test(t)) return 'gaps'
   if (/(认知评估|认知)/.test(t)) return 'cognition'
   if (/(内容生成|生成内容|写内容|写文章|写一篇)/.test(t)) return 'content'
+  if (/(对战|辩论|battle)/i.test(t)) return 'battle'
   if (/(阶段报告|^报告|周报|月报)/.test(t)) return 'report'
   if (/(内容计划|计划)/.test(t)) return 'plans'
   if (/(行动计划|行动|30天|三十天)/.test(t)) return 'action-plan'
@@ -56,6 +59,7 @@ export const GEO_FLOW_MENU: Array<{ kind: GeoFlowKind; icon: string; label: stri
   { kind: 'assets', icon: '📚', label: '内容资产' },
   { kind: 'cognition', icon: '🧠', label: 'AI 认知' },
   { kind: 'content', icon: '✍️', label: '内容生成' },
+  { kind: 'battle', icon: '⚔️', label: 'AI 对战' },
   { kind: 'report', icon: '📄', label: '阶段报告' },
   { kind: 'action-plan', icon: '📋', label: '行动计划' },
 ]
@@ -89,6 +93,8 @@ export function GeoFlowRouter({ kind, onClose }: { kind: GeoFlowKind; onClose?: 
       return <GeoCognitionCard />
     case 'content':
       return <GeoContentGenForm />
+    case 'battle':
+      return <GeoBattleCard />
     case 'report':
       return <GeoReportCard />
     case 'action-plan':

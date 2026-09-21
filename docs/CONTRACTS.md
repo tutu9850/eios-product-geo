@@ -3,6 +3,8 @@
 > ⚠️ 2026-08-07 更新：本清单为**历史 P0 路由草案**，大量生产路由已上线但未列于此
 > （蒸馏 /distill/*、监测 /monitor/*、市场 /market/*、素材 /knowledge/materials、媒体 /knowledge/media、诊断 /diagnose、对战 /battle、链接 /links 等 49 个）。
 > **权威路由清单以运行实例 openapi.json 为准**（http://localhost:3002/openapi.json）。
+> 产品门对外的可见面（哪几条能被 Client 调到、各签哪个 scope）见 `docs/GEO_PRODUCT_DOOR_MATRIX.md`：
+> 2026-09-21 起是整张老 v1 面（139 条里的 136 条），顾问交接面 `geo/consumer/*` 不在其中。
 > 存储：SQLite geo.db（2026-08-07 起，JSON 文件库已退役删除）。
 
 ## Envelope

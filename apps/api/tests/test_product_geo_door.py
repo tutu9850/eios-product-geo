@@ -125,11 +125,20 @@ def test_allowlisted_path_is_served_by_the_legacy_use_case(product_door):
 @pytest.mark.parametrize(
     ("method", "path"),
     [
-        ("POST", "/knowledge/reset"),
-        ("POST", "/knowledge/materials"),
-        ("POST", "/knowledge/materials/upload"),
-        ("POST", "/monitor/batch"),
-        ("GET", "/stats/overview"),
+        # The Advisor hand-off face verifies its own signature and the Advisor calls
+        # it directly. 2026-09-21 opened the whole legacy v1 surface; these three are
+        # what stayed shut, because they are not the product door's to sign.
+        ("GET", "/geo/consumer/knowledge"),
+        ("GET", "/geo/consumer/snapshots"),
+        ("GET", "/geo/consumer/summary"),
+        # Retired P1 observation names: they never owned a legacy route.
+        ("POST", "/monitor/objects"),
+        ("GET", "/observation/overview"),
+        ("POST", "/capability/question-generate"),
+        ("POST", "/setup/draft"),
+        # A method the owning legacy route does not have, and a name it never had.
+        ("PUT", "/monitor/items/mi_1"),
+        ("POST", "/knowledge/unknown"),
         ("DELETE", "/distill/questions"),
     ],
 )
@@ -141,14 +150,7 @@ def test_routes_outside_the_frozen_inventory_are_refused(product_door, method, p
 
 def test_every_allowlisted_route_maps_onto_a_real_legacy_route():
     """The door may not invent endpoints: each product path must own a v1 route."""
-    methods = {"get", "post", "put", "patch", "delete"}
-    spec = app.openapi()
-    legacy = {
-        (m.upper(), _normalized(p))
-        for p, ops in spec["paths"].items()
-        for m in ops
-        if m.lower() in methods
-    }
+    legacy = _legacy_inventory()
     unmapped = [
         (method, pattern)
         for method, pattern in _product_route_patterns()
@@ -157,8 +159,41 @@ def test_every_allowlisted_route_maps_onto_a_real_legacy_route():
     assert unmapped == []
 
 
+def test_the_opened_surface_is_the_legacy_v1_surface_minus_the_advisor_handoff():
+    """Owner 2026-09-21「把 GEO 全部功能都连起来，通了他们」：老 v1 面整面接上。
+
+    This pins the ruling, not a habit: of the 139 legacy routes, 135 are served by this
+    door. The only four it does not serve are the three ``geo/consumer/*`` routes --
+    the Advisor hand-off face, which the Advisor calls directly on its own verified
+    signature -- and ``health``, which the middleware answers itself. A future change
+    that quietly closes a shipped route, or quietly opens a hand-off route, fails here.
+    """
+    allowlisted = {
+        (method, _normalized("/api/v1" + pattern))
+        for method, pattern in _product_route_patterns()
+    }
+    assert _legacy_inventory() - allowlisted == {
+        ("GET", "/api/v1/geo/consumer/knowledge"),
+        ("GET", "/api/v1/geo/consumer/snapshots"),
+        ("GET", "/api/v1/geo/consumer/summary"),
+        ("GET", "/api/v1/health"),
+    }
+    assert allowlisted - _legacy_inventory() == set()
+
+
 def _normalized(path: str) -> str:
     return re.sub(r"\{[^}]+\}|\[[^\]]+\][+*?]?", "{}", path)
+
+
+def _legacy_inventory() -> set[tuple[str, str]]:
+    """Every real ``/api/v1`` route the app serves, as (METHOD, normalized path)."""
+    methods = {"get", "post", "put", "patch", "delete"}
+    return {
+        (m.upper(), _normalized(p))
+        for p, ops in app.openapi()["paths"].items()
+        for m in ops
+        if m.lower() in methods and p.startswith("/api/v1/")
+    }
 
 
 def _product_route_patterns() -> list[tuple[str, str]]:

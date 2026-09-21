@@ -133,6 +133,25 @@ export async function geoPut<T>(path: string, body?: unknown): Promise<T> {
   return j.data as T
 }
 
+/**
+ * 文件上传（multipart）。只送 file 本身：`Content-Type` 必须由浏览器带着
+ * boundary 自己生成，手写一个 `application/json` 会让后端解析不出任何字段。
+ *
+ * 老 v1 的上传 handler 在「文件太大 / 类型不支持 / 提不出文本」时回的是
+ * **HTTP 200 + `ok:true` 里带 `data.error`**（见 app/core/envelope.py 的 `ok()`），
+ * 所以调用方必须读 `data.error`，不能只看 HTTP 成功。
+ */
+export async function geoUpload<T>(path: string, file: File, field = 'file'): Promise<T> {
+  const form = new FormData()
+  form.append(field, file)
+  const headers = geoHeaders()
+  delete headers['Content-Type']
+  const r = await fetch(`${geoApiBase}${path}`, { method: 'POST', headers, body: form })
+  const j = await r.json().catch(() => null)
+  if (!r.ok || !j?.ok) geoFail(r.status, j)
+  return j.data as T
+}
+
 // ── 类型（字段名来自 :3002 OpenAPI 实测返回） ──────────────────────────────
 
 export interface GeoStatsOverview {
@@ -341,6 +360,22 @@ export interface GeoKbInitApply {
 export interface GeoDiscoverResult {
   competitors: Array<{ name: string; company?: string; reason?: string }>
   empty?: boolean
+}
+
+/**
+ * POST /battle：同一个问题拿去问部署里每一个已登记引擎，可多轮辩论，最后由裁判模型
+ * 点评。引擎是谁、有几个，由企业部署决定（GEO 不写死 6 个、也不持凭据）；这个部署
+ * 一个都没登记时后端明确回 `no_engines_configured`，不假装打过。
+ */
+export interface GeoBattleResult {
+  question: string
+  rounds: Array<{
+    round: number
+    results: Array<{ engine_id: string; engine_name: string; answer: string }>
+  }>
+  judge: string | null
+  // judge=true 但裁判模型没配上：如实说跳过了，不把「没点评」写成「点评了没意见」。
+  judge_skipped: boolean
 }
 
 export interface GeoCreateResult {

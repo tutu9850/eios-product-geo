@@ -44,59 +44,160 @@ AUTH_CONTEXT_HEADER = b"eios-auth-context"
 IDENTITY_HEADER = b"x-eios-geo-identity"
 IDENTITY_HEADER_NAME = "X-EIOS-GEO-Identity"
 
-#: HTTP methods and product-relative paths the product door exposes.  This is the
-#: frozen inventory of what the packaged GEO UI actually calls, not a prefix
-#: passthrough: anything else is refused with ``GEO_ROUTE_NOT_ALLOWED`` even when
-#: the legacy route exists (for example the ``/knowledge/reset`` maintenance door).
+#: The frozen product surface: every legacy ``/api/v1`` route the GEO product serves,
+#: named one at a time. 2026-09-21 Owner ruling ("把 GEO 全部功能都连起来，通了他们")
+#: opened the whole legacy v1 surface instead of only the 37 routes the packaged UI
+#: happened to call -- 135 of the 139 legacy routes are here.
+#:
+#: Deliberately absent: ``geo/consumer/*``, the Advisor hand-off face. It verifies its
+#: own signature and the Advisor calls it directly, so this door must never hand it a
+#: product session. Also absent: ``health``, which the middleware answers above.
+#:
+#: Every path here still has to own a real v1 route:
+#: ``test_every_allowlisted_route_maps_onto_a_real_legacy_route`` fails if the door
+#: invents an endpoint, and the scope comment on each row matches the same route in
+#: ``eios-product-api``'s ``_GEO_ACTIONS``.
 _PRODUCT_ROUTES: tuple[tuple[str, str], ...] = (
-    # read
-    ("GET", r"/monitor/items"),
-    ("GET", r"/monitor/tasks"),
-    ("GET", r"/monitor/answers"),
-    ("GET", r"/monitor/sentiment"),
-    ("GET", r"/monitor/citations"),
-    ("GET", r"/cognition/competitors"),
-    ("GET", r"/cognition/health"),
-    ("GET", r"/cognition/portrait"),
-    ("GET", r"/cognition/coverage"),
-    ("GET", r"/cognition/reasons"),
-    ("GET", r"/cognition/sources"),
-    ("GET", r"/distill/gaps"),
-    ("GET", r"/distill/plans"),
-    ("GET", r"/distill/questions"),
-    ("GET", r"/distill/cognition/profile"),
-    ("GET", r"/intelligence/reports/latest/pdf"),
-    ("GET", r"/knowledge/materials"),
-    ("GET", r"/knowledge/materials/search"),
-    ("GET", r"/knowledge/materials/[^/]+"),
-    ("GET", r"/onboard/run-status"),
-    ("GET", r"/onboard/status"),
-    # write
-    # 内测：从企业知识库初始化「本公司资料」（Owner 2026-09-21「单独一个按钮，内测用」）。
-    # ``scan`` 只读知识库并把候选交给人点选；``apply`` 才改 GEO 自己那份快照。
-    # 知识库对 GEO 仍然是只读的 —— 这两条都不会往知识库写一个字。
-    ("POST", r"/kb-init/scan"),
-    ("POST", r"/kb-init/apply"),
-    ("POST", r"/onboard/auto-config"),
-    ("POST", r"/monitor/items"),
-    ("POST", r"/monitor/items/preview"),
-    ("POST", r"/monitor/items/[^/]+/run"),
-    ("POST", r"/monitor/tasks"),
-    ("POST", r"/monitor/tasks/[^/]+/run"),
-    ("POST", r"/distill/gaps"),
-    ("POST", r"/distill/plans/from-gaps"),
-    ("POST", r"/distill/content-plan"),
-    ("POST", r"/distill/cognition/evaluate"),
-    ("POST", r"/content/generate"),
-    ("POST", r"/content/score"),
-    ("PATCH", r"/monitor/items/[^/]+"),
-    ("PATCH", r"/monitor/tasks/[^/]+"),
-    ("DELETE", r"/monitor/items/[^/]+"),
-    ("DELETE", r"/monitor/tasks/[^/]+"),
-    ("DELETE", r"/distill/plans/[^/]+"),
-    ("DELETE", r"/distill/questions/[^/]+"),
-    ("DELETE", r"/knowledge/materials/[^/]+"),
-    ("PUT", r"/knowledge/materials/[^/]+"),
+    # ── GET ──
+    ("GET", r"/analyze/reports/[^/]+"),  # read
+    ("GET", r"/cognition/competitors"),  # read
+    ("GET", r"/cognition/coverage"),  # read
+    ("GET", r"/cognition/health"),  # read
+    ("GET", r"/cognition/portrait"),  # read
+    ("GET", r"/cognition/reasons"),  # read
+    ("GET", r"/cognition/sources"),  # read
+    ("GET", r"/content/company"),  # read
+    ("GET", r"/distill/cognition-map"),  # read
+    ("GET", r"/distill/cognition-profile"),  # read
+    ("GET", r"/distill/cognition/profile"),  # read
+    ("GET", r"/distill/gaps"),  # read
+    ("GET", r"/distill/overview"),  # read
+    ("GET", r"/distill/plans"),  # read
+    ("GET", r"/distill/questions"),  # read
+    ("GET", r"/distill/questions/[^/]+/platforms"),  # read
+    ("GET", r"/eios/export/knowledge-index"),  # read
+    ("GET", r"/enterprise-profile/categories"),  # read
+    ("GET", r"/enterprise-profile/export"),  # read
+    ("GET", r"/enterprise-profile/items/[^/]+"),  # read
+    ("GET", r"/enterprise-profile/overview"),  # read
+    ("GET", r"/intelligence/analyses"),  # read
+    ("GET", r"/intelligence/compare"),  # read
+    ("GET", r"/intelligence/evidence"),  # read
+    ("GET", r"/intelligence/factor-gaps"),  # read
+    ("GET", r"/intelligence/gap-analysis"),  # read
+    ("GET", r"/intelligence/harvest/runs/[^/]+"),  # read
+    ("GET", r"/intelligence/humanize"),  # read
+    ("GET", r"/intelligence/keywords"),  # read
+    ("GET", r"/intelligence/matrix"),  # read
+    ("GET", r"/intelligence/overview"),  # read
+    ("GET", r"/intelligence/perception"),  # read
+    ("GET", r"/intelligence/reports/latest"),  # read
+    ("GET", r"/intelligence/reports/latest/pdf"),  # read
+    ("GET", r"/intelligence/sov"),  # read
+    ("GET", r"/intelligence/stats"),  # read
+    ("GET", r"/intelligence/strategies"),  # read
+    ("GET", r"/intelligence/trend-delta"),  # read
+    ("GET", r"/knowledge/materials"),  # read
+    ("GET", r"/knowledge/materials/[^/]+"),  # read
+    ("GET", r"/knowledge/materials/search"),  # read
+    ("GET", r"/knowledge/media/[^/]+"),  # read
+    ("GET", r"/knowledge/profile"),  # read
+    ("GET", r"/links"),  # read
+    ("GET", r"/market/signals"),  # read
+    ("GET", r"/market/watchlist"),  # read
+    ("GET", r"/meta/engines"),  # read
+    ("GET", r"/monitor/answers"),  # read
+    ("GET", r"/monitor/citations"),  # read
+    ("GET", r"/monitor/competitor"),  # read
+    ("GET", r"/monitor/effects"),  # read
+    ("GET", r"/monitor/export"),  # read
+    ("GET", r"/monitor/fact-check"),  # read
+    ("GET", r"/monitor/history"),  # read
+    ("GET", r"/monitor/industry"),  # read
+    ("GET", r"/monitor/items"),  # read
+    ("GET", r"/monitor/items/[^/]+/trend"),  # read
+    ("GET", r"/monitor/overview"),  # read
+    ("GET", r"/monitor/pool"),  # read
+    ("GET", r"/monitor/public-opinion"),  # read
+    ("GET", r"/monitor/rank-sentiment"),  # read
+    ("GET", r"/monitor/sentiment"),  # read
+    ("GET", r"/monitor/sources"),  # read
+    ("GET", r"/monitor/tasks"),  # read
+    ("GET", r"/monitor/tasks/[^/]+/overview"),  # read
+    ("GET", r"/onboard/run-status"),  # read
+    ("GET", r"/onboard/status"),  # read
+    ("GET", r"/stats/overview"),  # read
+    # ── POST ──
+    ("POST", r"/analyze/diagnose"),  # run
+    ("POST", r"/battle"),  # run
+    ("POST", r"/collect/crawl"),  # run
+    ("POST", r"/content/generate"),  # manage
+    ("POST", r"/content/parse"),  # read
+    ("POST", r"/content/quality"),  # read
+    ("POST", r"/content/score"),  # read
+    ("POST", r"/diagnose"),  # run
+    ("POST", r"/distill/analyze"),  # manage
+    ("POST", r"/distill/cognition/evaluate"),  # run
+    ("POST", r"/distill/content-plan"),  # manage
+    ("POST", r"/distill/content-publish"),  # manage
+    ("POST", r"/distill/content-recheck"),  # manage
+    ("POST", r"/distill/faq"),  # read
+    ("POST", r"/distill/faq/upgraded"),  # read
+    ("POST", r"/distill/gaps"),  # manage
+    ("POST", r"/distill/loop/run"),  # run
+    ("POST", r"/distill/opportunities"),  # manage
+    ("POST", r"/distill/plans"),  # manage
+    ("POST", r"/distill/plans/customer-gap"),  # manage
+    ("POST", r"/distill/plans/from-gaps"),  # manage
+    ("POST", r"/distill/plans/manual"),  # manage
+    ("POST", r"/distill/questions"),  # manage
+    ("POST", r"/enterprise-profile/items/[^/]+/plans"),  # manage
+    ("POST", r"/enterprise-profile/refresh"),  # manage
+    ("POST", r"/intelligence/analyze"),  # run
+    ("POST", r"/intelligence/harvest/search"),  # run
+    ("POST", r"/intelligence/recover"),  # run
+    ("POST", r"/intelligence/reports/run"),  # run
+    ("POST", r"/kb-init/apply"),  # manage
+    ("POST", r"/kb-init/scan"),  # read
+    ("POST", r"/keywords/expand"),  # run
+    ("POST", r"/knowledge/materials"),  # manage
+    ("POST", r"/knowledge/materials/upload"),  # manage
+    ("POST", r"/knowledge/materials/vectorize"),  # run
+    ("POST", r"/knowledge/media/upload"),  # manage
+    ("POST", r"/knowledge/reset"),  # manage
+    ("POST", r"/links"),  # manage
+    ("POST", r"/links/check"),  # manage
+    ("POST", r"/links/check-all"),  # manage
+    ("POST", r"/market/collect"),  # run
+    ("POST", r"/market/signals/[^/]+/confirm"),  # read
+    ("POST", r"/market/signals/[^/]+/extract"),  # manage
+    ("POST", r"/market/signals/[^/]+/ignore"),  # manage
+    ("POST", r"/market/signals/[^/]+/to-plan"),  # manage
+    ("POST", r"/market/watchlist"),  # manage
+    ("POST", r"/meta/engines/[^/]+/ping"),  # run
+    ("POST", r"/monitor/batch"),  # run
+    ("POST", r"/monitor/check"),  # run
+    ("POST", r"/monitor/generate-questions"),  # run
+    ("POST", r"/monitor/items"),  # manage
+    ("POST", r"/monitor/items/[^/]+/run"),  # run
+    ("POST", r"/monitor/items/preview"),  # read
+    ("POST", r"/monitor/pool"),  # manage
+    ("POST", r"/monitor/tasks"),  # manage
+    ("POST", r"/monitor/tasks/[^/]+/run"),  # run
+    ("POST", r"/onboard/auto-config"),  # run
+    # ── PUT ──
+    ("PUT", r"/knowledge/materials/[^/]+"),  # manage
+    # ── PATCH ──
+    ("PATCH", r"/monitor/items/[^/]+"),  # manage
+    ("PATCH", r"/monitor/tasks/[^/]+"),  # manage
+    # ── DELETE ──
+    ("DELETE", r"/distill/plans/[^/]+"),  # manage
+    ("DELETE", r"/distill/questions/[^/]+"),  # manage
+    ("DELETE", r"/knowledge/materials/[^/]+"),  # manage
+    ("DELETE", r"/links/[^/]+"),  # manage
+    ("DELETE", r"/market/watchlist/[^/]+"),  # manage
+    ("DELETE", r"/monitor/items/[^/]+"),  # manage
+    ("DELETE", r"/monitor/tasks/[^/]+"),  # manage
 )
 
 _COMPILED_ROUTES: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
