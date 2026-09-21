@@ -21,16 +21,20 @@ class BattleIn(BaseModel):
 
 @router.post("")
 async def battle(payload: BattleIn):
-    from adapters.engines import list_engines, engine_api_key, ask
+    from adapters.engines import EngineFaceError, ask, list_engines
     from adapters.llm import chat, LLMNotConfiguredError, LLMError
 
     if not payload.question.strip():
         return err("empty_question", "请先输入问题")
     rounds = max(1, min(payload.rounds, 3))
 
-    configured = [e for e in list_engines() if await engine_api_key(e["id"])]
+    # 有哪些引擎是**部署**的事（Owner 2026-09-21：「GEO 不再写死 6 个」／GEO 不持凭据）。
+    try:
+        configured = await list_engines()
+    except EngineFaceError as exc:
+        return err(exc.code, exc.message)
     if not configured:
-        return err("no_engines_configured", "还没有配置任何引擎 Key：请到 配置中心 填写")
+        return err("no_engines_configured", "这个部署还没有登记任何模型：模型由企业部署配置")
 
     rounds_data = []
     prev_summary = ""

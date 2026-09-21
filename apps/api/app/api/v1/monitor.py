@@ -140,12 +140,16 @@ async def preview_item(payload: MonitorItemIn):
         g = generate_brand_queries(payload.config_json or {}, (payload.config_json or {}).get("tier") or "standard")
         categories = {k: {"label": _BRAND_CATEGORY_LABELS.get(k, k), "queries": v} for k, v in g["categories"].items()}
 
-    from adapters.engines import list_engines, engine_api_key
+    from adapters.engines import EngineFaceError, list_engines
 
-    engines = []
-    for e in list_engines():
-        if await engine_api_key(e["id"]):
-            engines.append(e["name"])
+    # 引擎清单 = 这个部署登记的模型（Owner 2026-09-21：「GEO 不再写死 6 个」）。
+    # 入口接不上时如实说接不上：估时宁可给 0，也不编一个引擎数出来。
+    engines_error = None
+    try:
+        engines = [e["name"] for e in await list_engines()]
+    except EngineFaceError as exc:
+        engines = []
+        engines_error = f"{exc.code}：{exc.message}"[:200]
     n = len(queries) * max(len(engines), 0)
     est_minutes = max(1, (n + 3) // 4) if n else 0  # 并发 ≤4，向上取整
     return ok(
@@ -158,7 +162,7 @@ async def preview_item(payload: MonitorItemIn):
             "engine_count": len(engines),
             "total_answers": n,
             "est_minutes": est_minutes,
-            "note": "其余引擎未配置 key，不计入" if len(engines) < 6 else None,
+            "note": engines_error,
         }
     )
 
@@ -932,7 +936,7 @@ async def _run_check(
     结果放 subjects（company/competitor 各带 mentioned/rank_est/sentiment）；
     顶层字段保持 = 我方（兼容旧分析页，零破坏）。
     """
-    from adapters.engines import list_engines as _list_engines, ask_with_meta
+    from adapters.engines import EngineFaceError, list_engines as _list_engines, ask_with_meta
 
     published = _load_published_materials()
     # 候选名（全称 + 别名 + 剥后缀），外层 mentioned 与 _analyze_answer 保持一致
@@ -941,7 +945,8 @@ async def _run_check(
 
     # 引擎并发（审计 P0-5 修复）：原实现串行 await ask，6 引擎 × 15s 超时 =
     # 单问题最坏 90s，批量监测慢引擎拖垮整批。并发后单问题 ≤ 最长引擎 15s。
-    all_engines = _list_engines()
+    # 引擎清单 = 部署登记的模型。接不上就如实抛错，由调用方回一句人话；不编引擎、不假装跑过。
+    all_engines = await _list_engines()
 
     async def _one(e: dict) -> dict | None:
         if engines and e["id"] not in engines:
@@ -1472,7 +1477,12 @@ async def check(payload: MonitorCheckIn):
     if not question:
         return ok({"question": question, "company_name": payload.company_name, "results": [], "summary": None})
 
-    results = await _run_check(question, payload.company_name, payload.engines, payload.full)
+    from adapters.engines import EngineFaceError
+
+    try:
+        results = await _run_check(question, payload.company_name, payload.engines, payload.full)
+    except EngineFaceError as exc:
+        return err(exc.code, exc.message)
     summary = _summarize(results)
     # P0：单条 check 也聚合排名/评价（评价分析/驾驶舱统计单次监测）
     ranks = [r["rank_est"] for r in results if r.get("rank_est") is not None]
@@ -1553,6 +1563,17 @@ async def run_batch_items(items: list[dict], company_name: str | None = None, en
     engine_detail 带 source（轻量预留：engine ≠ 未来全部采集来源）。
     progress_cb(done, total)：探针级进度回调（编排/长任务用，可选）。
     """
+    # 一个引擎都没有时，先如实收场（沿用既有 skipped 形状）：跑一遍空探针只会得到
+    # 「0 个答案」，看不出原因。Owner 2026-09-21：「GEO 不再写死 6 个」——有几个看部署。
+    from adapters.engines import EngineFaceError, list_engines
+
+    try:
+        deployment_engines = await list_engines()
+    except EngineFaceError as exc:
+        return {"summary": None, "results": [], "skipped": f"{exc.code}：{exc.message}"}
+    if not deployment_engines:
+        return {"summary": None, "results": [], "skipped": "这个部署还没有登记任何模型"}
+
     # 生成探针：item → queries（保留 item 归属）
     probes: list[dict] = []
     for it in items:

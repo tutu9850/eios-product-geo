@@ -1,424 +1,252 @@
-"""国内 6 引擎适配（OpenAI 兼容）
+"""GEO 的引擎面：只认部署的统一模型入口。
 
-P0：注册表 + 连通性探测 ping。
-Key 来源（优先级）：Builder 配置中心（db.json geoEngineKeys，经 /api/geo/engines-config 拉取）→ .env 回退。
-规则：所有外部调用走 adapters/，统一超时/重试/错误码（架构方案 §8）。
+Owner 2026-09-21 两条拍板合起来就是这个文件的样子：
+
+* 「Model Capability 是 EIOS 的统一模型入口，**不属于 GEO**，也不属于 Advisor。企业部署
+  配置模型，所有产品通过这一处调用。」
+* 「GEO 不再写死 6 个。」 —— 有哪些引擎由**部署目录**说了算，企业配了几个就监测几个。
+
+所以这里不再有 base_url / model / api_key / 温度表 / 联网参数表 / 豆包搜索分支：那些全是
+部署的事实（绑定里的 ``base_url`` ``model`` ``secret_ref`` ``temperature``
+``disable_thinking``，加上适配器里的联网参数与豆包搜索形状）。GEO 只剩两句问法：
+
+* 「这个部署有哪些模型」→ ``GET /model/catalog``
+* 「问其中一个」→ ``POST /model/invoke``，consumer 写死 ``geo.monitor``
+
+联网与否也由部署决定：监测这一面被登记为「可以联网」，于是结果里的 ``web_search`` 是
+权威侧如实回报的事实 —— 监测报告要问 AI 再总结，内容生产不许联网，这条规矩不落在 GEO。
+
+失败一律如实报，不回落成裸 HTTP，也不替部署猜一个模型：
+
+* 入口没配 / 接不上 → ``EngineEntryUnavailable``
+* 部署没给这个模型凭据 → ``EngineNotConfigured``（``ValueError`` 子类，监测按「未配置」落行）
+* 权威侧其它拒绝 → ``EngineCallFailed``，code 原样带上来
 """
+from __future__ import annotations
+
 import asyncio
-import json
-import time
+import threading
+from typing import Any, Sequence
 
-import httpx
+from adapters import identity
 
-from app.core.config import ENGINES, engine_api_key as _env_key, BUILDER_GEO_ENGINES_URL
-from app.runtime.mode import require_outbound_network
+#: 监测/问答这一面的 consumer 名。部署侧按这个名字决定要不要注入联网参数。
+MONITOR_CONSUMER = "geo.monitor"
+INVOCATION_CONTRACT = "eios.model_invocation/v1"
+CAPABILITY = "model.text_generation"
+#: 契约上限 16384；这一侧再压一道，防止某个调用点写错数量级。
+MAX_OUTPUT_TOKENS = 16384
 
-_TIMEOUT = 60.0  # 2026-08-21：15s→60s（qwen/kimi 联网搜索实际 20-60s，15s 必超时）
-# Builder key 缓存策略（防 N+1 雪崩，审计 P0-3）：
-# - 成功：缓存 30s（配置中心改 key 最长 30s 生效）
-# - 失败：负缓存 5s（Builder 挂时最多 1 次/5s 探测，不再按引擎次数重复打）
-_builder_keys_cache: dict[str, dict] | None = None
-_builder_keys_ok_at: float = 0.0
-_builder_keys_fail_at: float = 0.0
-_builder_fetch_lock: asyncio.Lock | None = None
+#: 权威侧这些话的意思是「这个部署还没有这个模型」，不是「调用失败」——监测据此落
+#: 「未配置」那一行，而不是把它渲染成一次故障。
+_NOT_CONFIGURED_CODES = frozenset({
+    "MODEL_SECRET_UNAVAILABLE",
+    "MODEL_BINDING_MISSING",
+    "MODEL_CAPABILITY_NOT_CONFIGURED",
+    "MODEL_CATALOG_UNAVAILABLE",
+    "PROVIDER_NOT_ACTIVE",
+})
+
+_client: Any | None = None
+_client_error: str | None = None
+_client_lock = threading.Lock()
 
 
-def _lock() -> asyncio.Lock:
-    global _builder_fetch_lock
-    if _builder_fetch_lock is None:
-        _builder_fetch_lock = asyncio.Lock()
-    return _builder_fetch_lock
+class EngineFaceError(RuntimeError):
+    """引擎面这一侧说得清的一类失败：带 code / message / status。
 
-
-async def _builder_engine_keys() -> dict[str, dict]:
-    """从 Builder 配置中心拉 6 引擎三元组配置（带缓存 + 失败负缓存 + 并发锁）
-
-    配置中心格式（V2）：{engine_id: {base_url?, api_key?, model?}}——每引擎可单独覆盖
-    base_url / model（默认写死 ENGINES 常量，连不上时在设置里改）；api_key 为空时回退 .env。
-    兼容旧格式：{engine_id: "sk-..."}（纯 key）→ 包成 {api_key: v}。
-    修复点（审计 P0-3）：原实现只在成功时写缓存，失败每次都重打 Builder，
-    stats/overview、meta/engines 对 6 引擎循环 await engine_api_key →
-    Builder 慢/挂时 6×timeout ≈ 16-30s。现在失败 5s 内直接返回空/旧缓存，
-    并发首调由 Lock 串行化（防 6 引擎同时 miss 惊群）。
+    调用方（HTTP 端点）按它回一句可读的话，而不是让全局处理器把原因吞成 500
+    「服务内部错误」—— 那样用户看到的是「GEO 坏了」，而真相可能是「你们的模型入口没起」。
     """
-    global _builder_keys_cache, _builder_keys_ok_at, _builder_keys_fail_at
-    if _builder_keys_cache is None:
-        require_outbound_network("builder_engine_config")
-    now = time.monotonic()
-    if _builder_keys_cache is not None and now - _builder_keys_ok_at < 30.0:
-        return _builder_keys_cache
-    if now - _builder_keys_fail_at < 5.0:
-        return _builder_keys_cache or {}
-    async with _lock():
-        # 双检：等锁期间可能已被别的协程刷新
-        now = time.monotonic()
-        if _builder_keys_cache is not None and now - _builder_keys_ok_at < 30.0:
-            return _builder_keys_cache
-        if now - _builder_keys_fail_at < 5.0:
-            return _builder_keys_cache or {}
+
+    code = "MODEL_CAPABILITY_UNAVAILABLE"
+
+    def __init__(self, code: str, message: str, status: int = 503):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.status = status
+
+
+class EngineEntryUnavailable(EngineFaceError):
+    """部署的统一模型入口接不上（没配这个部署，或服务不在）。"""
+
+    def __init__(self, message: str, status: int = 503):
+        super().__init__("MODEL_CAPABILITY_UNAVAILABLE", message, status)
+
+
+class EngineNotConfigured(ValueError):
+    """这个部署没有这个模型（或没给凭据）。不是故障，是部署事实。"""
+
+
+class EngineCallFailed(EngineFaceError):
+    """权威侧拒绝了这次调用：code 是它给的，原样带上去，不重写、不猜。"""
+
+
+def _compose() -> Any:
+    """接一次部署的统一模型入口。
+
+    这里**不组合能力**，只建一个 HTTP 客户端：能力跑在基座自己的进程里（Owner
+    2026-09-21），GEO 侧只有「入口在哪」这一个部署事实要读。失败也记住，不每次刷日志。
+    """
+    global _client, _client_error
+    if _client is not None or _client_error is not None:
+        return _client
+    with _client_lock:
+        if _client is not None or _client_error is not None:
+            return _client
         try:
-            async with httpx.AsyncClient(timeout=5.0, trust_env=False) as client:
-                r = await client.get(BUILDER_GEO_ENGINES_URL)
-                j = r.json()
-            d = (j or {}).get("data") if (j or {}).get("ok") else None
-            if isinstance(d, dict):
-                norm: dict[str, dict] = {}
-                for k, v in d.items():
-                    if isinstance(v, dict):
-                        norm[k] = {kk: str(vv).strip() for kk, vv in v.items() if vv}
-                    elif v:
-                        norm[k] = {"api_key": str(v)}  # 旧格式：纯 key
-                _builder_keys_cache = norm
-                _builder_keys_ok_at = time.monotonic()
-                _builder_keys_fail_at = 0.0
-                return _builder_keys_cache
-            _builder_keys_fail_at = time.monotonic()  # 返回但格式不对也记失败
-        except Exception:  # noqa: BLE001
-            _builder_keys_fail_at = time.monotonic()
-        return _builder_keys_cache or {}
+            from adapters.model_entry import ModelEntryClient
+
+            entry = ModelEntryClient()
+            if not entry.configured:
+                raise RuntimeError(
+                    "本部署没有配置 EIOS 的统一模型入口（EIOS_MODEL_CAPABILITY_URL）"
+                )
+            _client = entry
+        except Exception as exc:  # noqa: BLE001 — 接不上就是「这个部署没模型」，如实记下
+            _client_error = f"{type(exc).__name__}: {exc}"[:240]
+    return _client
 
 
-def list_engines() -> list[dict]:
-    return [{"id": e["id"], "name": e["name"], "base_url": e["base_url"], "model": e["model"]} for e in ENGINES]
+def _entry() -> Any:
+    entry = _compose()
+    if entry is None:
+        raise EngineEntryUnavailable(
+            "这个部署的统一模型入口接不上（"
+            f"{_client_error}）。它由部署的模型目录与 pbind_ 绑定账本决定，不是 GEO 能补的。"
+        )
+    return entry
 
 
-def _engine(engine_id: str) -> dict | None:
-    return next((e for e in ENGINES if e["id"] == engine_id), None)
+def _ticket(scopes: Sequence[str]) -> str:
+    return identity.sign(
+        audience=identity.MODEL_CAPABILITY_AUDIENCE,
+        scopes=scopes,
+        purpose=identity.PRODUCT_CONSUME_PURPOSE,
+        code="MODEL_SIGNER_NOT_CONFIGURED",
+    )
 
 
-def resolve_temperature(engine_id: str, model: str) -> float:
-    """按实际模型收温度。Kimi K 系列（k2.5 / k3）只允许 1.0，写 0.6 会 400（2026-08-21 实测修正）。"""
-    eng = _engine(engine_id) or {}
-    default = float(eng.get("temperature", 0.2))
-    m = (model or "").lower()
-    if engine_id == "kimi" and (m.startswith("kimi-k") or "k2.5" in m):
-        return 1.0
-    return default
+def _error_of(response: Any) -> tuple[int, str, str]:
+    """``(status, code, message)`` —— 权威侧的答复原样读出来，不改写。"""
+    body = response.body if isinstance(response.body, dict) else {}
+    error = body.get("error") if isinstance(body.get("error"), dict) else {}
+    code = str(error.get("code") or body.get("code") or f"MODEL_HTTP_{response.status}")
+    message = str(error.get("message") or body.get("message") or "统一模型入口拒绝了这次调用")[:300]
+    return int(response.status), code, message
 
 
-def resolve_web_cfg(engine_id: str, model: str, web: bool) -> dict | None:
-    """是否走联网、走哪套参数。豆包 Seed 官方联网在 /responses，chat/completions 带 web_search 会 400 后被当成没联网。"""
-    if not web:
-        return None
-    eng = _engine(engine_id) or {}
-    web_cfg = eng.get("web")
-    if engine_id == "doubao" and "seed" in (model or "").lower():
-        return {"mode": "responses", "tools": [{"type": "web_search", "max_keyword": 3}]}
-    return web_cfg
+def _raise_for(response: Any) -> None:
+    status, code, message = _error_of(response)
+    if code in _NOT_CONFIGURED_CODES:
+        raise EngineNotConfigured(f"{code}: {message}")
+    raise EngineCallFailed(code, message, status)
 
 
-def extract_responses_text(data: dict) -> str:
-    """方舟 Responses API 正文。"""
-    if not isinstance(data, dict):
-        raise RuntimeError("empty_content")
-    direct = data.get("output_text")
-    if isinstance(direct, str) and direct.strip():
-        return direct.strip()
-    texts: list[str] = []
-    for item in data.get("output") or []:
-        if not isinstance(item, dict):
-            continue
-        if item.get("type") not in ("message", None):
-            continue
-        for part in item.get("content") or []:
-            if not isinstance(part, dict):
-                continue
-            if part.get("type") in ("output_text", "text"):
-                t = (part.get("text") or "").strip()
-                if t:
-                    texts.append(t)
-    if not texts:
-        raise RuntimeError("empty_content")
-    return "\n".join(texts)
+async def _catalog_items() -> list[dict]:
+    entry = _entry()
+    response = await asyncio.to_thread(entry.catalog, auth_context=_ticket(("model.catalog.read",)))
+    if response.status != 200:
+        _raise_for(response)
+    body = response.body if isinstance(response.body, dict) else {}
+    items = body.get("items")
+    if not isinstance(items, list):
+        raise EngineCallFailed("MODEL_BAD_RESPONSE", "模型目录里没有 items")
+    return [item for item in items if isinstance(item, dict)]
 
 
-async def engine_api_key(engine_id: str) -> str | None:
-    """引擎 key：Builder 配置中心优先，.env 回退"""
-    builder = await _builder_engine_keys()
-    if engine_id in builder:
-        return (builder[engine_id].get("api_key") or "").strip() or None
-    return _env_key(engine_id)
+async def list_engines() -> list[dict]:
+    """这个部署登记的监测引擎。**有几个是部署说了算**，GEO 不再写死。
 
-
-async def engine_config(engine_id: str) -> dict:
-    """引擎最终配置（合并优先级）：Builder 三元组覆盖 → ENGINES 默认 → .env key 回退。
-
-    返回 {id, name, base_url, api_key, model, configured}——每项可单独被 Builder 覆盖，
-    解决「默认 base_url/model 连不上但无法在设置里改」的问题。
+    只取能接文本的（监测问的是文本问题），并且不暴露 base_url / model —— 那两件事
+    是部署的，GEO 知道得越少越好。
     """
-    engine = _engine(engine_id) or {}
-    builder = await _builder_engine_keys()
-    ov = builder.get(engine_id) or {}
-    # base_url 白名单回退：Builder 配置的 base_url 必须与平台默认端点**完全一致**才采信，
-    # 否则一律用默认。（前端保存引擎配置是整包覆盖，用户手滑/页面残留会把 base_url 存成
-    # 错端点——如 kimi 丢 /v1、豆包多 /responses、文心丢 /v2、填成 operator.las 等，导致 404；
-    # 只比主机名不够（/v2/models vs /v2 同主机），此处精确匹配，宁可用默认不可用错端点）
-    from urllib.parse import urlparse
-
-    _cfg_url = (ov.get("base_url") or "").strip().rstrip("/")
-    _default_url = (engine.get("base_url") or "").strip().rstrip("/")
-    _cfg_host = urlparse(_cfg_url).netloc.lower() if _cfg_url else ""
-    _def_host = urlparse(_default_url).netloc.lower() if _default_url else ""
-    base_url = _cfg_url if (_cfg_url and _cfg_host == _def_host and _cfg_url == _default_url) else _default_url
-    model = (ov.get("model") or engine.get("model") or "").strip()
-    key = (ov.get("api_key") or "").strip()
-    if not key:
-        key = _env_key(engine_id) or ""
-    return {
-        "id": engine_id,
-        "name": engine.get("name") or engine_id,
-        "base_url": base_url,
-        "api_key": key,
-        "model": model,
-        "configured": bool(key),
-    }
+    return [
+        {"id": str(item.get("model_id") or ""), "name": str(item.get("display_name") or item.get("model_id") or "")}
+        for item in await _catalog_items()
+        if item.get("enabled") is True and "text" in (item.get("modalities") or [])
+    ]
 
 
 async def engine_status() -> list[dict]:
-    out = []
-    for e in ENGINES:
-        cfg = await engine_config(e["id"])
-        out.append({"id": e["id"], "name": e["name"], "base_url": cfg["base_url"],
-                    "model": cfg["model"], "configured": cfg["configured"]})
-    return out
+    """给「引擎配置」页看的事实：哪些引擎登记在这个部署里。
+
+    **不再报 ``configured``** —— 凭据由企业部署持有，产品无法预先知道；报一个「已配置」
+    而实际调不通就是替部署吹牛。能不能调通，看 ``ping`` 实测或监测那一行的真实结果。
+    """
+    return [
+        {
+            "id": str(item.get("model_id") or ""),
+            "name": str(item.get("display_name") or item.get("model_id") or ""),
+            "enabled": item.get("enabled") is True,
+            "capability_tags": list(item.get("capability_tags") or []),
+            "source": "deployment_catalog",
+        }
+        for item in await _catalog_items()
+    ]
+
+
+async def _invoke(engine_id: str, question: str, max_tokens: int) -> dict:
+    entry = _entry()
+    request = {
+        "contract": INVOCATION_CONTRACT,
+        "model_id": engine_id,
+        "consumer": MONITOR_CONSUMER,
+        "modality": "text",
+        "messages": [{"role": "user", "content": question}],
+        "max_output_tokens": max(1, min(int(max_tokens), MAX_OUTPUT_TOKENS)),
+    }
+    response = await asyncio.to_thread(
+        entry.invoke, request=request, auth_context=_ticket(("model.invoke",))
+    )
+    if response.status != 200:
+        _raise_for(response)
+    body = response.body if isinstance(response.body, dict) else {}
+    if not body.get("ok"):
+        _raise_for(response)
+    if body.get("capability") != CAPABILITY:
+        raise EngineCallFailed("MODEL_BAD_RESPONSE", f"能力返回了别的能力：{body.get('capability')}")
+    data = body.get("data")
+    if not isinstance(data, dict) or not isinstance(data.get("text"), str):
+        raise EngineCallFailed("MODEL_BAD_RESPONSE", "模型结果里没有 text 字段")
+    if data.get("consumer") != MONITOR_CONSUMER:
+        raise EngineCallFailed("MODEL_BAD_RESPONSE", f"结果里的 consumer 不是本服务的：{data.get('consumer')}")
+    # ``web_search`` 是权威侧如实回报的事实；老适配器不报 = 不知道，按「没联网」记。
+    return {"content": data["text"], "web_realtime": bool(data.get("web_search"))}
+
+
+async def ask_with_meta(engine_id: str, question: str, max_tokens: int = 800) -> dict:
+    """问一个引擎，返回 ``{"content", "web_realtime"}``。"""
+    return await _invoke(engine_id, question, max_tokens)
+
+
+async def ask(engine_id: str, question: str, max_tokens: int = 800) -> str:
+    """同 ``ask_with_meta``，只取正文。"""
+    return (await _invoke(engine_id, question, max_tokens))["content"]
 
 
 async def ping(engine_id: str) -> dict:
-    """连通性实测：发一个最小 chat 请求（max_tokens=1），用最终配置（可被 Builder 覆盖）"""
-    require_outbound_network("engine_ping")
-    cfg = await engine_config(engine_id)
-    if not cfg["configured"]:
-        return {"id": engine_id, "configured": False, "reachable": None, "error": "no_api_key"}
-    # 豆包独立搜索 API（feedcoopapi）：ping = 发真实搜索请求
-    if "feedcoopapi.com" in str(cfg["base_url"]):
-        try:
-            r = await _ask_doubao_search(cfg, "连通性测试")
-            return {"id": engine_id, "configured": True, "reachable": True, "error": None}
-        except Exception as exc:
-            return {"id": engine_id, "configured": True, "reachable": False, "error": str(exc)[:150]}
-    url = cfg["base_url"].rstrip("/") + "/chat/completions"
-    payload = {
-        "model": cfg["model"],
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 1,
-        "temperature": resolve_temperature(engine_id, cfg["model"]),
-    }
+    """连通性实测：真发一次最小调用（``max_output_tokens=1``），如实报能不能通。"""
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
-            resp = await client.post(url, headers={"Authorization": f"Bearer {cfg['api_key']}"}, json=payload)
-        if resp.status_code == 200:
-            return {"id": engine_id, "configured": True, "reachable": True, "error": None}
-        return {"id": engine_id, "configured": True, "reachable": False, "error": f"http_{resp.status_code}: {resp.text[:120]}"}
-    except Exception as exc:  # noqa: BLE001
-        return {"id": engine_id, "configured": True, "reachable": False, "error": str(exc)[:150]}
+        await _invoke(engine_id, "ping", 1)
+    except EngineNotConfigured as exc:
+        return {"id": engine_id, "reachable": None, "configured": False, "error": str(exc)[:150]}
+    except EngineCallFailed as exc:
+        return {"id": engine_id, "reachable": False, "configured": None, "error": f"{exc.code}: {exc.message}"[:150]}
+    except EngineEntryUnavailable as exc:
+        return {"id": engine_id, "reachable": None, "configured": None, "error": str(exc)[:150]}
+    return {"id": engine_id, "reachable": True, "configured": True, "error": None}
 
 
-async def ping_all() -> list[dict]:
-    return [await ping(e["id"]) for e in ENGINES]
-
-
-async def ask(engine_id: str, question: str, max_tokens: int = 800, web: bool = True) -> str:
-    """向指定引擎提问，返回回答文本（曝光监测用），用最终配置（可被 Builder 覆盖）
-
-    web=True 时按平台配置开启联网搜索；平台不支持（deepseek）或参数被拒 → 自动降级纯知识模式。
-    """
-    meta = await ask_with_meta(engine_id, question, max_tokens=max_tokens, web=web)
-    return meta["content"]
-
-
-async def _ask_doubao_search(cfg: dict, question: str) -> dict:
-    """豆包独立搜索 API（open.feedcoopapi.com/search_api/web_search）：
-    搜问题 → 结果摘要拼成"回答"（含标题/来源/摘要），供监测提及判定。
-    搜到 0 条时返回如实说明（不编造）。"""
-    require_outbound_network("engine_search")
-    url = str(cfg["base_url"]).rstrip("/") + "/search_api/web_search"
-    # base_url 可能已是完整 URL（含 /search_api/web_search），容错
-    if url.endswith("/search_api/web_search/search_api/web_search"):
-        url = url.replace("/search_api/web_search/search_api/web_search", "/search_api/web_search")
-    body = {
-        "Query": question,
-        "SearchType": "web_summary",
-        "Count": 3,
-        "Filter": {"NeedContent": False, "NeedUrl": True},
-        "NeedSummary": True,
-    }
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {cfg['api_key']}"}
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
-            resp = await client.post(url, headers=headers, json=body)
-    except Exception as exc:
-        raise RuntimeError(f"doubao_search_network: {str(exc)[:120]}") from exc
-    if resp.status_code != 200:
-        raise RuntimeError(f"http_{resp.status_code}: {resp.text[:150]}")
-    # SSE 流式：逐行 data:{json}，取第一个 Result
-    results = []
-    summary = ""
-    for line in resp.text.splitlines():
-        s = line.strip()
-        if not s or s == "data: [DONE]" or s == "[DONE]":
-            continue
-        if s.startswith("data:"):
-            s = s[5:].strip()
-        try:
-            d = json.loads(s)
-        except Exception:
-            continue
-        r = d.get("Result") or {}
-        if r.get("Summary") and not summary:
-            summary = str(r["Summary"]).strip()
-        for w in r.get("WebResults") or []:
-            results.append({
-                "title": w.get("Title", ""),
-                "site": w.get("SiteName", ""),
-                "snippet": w.get("Snippet", ""),
-                "url": w.get("Url", ""),
-            })
-    if not results:
-        return {
-            "content": f"[豆包搜索] 未检索到「{question}」的相关公开内容（0 条结果，真实数据）。",
-            "web_realtime": True,
-        }
-    parts = [f"【豆包联网搜索】问题：{question}", f"共 {len(results)} 条结果："]
-    for i, r in enumerate(results[:3], 1):
-        parts.append(f"{i}. {r['title']}（{r['site']}）")
-        if r["snippet"]:
-            parts.append(f"   {r['snippet'][:150]}")
-        if r["url"]:
-            parts.append(f"   来源：{r['url'][:100]}")
-    if summary:
-        parts.append(f"概要：{summary[:200]}")
-    return {"content": "\n".join(parts), "web_realtime": True}
-
-
-async def ask_with_meta(engine_id: str, question: str, max_tokens: int = 800, web: bool = True) -> dict:
-    """同 ask()，但返回 {"content", "web_realtime"}；web_realtime 如实标注本次是否以联网检索模式发出"""
-    require_outbound_network("engine_ask")
-    cfg = await engine_config(engine_id)
-    if not cfg["configured"]:
-        raise ValueError(f"no_api_key: {engine_id}")
-    # 豆包独立搜索 API 分支（2026-08-21）：base_url 为 feedcoopapi 时走搜索服务，
-    # 结果摘要拼成"回答"供监测提及判定（真联网曝光数据，比模型自答更接近真实 AI 搜索）。
-    if "feedcoopapi.com" in str(cfg["base_url"]):
-        return await _ask_doubao_search(cfg, question)
-    chat_url = cfg["base_url"].rstrip("/") + "/chat/completions"
-    responses_url = cfg["base_url"].rstrip("/") + "/responses"
-    eng = next((e for e in ENGINES if e["id"] == engine_id), None)
-    web_cfg = resolve_web_cfg(engine_id, cfg["model"], web)
-    temperature = resolve_temperature(engine_id, cfg["model"])
-
-    def build_payload(with_web: bool) -> dict:
-        payload = {
-            "model": cfg["model"],
-            "messages": [{"role": "user", "content": question}],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        }
-        # thinking 禁用仅推理模型需要（deepseek-v4-flash 等防 reasoning_content 顶空 content）；
-        # 非推理平台注入未知参数会被 400 拒绝 → 按平台开关
-        if (eng or {}).get("thinking", False):
-            payload["thinking"] = {"type": "disabled"}
-        if with_web and web_cfg:
-            if web_cfg.get("mode") == "tools":
-                payload["tools"] = web_cfg.get("tools", [])
-            elif web_cfg.get("mode") == "params":
-                payload.update(web_cfg.get("params", {}))
-        return payload
-
-    def build_responses_payload() -> dict:
-        return {
-            "model": cfg["model"],
-            "stream": False,
-            "tools": (web_cfg or {}).get("tools") or [{"type": "web_search", "max_keyword": 3}],
-            "input": [{"role": "user", "content": [{"type": "input_text", "text": question}]}],
-        }
-
-    def extract(data: dict) -> str:
-        msg = data["choices"][0]["message"]
-        content = (msg.get("content") or "").strip()
-        if not content:
-            # 兜底：推理模型 content 空时取 reasoning_content；仍空则按失败处理（不落空回答）
-            content = (msg.get("reasoning_content") or "").strip()
-        if not content:
-            raise RuntimeError("empty_content")
-        return content
-
-    def _extract_msg(msg: dict) -> str:
-        content = (msg.get("content") or "").strip()
-        if not content:
-            content = (msg.get("reasoning_content") or "").strip()
-        if not content:
-            raise RuntimeError("empty_content")
-        return content
-
-    async def post(url: str, payload: dict, parser) -> str:
-        timeout = 30.0 if "responses" in url else _TIMEOUT
-        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
-            resp = await client.post(url, headers={"Authorization": f"Bearer {cfg['api_key']}"}, json=payload)
-        if resp.status_code != 200:
-            raise RuntimeError(f"http_{resp.status_code}: {resp.text[:150]}")
-        try:
-            return parser(resp.json())
-        except (KeyError, IndexError) as exc:
-            raise RuntimeError(f"bad_response: {str(exc)[:150]}") from exc
-
-    web_realtime = False
-    if web_cfg:
-        try:
-            if web_cfg.get("mode") == "responses":
-                content = await post(responses_url, build_responses_payload(), extract_responses_text)
-            else:
-                payload1 = build_payload(with_web=True)
-                # Kimi $web_search 手册流程（2026-08-21 按官方文档修正）：
-                # 初始化提问 → 循环处理 tool_calls：role=tool 消息必须带 tool_call_id+name，
-                # content = 原样返回 arguments 的 json 字符串（search_impl 直接回传），
-                # 直到 finish_reason != "tool_calls" 才取最终 content。
-                async def _post_raw(url: str, payload: dict) -> dict:
-                    async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
-                        resp = await client.post(url, headers={"Authorization": f"Bearer {cfg['api_key']}"}, json=payload)
-                    if resp.status_code != 200:
-                        raise RuntimeError(f"http_{resp.status_code}: {resp.text[:150]}")
-                    return resp.json()
-
-                kimi_msg = {"role": "user", "content": question}
-                messages = [kimi_msg]
-                for _round in range(3):  # 有界循环防死转
-                    payload_round = {
-                        "model": cfg["model"],
-                        "messages": messages,
-                        "max_tokens": max_tokens,
-                        "temperature": temperature,
-                        # 每次请求都必须完整带 tools 声明（手册强调）
-                        "tools": web_cfg.get("tools", []),
-                    }
-                    if (eng or {}).get("thinking", False):
-                        payload_round["thinking"] = {"type": "disabled"}
-                    data_round = await _post_raw(chat_url, payload_round)
-                    choice = data_round["choices"][0]
-                    finish = choice.get("finish_reason")
-                    msg_r = choice["message"]
-                    tool_calls = msg_r.get("tool_calls") or []
-                    if finish != "tool_calls" or not tool_calls:
-                        content = _extract_msg(msg_r)
-                        break
-                    messages.append(msg_r)  # assistant 消息进上下文
-                    for tc in tool_calls:
-                        try:
-                            args = json.loads(tc["function"]["arguments"])
-                        except Exception:
-                            args = {}
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc["id"],
-                            "name": tc["function"]["name"],
-                            "content": json.dumps(args, ensure_ascii=False),  # 原样回传 arguments
-                        })
-                else:
-                    raise RuntimeError("tool_calls 循环未收敛")
-            web_realtime = True
-            return {"content": content, "web_realtime": True}
-        except RuntimeError as exc:
-            # 400/422/404/429 多为参数不被该平台接受或限流 → 降级纯知识模式重试（其余错误直接抛）
-            if not str(exc).startswith(("http_400", "http_422", "http_404", "http_429")):
-                raise
-    content = await post(chat_url, build_payload(with_web=False), extract)
-    return {"content": content, "web_realtime": web_realtime}
+__all__ = [
+    "EngineCallFailed",
+    "EngineFaceError",
+    "EngineEntryUnavailable",
+    "EngineNotConfigured",
+    "ask",
+    "ask_with_meta",
+    "engine_status",
+    "list_engines",
+    "ping",
+]

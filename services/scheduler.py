@@ -36,12 +36,18 @@ async def _daily_monitor_job() -> None:
 async def _daily_monitor_one() -> None:
     """每日批量监测任务（0.3：遍历 active 任务按 schedule 跑，回退全部 active items）"""
     from app.api.v1.monitor import _load_pool, run_batch_items, _load_items, _load_tasks, _run_task_items
-    from adapters.engines import list_engines, engine_api_key
+    from adapters.engines import EngineFaceError, list_engines
     from app.services.store import current_tenant
 
-    configured = [e for e in list_engines() if await engine_api_key(e["id"])]
+    # 引擎清单来自部署登记的模型（Owner 2026-09-21）。一个都没有（或入口接不上）时
+    # 如实说明原因再跳过，不假装跑过一轮。
+    try:
+        configured = await list_engines()
+    except EngineFaceError as exc:
+        logger.info("[scheduler] 统一模型入口接不上，跳过每日监测：%s", str(exc)[:150])
+        return
     if not configured:
-        logger.info("[scheduler] 未配置任何引擎 Key，跳过每日监测")
+        logger.info("[scheduler] 这个部署还没有登记任何模型，跳过每日监测")
         return
 
     logger.info("[scheduler] 监测租户 %s", current_tenant())

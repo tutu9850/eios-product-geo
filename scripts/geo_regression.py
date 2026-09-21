@@ -41,7 +41,7 @@ DEFAULT_BASE = "http://127.0.0.1:3002"
 # fact-check / competitor 可能扫全量 history，给更宽预算
 READ_PROBES: list[tuple[str, float]] = [
     ("GET", "/health", 3.0),
-    # Builder 配置中心若慢/失败：engine_api_key 会按引擎次数重复拉 key（无失败缓存）→ 可达数十秒
+    # 现在只读部署的模型目录（一次 HTTP）；预算仍给宽，因为统一入口可能正忙
     ("GET", "/api/v1/meta/engines", 25.0),
     ("GET", "/api/v1/monitor/items", 5.0),
     ("GET", "/api/v1/monitor/tasks", 5.0),
@@ -59,7 +59,7 @@ READ_PROBES: list[tuple[str, float]] = [
     ("GET", "/api/v1/distill/cognition-map", 8.0),
     ("GET", "/api/v1/distill/cognition-profile", 10.0),
     ("GET", "/api/v1/knowledge/materials", 8.0),
-    # 同 engines：内部对每个引擎 await engine_api_key → 叠加 Builder 延迟
+    # 同 engines：现在读一次部署目录（不再按引擎逐个拉 key）
     ("GET", "/api/v1/stats/overview", 25.0),
     ("GET", "/api/v1/links", 5.0),
     ("GET", "/api/v1/market/watchlist", 5.0),
@@ -442,45 +442,56 @@ def check_unit(report: Report) -> None:
 
 def check_static_timeouts(report: Report) -> None:
     """不连服务：核对引擎超时配置是否过短（代码体检）。"""
-    print("\n== 0) 静态：超时配置 ==\n")
+    print("\n== 0) 静态：引擎归属与超时 ==\n")
     eng = (ROOT / "adapters" / "engines" / "__init__.py").read_text("utf-8", errors="replace")
     mon = (ROOT / "apps" / "api" / "app" / "api" / "v1" / "monitor.py").read_text("utf-8", errors="replace")
     llm = (ROOT / "adapters" / "llm.py").read_text("utf-8", errors="replace")
-    # 引擎 15s 超时本身合理，关键看是否并发（审计 P0-5：串行 6×15s=90s/问题）
-    if "_TIMEOUT = 15.0" in eng and "asyncio.gather" in mon:
-        report.add(
-            CheckResult(
-                "static.engine_timeout",
-                "PASS",
-                "ask() timeout=15s 但 _run_check 已引擎并发（gather）：单问题 ≤15s，超时只影响单引擎",
-            )
-        )
-    elif "_TIMEOUT = 15.0" in eng:
-        report.add(
-            CheckResult(
-                "static.engine_timeout",
-                "WARN",
-                "engines ask() timeout=15s 且未见并发 gather：批量监测串行 6×15s，慢引擎拖垮整批",
-            )
-        )
+    # 引擎并发（审计 P0-5：串行 6×15s=90s/问题）。超时现在归部署的绑定（timeout_seconds），
+    # GEO 这边只剩「并发地问」这一件事要保住。
+    if "asyncio.gather" in mon:
+        report.add(CheckResult("static.engine_concurrency", "PASS", "_run_check 引擎并发（gather）"))
     else:
-        report.add(CheckResult("static.engine_timeout", "PASS", "未发现 15s 硬编码或已调整"))
+        report.add(
+            CheckResult(
+                "static.engine_concurrency",
+                "WARN",
+                "批量监测未见并发 gather：慢引擎会拖垮整批",
+            )
+        )
     if "_TIMEOUT = 60.0" in llm or "timeout=60" in llm:
         report.add(CheckResult("static.llm_timeout", "PASS", "LLM timeout≈60s"))
     else:
         report.add(CheckResult("static.llm_timeout", "WARN", "请确认 adapters/llm.py 超时"))
-    # N+1：engine_api_key 每次都 await _builder_engine_keys；失败时不写负缓存 → 按引擎次数重复打 Builder
-    if "async def engine_api_key" in eng and "await _builder_engine_keys()" in eng:
-        if "_builder_keys_fail_at" in eng:
-            report.add(CheckResult("static.builder_key_fanout", "PASS", "已有失败负缓存（5s）+ 成功 TTL（30s）"))
-        else:
-            report.add(
-                CheckResult(
-                    "static.builder_key_fanout",
-                    "WARN",
-                    "engine_api_key 无 Builder 失败负缓存：stats/engines 在 Builder 慢时可达 6×timeout",
-                )
+    # Owner 2026-09-21：「GEO 不保留 Builder / .env / 自己的模型 Key」「GEO 不再写死 6 个」。
+    # 引擎面只剩「读部署目录 + 调统一入口」；端点/凭据/模型名一个都不该在这里。
+    # 只看**代码**：注释里点名这些词正是要说明「它们不该在这」（例如模块 docstring 列出
+    # 已经搬去部署的那几样），拿注释判 FAIL 就成了自己咬自己。
+    import ast as _ast
+
+    _doc = _ast.get_docstring(_ast.parse(eng)) or ""
+    _code = "\n".join(line for line in eng.replace(_doc, "").splitlines() if not line.lstrip().startswith("#"))
+    leaked = [token for token in ("base_url", "api_key", "env_key", "BUILDER_GEO", "ENGINES =") if token in _code]
+    if leaked:
+        report.add(
+            CheckResult(
+                "static.engine_ownership",
+                "FAIL",
+                "adapters/engines 又出现了部署侧的东西：" + ", ".join(leaked),
             )
+        )
+    else:
+        report.add(
+            CheckResult(
+                "static.engine_ownership",
+                "PASS",
+                "engines 适配器只读部署目录 + 调统一入口（无端点/凭据/硬编码引擎表）",
+            )
+        )
+    # 引擎名是部署目录说了算：GEO 里不许再出现「6」这种写死的引擎数
+    if "list_engines" not in eng:
+        report.add(CheckResult("static.engines_from_catalog", "FAIL", "engines 未从部署目录取清单"))
+    else:
+        report.add(CheckResult("static.engines_from_catalog", "PASS", "引擎清单来自部署模型目录"))
     # 情感词表（审计 P0-2）：“风险” 是上下文词，命中免责声明 → 误判负面
     # 用正则提取 _NEGATIVE_WORDS 元组体（避免撞注释里的 "风险" 字样）
     neg_block = re.search(r"_NEGATIVE_WORDS = \((.*?)\)", mon, re.S)

@@ -73,3 +73,37 @@ GEO 的存储被两条路读，两条都在 **import 时**把 `GEO_DB_PATH` 读�
 - `apps/data/geo.db.bak-20260820-024518` 同样是被 git 跟踪的数据库产物，但 Owner 本轮只点了
   `apps/geo.db`，故**未动**（不扩范围）。
 - 是否要为测试资料建一个**按来源退役**的门（而不是整表 reset），Owner 未拍板，继续挂着。
+
+---
+
+# 追加登记：本轮监测面真机验证又写了 **1 行** `geo_monitor_history`（2026-09-21）
+
+## 事实
+
+`adapters/engines` 改走统一模型入口之后，我用一个**私有** GEO 实例（`127.0.0.1:18096`，
+指向私有统一入口 `:18095`）真跑了一次 `POST /api/v1/monitor/check`。这次调用按设计落了一条历史：
+
+| 表 | 行 | 内容 |
+|---|---|---|
+| `geo_monitor_history` | `h_b9262e0b5d0a`（tenant `tenant_corp_01`，created_at `2026-09-21 05:41:00`） | question「国内有哪些做企业 AI 知识库的公司？」／company「测试公司」／summary `{mentioned:0, not_mentioned:1, unconfigured:5, score:0}` |
+
+同一张表里**上一行**（`h_c534f0d01d75`，01:19，批量监测 43 个问题）不是本轮的，未动。
+
+## 根因（这次是我的操作失误，不是测试框架的问题）
+
+私有实例没有覆盖 `GEO_DB_PATH`，于是走了 `apps/api/app/core/config.py` 的默认值
+（`apps/geo.db`，即 dev 库）。正确做法是给私有实例指一个临时库 —— 上一次同类的真机验证
+（`:18099` 那批）就是这么做的，这次漏了。
+
+## 为什么没有清理
+
+- `geo_monitor_history` **没有**按行退役的门：`/api/v1/monitor/items/{mid}` 与 `/tasks/{tid}`
+  的 DELETE 都不覆盖历史行（这条 check 没有 monitor_id），也没有按来源/时间退役的入口。
+- 裸 SQL 删行 = 红线明确禁止的「绕过生命周期门」。**没有**执行。
+- Owner 2026-09-21 的既有拍板是「`apps/geo.db` 从 git 运行态剥离，但历史脏数据不清」，
+  这一条同样按那个拍板留原样。
+
+## 待 Owner
+
+- 要么接受它留着（与既有历史脏数据同处置）；
+- 要么授权我走一个**正式的**退役门（目前不存在；要建门就是新增 Authority 面，需先拍板）。

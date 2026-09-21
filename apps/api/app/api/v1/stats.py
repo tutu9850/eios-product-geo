@@ -42,14 +42,20 @@ async def overview():
             score_sum += sm.get("score") or 0
     avg_score = round(score_sum / monitor_count, 1) if monitor_count else 0
 
-    # 引擎配置
-    from adapters.engines import list_engines, engine_api_key
+    # 引擎：总数 = 这个部署登记的模型（Owner 2026-09-21：「GEO 不再写死 6 个」）；
+    # 「答得上来的」取**最近一次监测的真实结果**，不再由产品预先猜谁有 key ——
+    # 凭据在企业部署手里，猜一个「已配置」而实际调不通就是替部署吹牛。
+    from adapters.engines import EngineFaceError, list_engines
 
-    engines = list_engines()
-    configured = 0
-    for e in engines:
-        if await engine_api_key(e["id"]):
-            configured += 1
+    try:
+        engines = await list_engines()
+    except EngineFaceError:
+        engines = []
+    answered = 0
+    if history:
+        last_questions = history[-1].get("questions") or []
+        if last_questions:
+            answered = max(int(q.get("configured_count") or 0) for q in last_questions)
 
     # 企业知识库（Kernel）状态（H21：purge 后为空 → 前端据此提示"知识库为空，内容生成/缺口判定受限"）
     try:
@@ -68,7 +74,7 @@ async def overview():
             "knowledge": {"materials": len(materials), "text_blocks": text_blocks, "bytes": kb_bytes},
             "links": {"total": len(links), "indexed": linked, "failed": failed, "pending": pending, "unknown": unknown},
             "monitor": {"runs": monitor_count, "mentioned": mentioned, "avg_score": avg_score},
-            "engines": {"total": len(engines), "configured": configured},
+            "engines": {"total": len(engines), "answered": answered},
             "kernel": {"entities": kernel_entities, "empty": kernel_empty, "error": kernel_error},
         }
     )

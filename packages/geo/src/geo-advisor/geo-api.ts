@@ -139,7 +139,9 @@ export interface GeoStatsOverview {
   knowledge: { materials: number; text_blocks: number; bytes: number }
   links: { total: number; indexed: number; failed: number; pending: number; unknown: number }
   monitor: { runs: number; mentioned: number; avg_score: number }
-  engines: { total: number; configured: number }
+  // total = 这个部署登记了几个模型；answered = 最近一次监测里几个引擎答上来了。
+  // 后者不再由产品猜「谁配了 key」——凭据在企业部署手里，猜不出来也不该猜。
+  engines: { total: number; answered: number }
 }
 
 export interface GeoDistillOverview {

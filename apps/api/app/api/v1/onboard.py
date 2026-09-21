@@ -337,37 +337,23 @@ def _extract_city(company: str) -> str:
     return ""
 
 
-async def _chat_doubao(prompt: str, max_tokens: int = 800) -> str:
-    """豆包引擎对话（OpenAI 兼容：ark.cn-beijing.volces.com）"""
-    import httpx
+async def _ask_deployment_model(prompt: str, max_tokens: int = 800) -> str:
+    """竞品发现要一次「问 AI」：走部署的统一模型入口。
 
-    from app.core.config import ENGINES, engine_api_key
+    以前这里是 GEO 自己拿豆包的 key 直连 —— Owner 2026-09-21：「GEO 不保留 Builder /
+    .env / 自己的模型 Key」「Model Capability 必须成为所有产品统一调用模型的唯一正规入口」。
+    所以凭据、base_url、model、温度全部归部署；GEO 只说「我要一段文本」。
 
-    doubao = next((e for e in ENGINES if e["id"] == "doubao"), None)
-    key = engine_api_key("doubao") if doubao else None
-    if not doubao or not key:
-        return ""
+    失败（部署没模型 / 权威侧拒绝）一律返回空串，调用方回退到通用对标逻辑 —— 与改造前
+    豆包失败时的行为一致。
+    """
+    from adapters.llm import LLMError, LLMNotConfiguredError, chat
+
     try:
-        async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
-            resp = await client.post(
-                doubao["base_url"].rstrip("/") + "/chat/completions",
-                headers={"Authorization": f"Bearer {key}"},
-                json={
-                    "model": doubao["model"],
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": max_tokens,
-                    "temperature": 0.3,
-                },
-            )
-        if resp.status_code != 200:
-            logger.warning("doubao http %s: %s", resp.status_code, resp.text[:150])
-            return ""
-        data = resp.json()
-        return str(data["choices"][0]["message"]["content"] or "").strip()
-    except Exception as e:  # noqa: BLE001
-        logger.warning("doubao call failed: %s", e)
+        return (await chat(prompt, max_tokens=max_tokens)).strip()
+    except (LLMNotConfiguredError, LLMError) as exc:
+        logger.warning("竞品发现问模型失败（回退通用对标）：%s", str(exc)[:150])
         return ""
-
 
 def _extract_brands(content: str) -> list[str]:
     """从豆包一次回答里提取所有品牌/公司名：按行/编号/顿号拆分，过滤噪声词"""
@@ -406,7 +392,7 @@ async def _step_discover(products: list[str], own_names: list[str] | None = None
         "只列中国企业和中国品牌（如字节跳动、腾讯、阿里、华为、百度等），绝对不要国外品牌（OpenAI/Google/Microsoft/Salesforce 等）。\n"
         '严格 JSON 数组输出：[{"name": "竞品品牌名", "company": "所属公司名"}]'
     )
-    doubao_text = await _chat_doubao(q_text)
+    doubao_text = await _ask_deployment_model(q_text)
     if doubao_text:
         # 2026-08-19：优先 JSON 解析（带 company）；失败退回文本品牌提取（company 空）
         parsed = _extract_json_array(doubao_text)
