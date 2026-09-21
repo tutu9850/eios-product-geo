@@ -276,6 +276,27 @@ def test_apply_still_refuses_an_empty_selection_when_the_base_is_actually_empty(
     assert "知识库里也没有" in body["error"]["message"]
 
 
+def test_scan_tells_the_truth_when_the_base_has_objects_but_no_candidate(monkeypatch, tenant):
+    """「没候选可勾」≠「知识库是空的」：20 个对象 + 0 个文档时，空态提示也要说实话，
+    并且明说不勾选也能初始化（Owner 2026-09-22）。"""
+    from app.api.v1 import kb_init
+
+    _patch_kb(
+        monkeypatch,
+        detect={**DETECT, "company": [], "products": [], "services": []},
+        documents=[],
+        entities=[{"canonical_name": f"对象{i}", "object_type": "entity", "status": "active"} for i in range(20)],
+    )
+    body = asyncio.run(kb_init.kb_init_scan())
+
+    assert body["ok"] is True
+    data = body["data"]
+    assert data["empty"] is True
+    assert data["objects_in_knowledge"] == 20
+    assert "20 个知识对象" in data["hint"]
+    assert "不勾选" in data["hint"]
+
+
 def test_apply_refuses_to_store_document_titles_it_could_not_verify(monkeypatch, tenant):
     """文档标题要 GEO 自己去知识库核：核不了就明确失败，而不是把客户端传的当权威存下。"""
     from app.api.v1 import kb_init

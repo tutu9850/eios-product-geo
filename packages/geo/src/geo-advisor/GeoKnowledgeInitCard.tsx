@@ -260,9 +260,15 @@ export function GeoKnowledgeInitCard() {
       ) : null}
 
       {scan.empty ? (
-        <p className="text-[12px] text-[var(--yayu-muted)]">
-          {scan.hint ?? '知识库里没有可用的公司/产品/文档。'}
-        </p>
+        <div className="space-y-1">
+          <p className="text-[12px] text-[var(--yayu-muted)]">
+            {scan.hint ?? '知识库里没有可用的公司/产品/文档。'}
+          </p>
+          {/* 空态不等于「没得做」：不勾选也能初始化工作空间（Owner 2026-09-22）。 */}
+          <p className="text-[11px] text-[var(--yayu-muted)]">
+            没有可勾选的候选也没关系：不勾选直接点上面的按钮，工作空间照样建起来。
+          </p>
+        </div>
       ) : (
         <div className="space-y-2">
           <div className="space-y-1">

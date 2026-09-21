@@ -307,6 +307,19 @@ async def kb_init_scan():
     document_items = document_items[:MAX_CANDIDATES]
 
     empty = not companies and not products and not document_items
+    # 「没有可勾选的候选」不等于「知识库里什么都没有」（Owner 2026-09-22：20 个对象 +
+    # 0 个文档也要能把工作空间建起来）。所以空态提示要把对象数如实说出来，
+    # 并且明确告诉人：不勾选也能初始化。
+    objects_in_knowledge = int((captured or {}).get("objects") or 0)
+    if empty and objects_in_knowledge > 0:
+        empty_hint = (
+            f"知识库里有 {objects_in_knowledge} 个知识对象，但没筛出可勾选的公司 / 产品 / 文档候选。"
+            "不勾选也能点上面的按钮初始化工作空间 —— 这些对象和正式事实会一并带回 GEO 自己的柜。"
+        )
+    elif empty:
+        empty_hint = detect.get("hint") or "知识库里没有可用的公司 / 产品 / 文档。"
+    else:
+        empty_hint = ""
     return ok(
         {
             "contract": CONTRACT,
@@ -338,8 +351,9 @@ async def kb_init_scan():
             "classification_source": detect.get("classification_source"),
             "industry": detect.get("industry"),
             "empty": empty,
+            "objects_in_knowledge": objects_in_knowledge,
             "error": doc_error,
-            "hint": detect.get("hint"),
+            "hint": empty_hint or detect.get("hint"),
         }
     )
 

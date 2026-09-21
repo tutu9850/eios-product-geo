@@ -377,6 +377,8 @@ export interface GeoKbInitScan {
   /** 上面那种文档存在时的一句话说明；没有则为空串 */
   snapshot_note?: string
   empty: boolean
+  /** 知识库里的知识对象条数（空态提示据此说人话：有对象也照样能初始化） */
+  objects_in_knowledge?: number
   error?: string | null
   hint?: string | null
 }
