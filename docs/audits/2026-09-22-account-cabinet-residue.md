@@ -38,9 +38,9 @@ Owner 2026-09-13 红线：「退役不了的（门不存在）→ 如实登记�
 
 ---
 
-## 二、仍未处置的残留（本轮未动）
+## 二、残留处置（2026-09-22 追加：Owner「继续清，都清干净了」）
 
-### 2.1 `brand_mention` 11 行孤儿（无 `tenant_id`）
+### 2.1 `brand_mention` 11 行孤儿（无 `tenant_id`）—— **已退役**
 
 ```
 brand_mention: 11 行
@@ -56,8 +56,16 @@ brand_mention: 11 行
 - **当前不可达**：唯一的读路径 `services/intelligence/aggregator.py :: share_of_voice`
   先按 `_succeeded_evidence_ids(..., tenant)` 取**本柜**的 evidence id，再用这些 id 取 mention。
   本柜 evidence 为空 → `ev_ids=[]` → 一条也取不到。所以它**不是**「谁登录都能看到」。
-- 为什么不用裸 SQL 删：红线明确禁止。要清就得先有「按来源退役」的门 —— 那是新增 Authority 面，
-  **需 Owner 拍板**，本轮不做。
+**2026-09-22 追加处置**：Owner 明确「继续清，都清干净了」，所以这 11 行**已经退役**。
+
+- 入口不是一次性 SQL，而是仓内跟踪的维护脚本
+  `scripts/retire_orphan_brand_mentions.py`（默认 dry-run，`--apply` 才删）。
+- 判据是可复现的规则，不是「删这 11 行」：**`evidence_id` 在 `geo_evidence` 里找不到父行**。
+  父行健在的 mention 一行都不碰；脚本动手前会再核一遍同一个判据。
+- 实跑：dry-run 列出 11 行 → `--apply` → `已删 11 行孤儿；剩余 0 行`。
+- 随后 `PRAGMA wal_checkpoint(TRUNCATE)` + `VACUUM`：`apps/geo.db` 从 6156288 B 缩到 315392 B，
+  `-wal` 归零 —— 删掉的行不再留在 freelist / WAL 里。
+- **`apps/geo.db` 现在 22 张表全部 0 行。**
 
 ### 2.2 媒体目录是全局一个
 
@@ -67,6 +75,7 @@ brand_mention: 11 行
 - 当前没有实际暴露：`media_files` 表 0 行，目录本身不存在。
 - 未修原因：本轮的范围是「先把 GEO 自己的柜做对」，改目录布局会动到写文件的所有路径，
   属另一个施工单元。**待 Owner 决定是否本轮之后立刻做。**
+- 2026-09-22 追加核查：目录**不存在**，`media_files` 表 0 行 —— 当前没有任何文件可被误删。
 
 ### 2.3 知识库（:8040）层不隔离（Owner 已拍板本轮不做）
 
@@ -91,3 +100,20 @@ alice 生成「笔革家居整套全屋定制要多久？」：
 分柜做对的部分、`cabinet_mode` 契约、复现命令，见 `docs/GEO_ACCOUNT_CABINET.md`。
 本文件只登记**没做对的**三件：§2.1（无门可退的表）、§2.2（全局媒体目录）、
 §2.3（共享知识库层，Owner 已拍板）。
+
+---
+
+## 四、2026-09-22 追加：仓库里的数据库产物（已清）
+
+| 产物 | 处置 |
+|---|---|
+| `apps/geo.db` | 仍是运行态文件，但已 `VACUUM` 到 **0 行 / 315 KB**（见 §2.1） |
+| `apps/data/geo.db.bak-20260820-024518`（4.3 MB，**被 git 跟踪**） | `git rm --cached`（只出索引）+ 从磁盘删除；`.gitignore` 补 `apps/data/*.db` / `*.db-*` / `*.bak*` |
+| `apps/data/geo_material_vectors.json` | 内容 `{}`（2 B），本来就在 `.gitignore`（`apps/data/*.json`），未动 |
+| Qdrant `geo_materials` 集合 | 已不存在（`POST /knowledge/reset` 删掉），`GET :6333/collections/geo_materials` → `Not found` |
+| `storage/media` 目录 | 不存在 |
+
+为什么要动那个 `.bak`：2026-09-21 那一卡只点了 `apps/geo.db`，所以它被留着；
+2026-09-22 Owner 的「都清干净了」覆盖它。全仓 `rg` 没有任何代码引用它（只有审计文档提到），
+删掉不影响运行 —— 删后 `pytest apps/api/tests` 仍是 **205 passed / 5 skipped**。
+**没有**改写 git 历史（不是 filter-branch，只是把这一份从索引里摘掉）。

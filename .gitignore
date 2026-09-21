@@ -36,3 +36,9 @@ geo.db-*
 # GEO 业务库是运行态生成物，不是源码（Owner 2026-09-21：从 git 运行态剥离；
 # 历史脏数据不清，本机这份文件原样留在磁盘上）。
 apps/geo.db
+
+# 数据库产物一律不入库（Owner 2026-09-22「继续清，都清干净了」）：
+# 上一份被跟踪的备份 apps/data/geo.db.bak-20260820-024518 已从索引移除并从磁盘删除。
+apps/data/*.db
+apps/data/*.db-*
+apps/data/*.bak*

@@ -133,18 +133,26 @@ Owner 原话：「要按主题来啊，我输入的什么主题，就是什么�
 1. **知识库（:8040）层**。内容生成仍会从那里带进 5 条亚宇臻隆文档切块与 12 个实体
    （主体是亚宇臻隆）。Owner 拍板本轮不动；`enterprise_fact` 已按主题归零，
    但 `document_chunk` / `entity` 仍会带。**这是本轮最明显的一处「还没做对」。**
-2. **`brand_mention` 表没有 `tenant_id` 列**，见 §6。
+2. **`brand_mention` 表没有 `tenant_id` 列**。柜里的父行被删之后，mentions 会变成孤儿
+   （`reset_all()` 碰不到它）。2026-09-22 已用 `scripts/retire_orphan_brand_mentions.py`
+   按「`evidence_id` 找不到父行」这条判据退役干净，见 §6。
 3. **媒体目录 `storage/media` 是全局一个**，`reset` 会把目录里所有文件删掉，不区分柜。
    当前 `media_files=0`、目录不存在，所以没有实际暴露；分柜做到底时目录也要按柜分。
 
-## 6. 未处理的残留（已登记 `docs/audits/`，未用裸 SQL）
+## 6. 清库到什么程度（2026-09-22 Owner「继续清，都清干净了」）
 
-`geo.db` 现在只剩 11 行 2026-08-19 的 `brand_mention`（都是「亚宇臻隆科技 / missing」），
-它们的父行（旧共用柜的 `geo_monitor_history`）已按 Owner「清掉」删除，于是成了孤儿行。
-`brand_mention` 没有 `tenant_id`，也没有退役门，读路径（`aggregator.share_of_voice`）
-按 `_succeeded_evidence_ids(..., tenant)` 先取本柜 evidence id 再取 mention，
-所以这 11 行**当前不可达**，不是「谁登录都能看到」。按红线不许裸 SQL 删，登记在
-`docs/audits/2026-09-22-account-cabinet-residue.md`。
+`apps/geo.db` 现在 **22 张表全部 0 行**，文件已 `VACUUM`（6 156 288 B → 315 392 B，`-wal` 归零）。
+
+最后一批是 11 行 2026-08-19 的 `brand_mention` 孤儿（都是「亚宇臻隆科技 / missing」）：
+父行随旧共用柜一起删了，而这张表**没有 `tenant_id`、`reset_all()` 碰不到**。
+退役走的是仓内跟踪的维护脚本 `scripts/retire_orphan_brand_mentions.py`
+（默认 dry-run，`--apply` 才删），判据是可复现的规则 ——
+**`evidence_id` 在 `geo_evidence` 里找不到父行**，父行健在的一行不碰。
+
+同一轮还摘掉了仓库里一份被 git 跟踪的数据库产物
+`apps/data/geo.db.bak-20260820-024518`（`git rm --cached` + 从磁盘删除，未改 git 历史）。
+
+细节与实跑记录：`docs/audits/2026-09-22-account-cabinet-residue.md`。
 
 ## 7. 复现
 
