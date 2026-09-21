@@ -4,11 +4,12 @@
 适配：企业资料自动读取（EIOS 企业知识库）、模型走 EIOS 统一模型入口（服务端转发）、不自动发布。
 流程：企业知识(自动) + 用户问题 + 内容目标/类型 + 平台 → GEO Prompt 编译 → 生成
 """
+import json
 import logging
+import re
 
 from adapters.eios import hits_of, search_knowledge
 from adapters.llm import chat
-import re
 
 _SYSTEM = (
     "你是一名 GEO（生成式引擎优化）内容专家。你的任务是帮企业产出【容易被 AI 搜索引擎正确引用和推荐】的内容。\n"
@@ -738,12 +739,18 @@ async def build_context(
         {"kind": "question_pool", "label": "客户问题池", "items": [
             {"question": q.get("question"), "priority": q.get("priority")} for q in pool_questions
         ]},
+        # 只列**真有数据**的信号（2026-09-22 修）：这五行原来写死，没跑过监测也显示「5 条」，
+        # 页面上的「本篇引用的上下文来源」于是恒报一个假的 5。空就是空，如实显示 0 条。
         {"kind": "market_signal", "label": "市场现状（监测 / 认知评估）", "items": [
-            {"signal": "AI 当前回答", "count": len(signals.get("ai_answers") or [])},
-            {"signal": "AI 引用过的内容", "count": len(signals.get("citations") or [])},
-            {"signal": "AI 编造过的说法", "count": len(signals.get("hallucinations") or [])},
-            {"signal": "竞品被夸因子", "count": len(signals.get("competitor_edges") or [])},
-            {"signal": "周期报告结论", "count": len(signals.get("report_findings") or [])},
+            row
+            for row in (
+                {"signal": "AI 当前回答", "count": len(signals.get("ai_answers") or [])},
+                {"signal": "AI 引用过的内容", "count": len(signals.get("citations") or [])},
+                {"signal": "AI 编造过的说法", "count": len(signals.get("hallucinations") or [])},
+                {"signal": "竞品被夸因子", "count": len(signals.get("competitor_edges") or [])},
+                {"signal": "周期报告结论", "count": len(signals.get("report_findings") or [])},
+            )
+            if row["count"]
         ]},
     ]
     return {
@@ -754,6 +761,77 @@ async def build_context(
         "pool_questions": pool_questions,
         "context_sources": context_sources,
         "signals": signals,
+    }
+
+
+_IMPROVE_SYSTEM = (
+    "你是 GEO 内容编辑。你的唯一任务是**按用户给的修改要求改这份稿子**，"
+    "不是重写、不是另外写一篇。不得新增企业事实、数据、案例。"
+)
+
+#: 改稿时喂给模型的正文上限（再长就截断，避免把整个上下文顶爆）
+_IMPROVE_CONTENT_LIMIT = 12000
+
+
+async def improve(
+    *,
+    title: str = "",
+    content: str,
+    instruction: str,
+    question: str = "",
+    company_name: str | None = None,
+    tenant_id: str | None = None,
+) -> dict:
+    """按用户的自然语言要求改这一篇（Owner 2026-09-22）。
+
+    诚实约束：改稿**不新增企业事实** —— 注入的还是同一份企业事实块；没有依据的内容不许写。
+    返回 {"title", "content", "source_title"}。
+    """
+    instruction = (instruction or "").strip()
+    content = (content or "").strip()
+    if not instruction:
+        raise ValueError("请先写清楚要改什么")
+    if not content:
+        raise ValueError("没有可改的内容")
+
+    if not tenant_id:
+        from app.services.store import current_tenant
+
+        tenant_id = current_tenant() or "tenant_corp_01"
+    ctx = await build_context(
+        question=(question or title or instruction).strip(),
+        company_name=company_name,
+        tenant_id=tenant_id,
+    )
+    facts = "\n".join(ctx["materials"][:30]) or "（企业知识库里暂无该企业的资料）"
+    prompt = (
+        "企业事实（唯一事实来源，禁止编造）：\n" + facts
+        + "\n\n当前稿子\n标题：" + (title or "（无标题）")
+        + "\n正文：\n" + content[:_IMPROVE_CONTENT_LIMIT]
+        + "\n\n修改要求（用户原话）：\n" + instruction
+        + "\n\n规则：\n"
+        "- 只按修改要求改；不要顺手改写与要求无关的部分\n"
+        "- 不得新增企业事实、数据、案例、客户名；没有依据的内容不要写\n"
+        "- 保留清晰的小标题与结论式表述（这类句子最容易被 AI 引用）\n"
+        '严格 JSON 输出：{"title": "...", "content": "..."}'
+    )
+    text = await chat(prompt, system=_IMPROVE_SYSTEM, max_tokens=4000)
+    blob = (text or "").strip()
+    if not blob.startswith("{"):
+        import re as _re
+
+        m = _re.search(r"\{[\s\S]*\}", blob)
+        blob = m.group(0) if m else ""
+    if not blob:
+        raise ValueError("模型没有返回可用的 JSON")
+    parsed = json.loads(blob)
+    new_content = str(parsed.get("content") or "").strip()
+    if not new_content:
+        raise ValueError("模型返回的正文是空的")
+    return {
+        "title": str(parsed.get("title") or title or "").strip(),
+        "content": new_content,
+        "source_title": title or "",
     }
 
 

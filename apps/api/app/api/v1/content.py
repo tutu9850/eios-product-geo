@@ -168,10 +168,74 @@ async def parse(req: ParseRequest):
     return ok(parsed)
 
 
+class ImproveIn(BaseModel):
+    """按用户的自然语言要求改这一篇（Owner 2026-09-22）。"""
+
+    title: str = ""
+    content: str
+    instruction: str
+    question: str = ""
+    company_name: str | None = None
+    tenant_id: str | None = None
+
+
+class SaveIn(BaseModel):
+    """把生成/改好的内容存进 GEO 自己的内容资产（source_type=generated，会切块）。"""
+
+    title: str = ""
+    content: str
+    question: str = ""
+
+
 class QualityIn(BaseModel):
     content: str
     question: str = ""
     company_name: str | None = None
+
+
+@router.post("/improve")
+async def improve(req: ImproveIn):
+    """按提示词改这一篇（不新增企业事实）。"""
+    from services.content import improve as improve_impl
+
+    if not req.content.strip():
+        return err("empty_content", "没有可改的内容")
+    if not req.instruction.strip():
+        return err("empty_instruction", "请先写清楚要改什么")
+    try:
+        result = await improve_impl(
+            title=req.title,
+            content=req.content,
+            instruction=req.instruction,
+            question=req.question,
+            company_name=req.company_name,
+            tenant_id=_cabinet(req.tenant_id),
+        )
+    except LLMNotConfiguredError as exc:
+        return err("llm_not_configured", str(exc))
+    except LLMError as exc:
+        return err(exc.code, exc.message)
+    except ValueError as exc:
+        return err("improve_failed", str(exc))
+    return ok(result)
+
+
+@router.post("/save")
+async def save(req: SaveIn):
+    """存进当前账号柜的「内容资产 · 生成内容」。
+
+    走的是内容资产同一条写入路径（``knowledge.add_material`` + 切块），
+    所以存完在「内容资产」里能看到、也能被后续生成检索到。
+    """
+    from app.api.v1.knowledge import MaterialIn, add_material
+
+    content = (req.content or "").strip()
+    if not content:
+        return err("empty_content", "没有可保存的内容")
+    title = (req.title or "").strip() or (req.question or "").strip()[:40] or "未命名生成内容"
+    body = await add_material(MaterialIn(title=title, content=content, source_type="generated"))
+    item = ((body or {}).get("data") or {}).get("item") or {}
+    return ok({"item": item, "source": "generated"})
 
 
 @router.post("/quality")

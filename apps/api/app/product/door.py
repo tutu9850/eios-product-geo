@@ -134,7 +134,9 @@ _PRODUCT_ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", r"/collect/crawl"),  # run
     ("POST", r"/content/generate"),  # manage
     ("POST", r"/content/parse"),  # read
+    ("POST", r"/content/improve"),  # manage
     ("POST", r"/content/quality"),  # read
+    ("POST", r"/content/save"),  # manage
     ("POST", r"/content/score"),  # read
     ("POST", r"/diagnose"),  # run
     ("POST", r"/distill/analyze"),  # manage

@@ -149,3 +149,36 @@ def test_old_material_without_chunks_still_injects_its_opening_text():
     item = src["items"][0]
     assert item["chunk_ordinal"] is None, "没切块就不许报段号"
     assert item["content"] == ("无锡演示间" * 60)[:150]
+
+
+def test_market_signal_row_is_empty_when_nothing_has_been_monitored():
+    """Owner 2026-09-22：「我还没监测呢他就有市场现状」。
+
+    来源面板那一行原来写死 5 个信号（AI 回答/引用/编造/竞品/报告），所以没跑过监测
+    也显示「市场现状 5 条」—— 那是假计数。空就是空。
+    """
+    assets = [_material("m_up", "渠道复盘.txt", LONG) | {"source_type": "file"}]
+    ctx = _context("无锡演示间怎么成交", assets)
+    src = next(s for s in ctx["context_sources"] if s["kind"] == "market_signal")
+    assert src["items"] == [], "没有任何监测/认知数据时不该报出信号条数"
+
+
+def test_market_signal_row_only_lists_signals_that_actually_have_data():
+    assets = [_material("m_up", "渠道复盘.txt", LONG) | {"source_type": "file"}]
+    fake = {
+        "ai_answers": [{"engine": "豆包", "question": "q", "mentioned": False, "snippet": "s"}],
+        "citations": [],
+        "hallucinations": [],
+        "competitor_edges": [{"factor": "价格透明", "competitor": "某竞品"}],
+        "report_findings": [],
+        "available": True,
+    }
+
+    async def _signals(**_kw):
+        return fake
+
+    with patch("services.content.signals.build_market_signals", _signals):
+        ctx = _context("无锡演示间怎么成交", assets)
+    src = next(s for s in ctx["context_sources"] if s["kind"] == "market_signal")
+    assert [i["signal"] for i in src["items"]] == ["AI 当前回答", "竞品被夸因子"]
+    assert [i["count"] for i in src["items"]] == [1, 1]

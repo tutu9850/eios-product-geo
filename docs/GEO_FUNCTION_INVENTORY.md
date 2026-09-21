@@ -3,11 +3,13 @@
 2026-09-21 第一轮 · 基线 `eios-product-geo` @ `cf443ac` + 「初始化顺手给体检结论」
 2026-09-21 第二轮 · 前端改造（消灭临时展示 + 交互收口）：**UI 列按打包 UI 的真实调用重扫了一遍**，
 不采信上一轮的标记。
+2026-09-22 第三轮 · 内容生成补两条（按提示词改稿 / 存进内容资产）+ 自动配置口径修正
+（产品发现改成确定性规则算法、服务也能建监测对象、公司可多选当别名）。
 
 ## 0. 一句话
 
-GEO 后端现在有 **139 条能力**（method + path）：**136 条已过产品门放行**、**103 条已有界面
-入口**（第二轮从 49 涨到 103），剩下 **36 条只有后端能力、菜单里没有门进去**。这份清单把它们
+GEO 后端现在有 **141 条能力**（method + path）：**138 条已过产品门放行**、**105 条已有界面
+入口**（第二轮从 49 涨到 103，第三轮 +2），剩下 **36 条只有后端能力、菜单里没有门进去**。这份清单把它们
 按**用户要干的事**重排一遍，给 UI 设计当输入。
 
 **UI 列怎么算的（第二轮）**：机械扫描 `packages/geo/src/**` 里所有
@@ -20,9 +22,9 @@ GEO 后端现在有 **139 条能力**（method + path）：**136 条已过产品
 - **不是所有能力都该有界面。** 有些是给别的产品调的（顾问交接面 3 条，现在**没放行**），
   有些是内部恢复动作（`/intelligence/recover`、`/monitor/pool`），有些已经并进了别的卡
   （`/content/score` 就在内容生成卡里）。
-- **性质分布**：读 72 / 写 38 / 跑 21 / 算 8。「跑」的 21 条会调模型（Model Capability
+- **性质分布**：读 72 / 写 39 / 跑 22 / 算 8。「跑」的 21 条会调模型（Model Capability
   :8094）或打 AI 引擎，**企业部署承担模型成本**；「算」的 8 条只是本机算一遍，不落库、不调模型。
-- **产品门三档 scope**（签名用）：`read` 77 / `run` 20 / `manage` 39。「长任务」在 `run` 档，
+- **产品门三档 scope**（签名用）：`read` 77 / `run` 20 / `manage` 41。「长任务」在 `run` 档，
   代理超时 180 秒；UI 上「点了要转圈」和「点了就存下来」长得不一样，就是这个原因。
 - **第一轮的增量**：`GET /enterprise-profile/overview` 与 `/categories` 从「无入口」变成有入口
   （当时 47 → 49）。
@@ -127,7 +129,7 @@ GEO 后端现在有 **139 条能力**（method + path）：**136 条已过产品
 | GET | `/cognition/portrait` | — | 读 | ✅ |
 | GET | `/cognition/reasons` | — | 读 | ✅ |
 | GET | `/cognition/sources` | — | 读 | ✅ |
-### 2.4 ④ 蒸馏与内容生产（30 条 · 读9/写10/跑10/算1）
+### 2.4 ④ 蒸馏与内容生产（32 条 · 读9/写11/跑11/算1）
 
 | 方法 | 路径 | 一句话 | 性质 | UI |
 |---|---|---|---|---|
@@ -158,8 +160,10 @@ GEO 后端现在有 **139 条能力**（method + path）：**136 条已过产品
 | GET | `/distill/questions/{qid}/platforms` | P0：单个问题的 6 平台监测明细（对齐竞品"用户意图图"平台列） | 读 | ✅ |
 | GET | `/content/company` | 自动识别当前企业（Kernel 读取） | 读 | ✅ |
 | POST | `/content/generate` | 生成 GEO 内容草稿（自动读企业资料；不自动发布） | 跑 | ✅ |
+| POST | `/content/improve` | 按用户写的自然语言要求改这一篇（只改要求的部分，不新增企业事实） | 跑 | ✅ |
 | POST | `/content/parse` | AI 自动配置：把自然语言需求解析成 GEO 配置（目标/类型/风格/长度/平台/问题） | 跑 | — |
 | POST | `/content/quality` | GEO 质量检测：内容 → 5 项评分（0-100）+ 改进建议 | 跑 | ✅ |
+| POST | `/content/save` | 把生成/改好的稿子存进 GEO 内容资产（`source_type=generated`，会切块） | 写 | ✅ |
 | POST | `/content/score` | GEO 评分：实体覆盖/事实密度/问题覆盖/结构完整 + 引用潜力（启发式）。 | 算 | ✅ |
 ### 2.5 ⑤ 市场情报与链接收录（16 条 · 读3/写9/跑1/算3）
 
@@ -292,7 +296,7 @@ GEO 后端现在有 **139 条能力**（method + path）：**136 条已过产品
 > **汇报层**（humanize / sov / overview / trend-delta）→ **诊断层**（compare / matrix / factor-gaps
 > / gap-analysis / evidence）→ **素材层**（keywords / perception / cognition-map）。
 
-### ④ 蒸馏与内容生产（30 条）
+### ④ 蒸馏与内容生产（32 条）
 
 用户视角：知道缺什么之后，排计划、写内容、发出去、再测一遍。
 
@@ -307,6 +311,8 @@ GEO 后端现在有 **139 条能力**（method + path）：**136 条已过产品
 - **✅ FAQ** `POST /distill/faq`（`跑`，「增长行动 · FAQ 生产」）　**🕳 FAQ 升级版** `POST /distill/faq/upgraded`（`跑`，带知识依据）
 - **✅ 内容生成** `POST /content/generate`（`跑`，自动读企业资料；**不自动发布**）
 - **✅ 内容评分** `POST /content/score`（`算`，启发式）　**✅ 内容质检** `POST /content/quality`（`跑`，内容生成里的「AI 质检」）
+- **✅ 按提示词改稿** `POST /content/improve`（`跑`，内容生成结果页的「按此改进」；**改稿不新增企业事实**）
+- **✅ 存进内容资产** `POST /content/save`（`写`，内容生成结果页的「保存至企业资料」，落 `source_type=generated` 并切块）
 - **🕳 需求解析** `POST /content/parse`（`跑`，自然语言 → GEO 配置）
 - **✅ 发布日志** `POST /distill/content-publish`　**✅ 复测对比** `POST /distill/content-recheck`
 - **✅ 自动闭环** `POST /distill/loop/run`（`跑`：planned → 自动生产 → 存；发布仍人工；入口在高级工具）
@@ -408,7 +414,7 @@ Owner 2026-09-21 说过「顾问先不考虑查 geo 数据」，所以**没放�
 - `POST /knowledge/materials/vectorize` 只在高级工具里，**没有**做成普通用户主功能。
 - `POST /knowledge/reset` 是否保留放行，**仍待 Owner 一句话**。
 
-## 附录 A：139 条全表
+## 附录 A：141 条全表
 
 机械扫描 `apps/api/app/api/v1/*.py` 的 router 装饰器生成（含入参模型字段名与返回顶层 key，
 存在 `/tmp` 的扫描产物里，**不落仓**）。「性质」= 方法 + 是否调模型，并对 14 条做了人工修正
@@ -444,14 +450,16 @@ Owner 2026-09-21 说过「顾问先不考虑查 geo 数据」，所以**没放�
 |---|---|---|---|---|
 | POST | `/collect/crawl` | 爬取 URL → raw 落盘 storage/raw（P1） | 写 | — |
 
-### `content.py`（5 条）
+### `content.py`（7 条）
 
 | 方法 | 路径 | 一句话 | 性质 | UI |
 |---|---|---|---|---|
 | GET | `/content/company` | 自动识别当前企业（Kernel 读取） | 读 | ✅ |
 | POST | `/content/generate` | 生成 GEO 内容草稿（自动读企业资料；不自动发布） | 跑 | ✅ |
+| POST | `/content/improve` | 按用户写的自然语言要求改这一篇（只改要求的部分，不新增企业事实） | 跑 | ✅ |
 | POST | `/content/parse` | AI 自动配置：把自然语言需求解析成 GEO 配置（目标/类型/风格/长度/平台/问题） | 跑 | — |
 | POST | `/content/quality` | GEO 质量检测：内容 → 5 项评分（0-100）+ 改进建议 | 跑 | ✅ |
+| POST | `/content/save` | 把生成/改好的稿子存进 GEO 内容资产（`source_type=generated`，会切块） | 写 | ✅ |
 | POST | `/content/score` | GEO 评分：实体覆盖/事实密度/问题覆盖/结构完整 + 引用潜力（启发式）。 | 算 | ✅ |
 
 ### `diagnose.py`（1 条）

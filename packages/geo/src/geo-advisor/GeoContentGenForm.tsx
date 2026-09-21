@@ -157,6 +157,12 @@ export function GeoContentGenForm() {
   const [copied, setCopied] = useState(false)
   const [quality, setQuality] = useState<QualityResult | null>(null)
   const [qualityLoading, setQualityLoading] = useState(false)
+  // 2026-09-22：按用户提示词改这一篇 + 存进企业资料（生成内容）
+  const [improveText, setImproveText] = useState('')
+  const [improving, setImproving] = useState(false)
+  const [improveNote, setImproveNote] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [savedNote, setSavedNote] = useState<string | null>(null)
 
   // 从内容计划 / 错误认知跳过来时，把带过来的主题直接填进第 1 步（2026-09-21）
   useEffect(() => {
@@ -263,6 +269,60 @@ export function GeoContentGenForm() {
     anchor.download = `${result.title.slice(0, 30)}.md`
     anchor.click()
     URL.revokeObjectURL(url)
+  }
+
+  // 让模型按用户写的要求改这篇（结果替换当前稿；Enter 不提交，只能点按钮）
+  const runImprove = async () => {
+    if (!result || !improveText.trim() || improving) return
+    setImproving(true)
+    setError(null)
+    setImproveNote(null)
+    setSavedNote(null)
+    try {
+      const d = await geoPost<{ title?: string; content?: string }>('/content/improve', {
+        title: result.title ?? '',
+        content: result.content ?? '',
+        instruction: improveText.trim(),
+        question: topic.trim(),
+      })
+      const nextTitle = (d.title ?? result.title ?? '').trim()
+      const nextContent = (d.content ?? '').trim()
+      if (!nextContent) {
+        setError('改进没有返回内容，原稿保持不变')
+        return
+      }
+      setResult({ ...result, title: nextTitle, content: nextContent })
+      setScore(null) // 改过之后原来的评分不再对应当前稿子
+      setQuality(null)
+      setImproveNote(`已按你的要求改过（要求：${improveText.trim().slice(0, 40)}）。改后的稿子需要重新评分。`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '改进失败')
+    } finally {
+      setImproving(false)
+    }
+  }
+
+  // 存进「企业资料 → 内容资产 → 生成内容」（后端 source_type=generated，会切块）
+  const saveToAssets = async () => {
+    if (!result || saving) return
+    setSaving(true)
+    setError(null)
+    setSavedNote(null)
+    try {
+      const d = await geoPost<{ item?: { title?: string; chunks?: number } }>('/content/save', {
+        title: result.title ?? '',
+        content: result.content ?? '',
+        question: topic.trim(),
+      })
+      const item = d.item ?? {}
+      setSavedNote(
+        `已存入企业资料 · 生成内容：${item.title ?? result.title}${item.chunks ? `（切成 ${item.chunks} 段）` : ''}`,
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存失败')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const runQuality = async () => {
@@ -685,6 +745,36 @@ export function GeoContentGenForm() {
               ) : null}
             </div>
           ) : null}
+          <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+            <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">按你的要求改这篇</div>
+            <textarea
+              value={improveText}
+              onChange={(e) => setImproveText(e.target.value)}
+              onKeyDown={(e) => {
+                // 明确禁用回车发送：回车只换行，改稿只能点按钮
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  setImproveText((prev) => prev + '\n')
+                }
+              }}
+              rows={2}
+              placeholder={'例如：第二段太啰嗦，压到三句；把价格区间补进去'}
+              className="mt-1 w-full resize-none rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+            />
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              <Button size="sm" disabled={improving || !improveText.trim()} onClick={() => void runImprove()}>
+                {improving ? '改进中…' : '按此改进'}
+              </Button>
+              <Button variant="secondary" size="sm" disabled={saving} onClick={() => void saveToAssets()}>
+                {saving ? '保存中…' : '保存至企业资料'}
+              </Button>
+              <span className="text-[10.5px] text-[var(--yayu-faint)]">
+                改进不会新增企业事实；保存后会出现在「企业资料 → 内容资产」
+              </span>
+            </div>
+            {improveNote ? <p className="mt-1 text-[10.5px] text-[var(--yayu-muted)]">{improveNote}</p> : null}
+            {savedNote ? <p className="mt-1 text-[10.5px] text-[var(--yayu-muted)]">{savedNote}</p> : null}
+          </div>
           {quality ? <div className="content-quality"><b>AI 质量检测 · {Math.round(quality.total ?? quality.score ?? 0)} 分</b>{quality.suggestions?.slice(0,4).map((s,i)=><p key={i}>· {s}</p>)}</div> : null}
           <GeoButtonRow>
             <Button size="sm" onClick={() => void copyResult()}>

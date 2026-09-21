@@ -38,12 +38,14 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
   // 第 1 步产品/服务可勾选（默认全选，点击取消不想监测的）
   const [selectedProducts, setSelectedProducts] = useState<Set<string>>(new Set())
   const [selectedServices, setSelectedServices] = useState<Set<string>>(new Set())
-  // 公司可点选（单选 chips）+ 行业文本输入（确认继续时保存，create 步骤使用）
-  const [selectedCompany, setSelectedCompany] = useState<string | null>(null)
+  // 公司可多选（chips；第一个是主名，其余作为别名一起监测）+ 行业文本输入
+  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([])
   const [industryText, setIndustryText] = useState('')
   // 第 1 步产品手填（2026-09-22）：材料里没认出产品名时不再拿文件名充数，
   // 后端如实留空 + 提示；这里必须给人一条手动补的通道，否则「确认继续」点不动。
   const [productDraft, setProductDraft] = useState('')
+  // 服务也能手填（与产品同一套：手填的进 chips，也能点掉）
+  const [serviceDraft, setServiceDraft] = useState('')
   // 所在地（Owner 2026-09-21）：竞品发现按「{城市}的{行业}都有哪些公司」去问。
   // 以前只能从公司名里抠城市，「笔革家居」抠不出来 → 退化成全国结果（实测返回的是
   // 三维家/酷家乐这类平台，不是成都本地的家装公司），所以这里让用户直接填。
@@ -55,6 +57,13 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
   const productChips = [
     ...(detect?.products ?? []),
     ...[...selectedProducts].filter((p) => !(detect?.products ?? []).includes(p)),
+  ]
+  // 第一个勾选的公司 = 主名，其余 = 别名（一起当作「我们自己」监测）
+  const primaryCompany = selectedCompanies[0] ?? detect?.company?.[0] ?? ''
+  const aliasCompanies = selectedCompanies.slice(1)
+  const serviceChips = [
+    ...(detect?.services ?? []),
+    ...[...selectedServices].filter((s) => !(detect?.services ?? []).includes(s)),
   ]
 
   // ── 竞品勾选持久化（刷新页面/重新进入后保留）──
@@ -95,7 +104,9 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
       setDetect(d)
       setSelectedProducts(new Set(d.products ?? []))
       setSelectedServices(new Set(d.services ?? []))
-      setSelectedCompany(d.company?.[0] ?? null)
+      // 默认把检测到的公司都勾上（都是用户自己材料里认出来的候选）；
+      // 第一个是主名，其余当别名 —— 不想要的点一下取消。
+      setSelectedCompanies(d.company ?? [])
       setIndustryText(d.industry ?? '')
       setStep('detect')
     })
@@ -121,6 +132,16 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
       return next
     })
 
+  const toggleCompany = (c: string) =>
+    setSelectedCompanies((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]))
+
+  const addServiceDraft = () => {
+    const name = serviceDraft.trim()
+    if (!name) return
+    setSelectedServices((prev) => new Set(prev).add(name))
+    setServiceDraft('')
+  }
+
   const addProductDraft = () => {
     const name = productDraft.trim()
     if (!name) return
@@ -134,7 +155,9 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
       const d = await geoPost<GeoDiscoverResult>('/onboard/auto-config', {
         step: 'discover',
         products: [...selectedProducts],
-        company: selectedCompany ?? detect?.company?.[0] ?? '',
+        services: [...selectedServices],
+        company: primaryCompany,
+        aliases: aliasCompanies,
         industry: industryText.trim(),
         city: cityText.trim(),
       })
@@ -168,7 +191,8 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
     void run(async () => {
       const c = await geoPost<GeoCreateResult>('/onboard/auto-config', {
         step: 'create',
-        company: selectedCompany ?? detect?.company?.[0] ?? '',
+        company: primaryCompany,
+        aliases: aliasCompanies,
         products: [...selectedProducts],
         services: [...selectedServices],
         industry: industryText.trim(),
@@ -305,17 +329,19 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
           </>
         ) : (
           <>
-            {/* 公司：可点选（单选，默认选中第一个） */}
+            {/* 公司：可多选（第一个是主名，其余作为别名一起监测） */}
             <div className="pt-1">
-              <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">公司（点击选择）</div>
+              <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
+                公司（点击选择，可多选；第一个是主名，其余作为别名一起监测）
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {(detect?.company ?? []).map((c) => {
-                  const active = selectedCompany === c
+                  const active = selectedCompanies.includes(c)
                   return (
                     <button
                       key={c}
                       type="button"
-                      onClick={() => setSelectedCompany(c)}
+                      onClick={() => toggleCompany(c)}
                       className={`rounded-full border px-2.5 py-0.5 text-[11.5px] transition-colors ${
                         active
                           ? 'border-[var(--yayu-foreground)] bg-[var(--yayu-foreground)] text-[var(--yayu-input)]'
@@ -395,32 +421,51 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
                 </Button>
               </div>
             </div>
-            {detect && detect.services?.length > 0 ? (
-              <div className="pt-1">
-                <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
-                  服务（{selectedServices.size}/{detect.services.length}，点击取消）
-                </div>
-                <div className="flex flex-wrap gap-1.5">
-                  {detect.services.map((s) => {
-                    const active = selectedServices.has(s)
-                    return (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => toggleService(s)}
-                        className={`rounded-full border px-2.5 py-0.5 text-[11.5px] transition-colors ${
-                          active
-                            ? 'border-[var(--yayu-foreground)] bg-[var(--yayu-foreground)] text-[var(--yayu-input)]'
-                            : 'border-[var(--yayu-border)] bg-[var(--yayu-input)] text-[var(--yayu-faint)] line-through hover:border-[var(--yayu-muted)]'
-                        }`}
-                      >
-                        {s}
-                      </button>
-                    )
-                  })}
-                </div>
+            {/* 服务：与产品同一套（chips + 手填）。选中会各建一个监测对象，探针按服务问法问。 */}
+            <div className="pt-1">
+              <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
+                服务（{selectedServices.size}/{serviceChips.length}，点击取消不想监测的）
               </div>
-            ) : null}
+              <div className="flex flex-wrap gap-1.5">
+                {serviceChips.map((s) => {
+                  const active = selectedServices.has(s)
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => toggleService(s)}
+                      className={`rounded-full border px-2.5 py-0.5 text-[11.5px] transition-colors ${
+                        active
+                          ? 'border-[var(--yayu-foreground)] bg-[var(--yayu-foreground)] text-[var(--yayu-input)]'
+                          : 'border-[var(--yayu-border)] bg-[var(--yayu-input)] text-[var(--yayu-faint)] line-through hover:border-[var(--yayu-muted)]'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  )
+                })}
+                {serviceChips.length === 0 ? (
+                  <span className="text-[11px] text-[var(--yayu-muted)]">材料里没认出服务名</span>
+                ) : null}
+              </div>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <input
+                  value={serviceDraft}
+                  onChange={(e) => setServiceDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      addServiceDraft()
+                    }
+                  }}
+                  placeholder="手动加服务名，回车确认"
+                  className="min-w-0 flex-1 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+                />
+                <Button variant="secondary" size="sm" onClick={addServiceDraft} disabled={!serviceDraft.trim()}>
+                  添加
+                </Button>
+              </div>
+            </div>
             {detect && detect.keywords.length > 0 ? (
               <p className="text-[11px] text-[var(--yayu-muted)]">关键词：{detect.keywords.join('、')}</p>
             ) : null}

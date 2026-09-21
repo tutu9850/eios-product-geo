@@ -294,6 +294,94 @@ def test_style_words_are_keywords_not_products(monkeypatch, tenant):
     assert "意式极简" in got["keywords"]
 
 
+# ── 2.5 产品发现算法（纯规则） ─────────────────────────────
+
+def test_the_product_algorithm_finds_named_products_from_the_body():
+    """Owner 2026-09-22：「我要能找到产品的算法」——不调模型也认得出产品名。"""
+    from services.product_identity import product_candidates_from_materials
+
+    materials = [
+        {
+            "title": "笔革家居主理人访谈纪要",
+            "content": (
+                "畅销产品是「琥珀沙发」，问得最多、卖得也最好。"
+                "另外还有按摩功能沙发，定制柜也是主力，季节主题系列卖得不错。"
+                "按摩功能沙发主要卖给老人，定制柜按投影面积算，季节主题系列每季换一次。"
+                "风格上可以承接意式极简、奶油风、中古、轻法式。"
+            ),
+        }
+    ]
+    got = product_candidates_from_materials(materials)
+    for want in ("琥珀沙发", "按摩功能沙发", "定制柜", "季节主题系列"):
+        assert want in got, f"正文里明明白白的产品没认出来：{want}"
+    for bad in ("意式极简", "奶油风", "中古", "轻法式", "笔革家居主理人访谈纪要"):
+        assert bad not in got, f"不是产品名的东西不该进候选：{bad}"
+
+
+def test_the_product_algorithm_ignores_prose_and_file_names():
+    from services.product_identity import product_candidates_from_materials
+
+    got = product_candidates_from_materials(
+        [
+            {"title": "export_1785221955586", "content": "优先选择上市公司合作。主要来自过往家具行业。", "source_type": "file"},
+            {"title": "三品牌战略+奢侈品调研-前31页", "content": "本次调研围绕三大奢侈品牌设计展开。", "source_type": "file"},
+        ]
+    )
+    assert got == [], "文件名与句子碎片都不算产品"
+
+
+def test_a_product_that_only_shows_up_once_without_evidence_is_not_a_candidate():
+    """证据闸：只碰巧出现一次、又不在标题/引号里的，不算产品候选。
+
+    实测没有这道闸时，`如松弛感沙发`、`无CRM系统`、`计师共创方案` 这类
+    「从长句里切出来的半截话」会一起进候选池。
+    """
+    from services.product_identity import product_candidates_from_materials
+
+    got = product_candidates_from_materials(
+        [{"title": "资料", "content": "顺便提一句异形沙发。另外如松弛感沙发、无CRM系统都很常见。"}]
+    )
+    assert "异形沙发" not in got
+    assert "如松弛感沙发" not in got
+    assert "无CRM系统" not in got
+
+
+# ── 2.6 勾选的服务要真的建监测对象 ─────────────────────────
+
+def test_selected_services_get_their_own_monitor_objects(monkeypatch, tenant):
+    """以前 `_step_create` 算了 services 却从没用过 —— 勾了服务等于没勾。"""
+    from app.api.v1 import onboard
+    from app.api.v1.monitor import generate_queries
+
+    body = _run(
+        onboard._step_create(
+            onboard.AutoConfigIn(
+                step="create", company="笔革家居", products=["琥珀沙发"], services=["全案定制"]
+            )
+        )
+    )
+    created = body["created"]
+    by_entity = {c["entity"]: c for c in created}
+    assert by_entity["笔革家居"]["type"] == "brand"
+    assert by_entity["琥珀沙发"]["type"] == "product"
+    assert by_entity["全案定制"]["type"] == "product", "服务也建对象"
+    assert by_entity["全案定制"]["config_json"]["kind"] == "service"
+    # 服务问法要像服务，不像一件货
+    qs = generate_queries(by_entity["全案定制"])
+    assert qs == ["全案定制哪家公司做得好？", "全案定制怎么收费？", "全案定制一般包含哪些内容？"]
+    assert generate_queries(by_entity["琥珀沙发"])[0] == "琥珀沙发推荐哪些公司？"
+
+
+def test_the_run_step_runs_the_service_objects_too(monkeypatch, tenant):
+    from app.api.v1 import onboard
+
+    body = _run(onboard._step_create(onboard.AutoConfigIn(step="create", company="笔革家居", services=["量尺"])))
+    ids = [c["monitor_id"] for c in body["created"]]
+    items = onboard._load_items()
+    assert [i["monitor_id"] for i in items] == ids
+    assert any(i["entity"] == "量尺" for i in items)
+
+
 # ── 3. 删素材连切块一起删 ──────────────────────────────────
 
 def test_deleting_a_material_removes_its_chunks_too(monkeypatch, tenant):

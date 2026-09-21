@@ -659,7 +659,16 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
         queries = generate_brand_queries(cfg, tier)["queries"]
     elif t == "product":
         product = cfg.get("product") or item.get("entity") or ""
-        if product:
+        # kind=service（自动配置勾的服务）：问法要像服务，不像一件货
+        # （「量尺哪个好？」这种问出来没有意义）。
+        is_service = str(cfg.get("kind") or "") == "service"
+        if product and is_service:
+            queries = [
+                f"{product}哪家公司做得好？",
+                f"{product}怎么收费？",
+                f"{product}一般包含哪些内容？",
+            ]
+        elif product:
             queries = [
                 # 「{product}推荐？」缺宾语（问出来是半句话，模型只能反问「你想推荐什么」）
                 f"{product}推荐哪些公司？",

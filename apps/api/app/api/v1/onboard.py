@@ -230,6 +230,10 @@ async def _step_detect_from_materials():
     """
     from app.services.store import get_store
     from services.company_identity import company_candidates_from_materials
+    from services.product_identity import (
+        looks_like_style_word,
+        product_candidates_from_materials,
+    )
 
     try:
         materials = get_store().load("kb") or []
@@ -253,6 +257,9 @@ async def _step_detect_from_materials():
         }
 
     company_cands = company_candidates_from_materials(materials)
+    # 规则先自己找一遍产品（纯规则，不调模型）—— 这是「能找到产品的算法」的确定性下限，
+    # 也是给模型的参考池；模型给不出来的话产品那一行就用它，而不是拿素材标题凑。
+    product_pool = product_candidates_from_materials(materials)
     corpus = _material_corpus(materials)
     titles = [
         str(m.get("title") or "").strip()
@@ -282,7 +289,14 @@ async def _step_detect_from_materials():
                 "- products：正文里出现过的**具体产品 / 系列 / 版本名**（如「琥珀沙发」）。"
                 "**绝对不要把材料标题当产品名** —— 标题是「这份材料叫什么」，不是企业在卖什么；"
                 "**设计风格/调性词（「意式极简」「奶油风」「中古」「轻法式」）不是产品名**，归 keywords\n"
-                "- services：正文里出现过的服务 / 课程类名\n"
+                + (
+                    "\n规则从正文里挑出的候选（供参考，不限于此）："
+                    + "、".join(product_pool[:20])
+                    + "\n"
+                    if product_pool
+                    else ""
+                )
+                + "- services：正文里出现过的服务 / 课程类名\n"
                 "- industry：所属行业（一句话）\n"
                 "- keywords：普通用户找这类企业会搜的行业词 / 痛点词 6-10 个"
                 "（要来自正文说的业务；不要公司名、不要品牌名、不要材料标题里的词）\n"
@@ -311,7 +325,7 @@ async def _step_detect_from_materials():
                         name in title_set or not _grounded_in_materials(name, corpus, allowed)
                     ):
                         continue
-                    if key != "company" and _looks_like_style_word(name):
+                    if key != "company" and looks_like_style_word(name):
                         continue
                     # 模型常把名字截短（实测公司给了「笔革」而不是「笔革家居」）——
                     # 扩回候选池里更完整的同名项。产品/服务不许扩成素材标题。
@@ -323,6 +337,10 @@ async def _step_detect_from_materials():
                     )
                     if name not in vals:
                         vals.append(name)
+                if key == "products":
+                    # 规则池是**产品**的确定性下限：模型没提到的产品也带上（正文里有证据）。
+                    # 注意不能并进服务那一行 —— 那会把「琥珀沙发」显示成服务。
+                    vals = vals + [p for p in product_pool if p not in vals]
                 if vals:
                     result[key] = vals if key != "company" else vals[:5]
                     result["classification_source"] = "llm"
@@ -339,7 +357,7 @@ async def _step_detect_from_materials():
     # 「产品（点击取消不想监测的）」那一行 —— 实测就是 export_1785221955586 /
     # 三品牌战略+奢侈品调研-前31页 / 笔革家居主理人访谈纪要。标题不是产品名：
     # 正文里认不出来就如实留空 + 一句人话提示，让人去补，而不是拿文件名充数。
-    out = await _finalize_detect(result, biz_fallback=[])
+    out = await _finalize_detect(result, biz_fallback=product_pool[:10])
     if out["empty"]:
         # 一条都没认出来（例如只上传了文件名像流水号的材料）：别拿「知识库」顶包，
         # 这里读的是 GEO 自己的内容资产，就直说内容资产。
@@ -353,19 +371,6 @@ async def _step_detect_from_materials():
             "或在下面的「产品」里手动写一个。"
         )
     return out
-
-
-#: 设计风格/调性词 = 这家企业能承接的**风格**，不是产品（实测模型把「意式极简」「奶油风」列成产品）。
-_STYLE_WORDS = ("极简", "轻奢", "法式", "中式", "简约", "中古", "奶油风", "侘寂", "北欧", "日式", "美式", "意式")
-#: 以这些收尾说明它是一个「东西」（「奶油风沙发」是产品），不是光秃秃的风格词。
-_PRODUCT_TAILS = ("沙发", "床", "柜", "桌", "椅", "几", "门", "窗", "套装", "系列", "版", "套餐", "服务")
-
-
-def _looks_like_style_word(name: str) -> bool:
-    """「意式极简」「奶油风」这类风格词不该出现在产品那一行。"""
-    if name.endswith(_PRODUCT_TAILS):
-        return False
-    return name.endswith("风") or any(w in name for w in _STYLE_WORDS)
 
 
 def _expand_to_pool_name(
@@ -904,6 +909,11 @@ async def _step_create(cfg: AutoConfigIn):
         _mk("brand", {"company": cfg.company, "aliases": aliases, "product": products, "industry": cfg.industry, "tier": "lite"}, cfg.company)
     for p in products:
         _mk("product", {"product": p, "company": cfg.company, "competitor": []}, p)
+    # 服务也要建对象（2026-09-22 修）：以前这里算了 services 却**从没用过** ——
+    # 用户在页面上勾的服务等于没勾，不产生任何监测。用 kind=service 让探针问得像服务，
+    # 展示上仍是既有的「产品服务」类型（没有新增类型、没有新增契约）。
+    for sv in services:
+        _mk("product", {"product": sv, "kind": "service", "company": cfg.company, "competitor": []}, sv)
     if cfg.industry:
         _mk("keyword", {"keyword": cfg.industry, "extras": products}, cfg.industry)
     # 行业搜索词（detect 挖出）→ 每个建 keyword 对象：监测面从「1 个行业词」扩到「N 个用户真实搜索词」
