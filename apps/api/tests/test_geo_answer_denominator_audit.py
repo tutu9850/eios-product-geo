@@ -228,6 +228,33 @@ def test_monitor_items_expose_real_run_result_states(monkeypatch):
     assert rows["never"]["run_result"]["state"] == "never"
 
 
+def test_item_trend_uses_answered_models_as_denominator():
+    from app.api.v1.monitor import _aggregate_item_trend
+
+    points = _aggregate_item_trend([
+        {
+            "monitor_id": "mi_1",
+            "created_at": "2026-09-22T01:00:00+00:00",
+            "mentioned_count": 1,
+            "configured_count": 6,
+            "answered_count": 1,
+            "engine_detail": [{"mentioned": True, "sentiment": "positive"}] + [{"mentioned": None}] * 5,
+        },
+        {
+            "monitor_id": "mi_1",
+            "created_at": "2026-09-22T02:00:00+00:00",
+            "mentioned_count": 0,
+            "configured_count": 6,
+            "answered_count": 0,
+            "engine_detail": [{"mentioned": None}] * 6,
+        },
+    ], "mi_1")["points"]
+
+    assert points[0]["visibility"] == 100, "1 个真实回答且提到我方，应为 100%，不是 1/6"
+    assert points[0]["answered"] == 1
+    assert points[1]["visibility"] is None, "本期无人回答应为未判定，不能画成 0%"
+
+
 # ── 2. 竞品对比：共 N 条回答 / 胜负桶也只算真作答 ────────────────
 
 

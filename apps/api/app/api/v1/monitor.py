@@ -1787,6 +1787,7 @@ async def run_batch_items(items: list[dict], company_name: str | None = None, en
                 "question": x["question"],
                 "mentioned_count": x["mentioned_count"],
                 "configured_count": x["configured_count"],
+                "answered_count": x["answered_count"],
                 "rank_avg": x["rank_avg"],
                 "sentiment_summary": x["sentiment_summary"],
                 "citations": len(x.get("citations") or []),
@@ -2966,7 +2967,12 @@ def _aggregate_item_trend(items: list[dict], monitor_id: str, entity: str | None
     points: list[dict] = []
     for ts, group in by_ts.items():
         mentioned_count = sum(q.get("mentioned_count", 0) for q in group)
-        configured_count = sum(q.get("configured_count", 0) for q in group)
+        answered_count = sum(
+            q.get("answered_count")
+            if q.get("answered_count") is not None
+            else sum(1 for er in (q.get("engine_detail") or []) if er.get("mentioned") is not None)
+            for q in group
+        )
         rank_ests = [
             er.get("rank_est")
             for q in group
@@ -2984,7 +2990,8 @@ def _aggregate_item_trend(items: list[dict], monitor_id: str, entity: str | None
         points.append(
             {
                 "ts": ts,
-                "visibility": round(mentioned_count / configured_count * 100) if configured_count else 0,
+                "visibility": round(mentioned_count / answered_count * 100) if answered_count else None,
+                "answered": answered_count,
                 "mention": mentioned_count,
                 "position": rank_avg,
                 "positive": sum(1 for s in sents if s == "positive"),

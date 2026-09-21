@@ -14,7 +14,8 @@ interface TaskRunResult {
 /** 跨次趋势（GET /monitor/items/{id}/trend）：每次监测一个点，指标口径见 monitor.py */
 interface TrendPoint {
   ts: string
-  visibility: number
+  visibility: number | null
+  answered?: number
   mention: number
   position: number | null
   positive: number
@@ -609,21 +610,18 @@ function TrendDetail({ data }: { data: TrendData }) {
   }, [all, range])
   if (!all.length) return <div className="geo-empty">这个对象还没有跨次记录，跑过一次监测后这里会出现趋势。</div>
   const latest = points[points.length - 1]
-  const visibility = points.map((point) => Number(point.visibility ?? 0))
+  const judgedPoints = points.filter((point) => point.visibility != null)
   const first = points[0]
-  const direction =
-    points.length > 1
-      ? visibility[visibility.length - 1] - visibility[0] >= 0
-        ? `较首次 +${Math.round((visibility[visibility.length - 1] - visibility[0]) * 10) / 10} 个百分点`
-        : `较首次 ${Math.round((visibility[visibility.length - 1] - visibility[0]) * 10) / 10} 个百分点`
-      : '只有一期记录'
+  const previous = judgedPoints.length > 1 ? judgedPoints[judgedPoints.length - 2] : null
+  const delta = previous && latest.visibility != null ? latest.visibility - Number(previous.visibility) : null
+  const direction = delta == null ? '暂无可比上一期' : `较上一期 ${delta >= 0 ? '+' : ''}${Math.round(delta * 10) / 10} 个百分点`
   return (
     <>
       <GeoKpis
         items={[
           // 2026-09-21：接口字段叫 visibility，口径就是「回答里提到本企业的比例」= 提及率，
           // 页面上叫「可见度」会让用户以为是另一个指标、和总览的 AI 提及率对不上账。
-          { label: '最新提及率', value: `${latest.visibility ?? '—'}%`, detail: direction, tone: visibility[visibility.length - 1] >= visibility[0] ? 'good' : 'warn' },
+          { label: '最新提及率', value: latest.visibility == null ? '—' : `${latest.visibility}%`, detail: direction, tone: delta == null || delta >= 0 ? 'good' : 'warn' },
           { label: '被提及', value: `${latest.mention ?? '—'} 条`, detail: '最近一次监测' },
           { label: '正面 / 负面', value: `${latest.positive ?? 0} / ${latest.negative ?? 0}`, detail: '最近一次监测的回答倾向', tone: (latest.negative ?? 0) > (latest.positive ?? 0) ? 'bad' : 'good' },
           { label: '监测期数', value: `${points.length} 期`, detail: `首次 ${shortDay(first.ts)}` },
@@ -638,7 +636,7 @@ function TrendDetail({ data }: { data: TrendData }) {
           <button key={value} type="button" className={range === value ? 'active' : ''} onClick={() => setRange(value)}>{label}</button>
         ))}
       </div>
-      <GeoLine points={points.map((point) => ({ label: shortDay(point.ts).slice(5), value: Number(point.visibility ?? 0) }))} unit="%" />
+      {judgedPoints.length ? <GeoLine points={judgedPoints.map((point) => ({ label: shortDay(point.ts).slice(5), value: Number(point.visibility) }))} unit="%" /> : <div className="geo-empty">所选周期没有模型成功回答，无法计算提及率趋势。</div>}
       {/* 2026-09-21：原来这里还有一列「引用」，后端 _aggregate_item_trend 的 citation
           是写死的 0（注释写着「item 级待细化」）——一列永远显示 0 的数字，
           用户会读成「一条引用都没有」。没实现就不展示，等它真有了再加回来。 */}
