@@ -74,7 +74,7 @@ async def collect_url(watch_item: dict) -> dict:
         "url": url,
         "title": fetched["title"] or url,
         "text": fetched["text"],
-        "status": "raw",  # raw → extracted → confirmed(写Kernel) / planned(入计划) / ignored
+        "status": "raw",  # raw → extracted → confirmed(写企业知识库) / planned(入计划) / ignored
         "facts": [],
         "extracted_at": None,
         "fetched_at": datetime.now(timezone.utc).isoformat(),

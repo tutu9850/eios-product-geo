@@ -143,3 +143,102 @@ def test_key_facts_basis_reports_number_or_time_when_present():
          patch("app.services.store.get_store", return_value=_EMPTY_STORE):
         profile = _run(build_company_profile("亚宇臻隆科技"))
     assert profile["key_facts_basis"] == "number_or_time"
+
+
+def test_materials_are_document_chunks_plus_entities_not_repeated_slices():
+    """Owner 2026-09-21：内容生成消费「知识库文档切块内容 + 实体」。
+
+    实测一条命中 = 一个知识对象 + 它出现的文档切块（snippet 与 /documents/{id}/chunks 的
+    content 逐字相同）。同一张表会被检索回多条命中 —— 必须按 chunk_id 去重，
+    否则同一段切块被重复喂给模型（旧实现实测重复 8 遍）。
+    """
+    from services.content import _materials_from_hits
+
+    hits = [
+        {"canonical_name": "M-001", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
+         "snippet": "工作表: 账号矩阵 M-001 | 抖音 | 亚宇臻隆AI获客"},
+        {"canonical_name": "抖音", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
+         "snippet": "工作表: 账号矩阵 M-001 | 抖音 | 亚宇臻隆AI获客"},
+        {"canonical_name": "M-002", "chunk_id": "chk_b", "document_title": "11_自媒体账号矩阵",
+         "snippet": "工作表: 账号矩阵 M-002 | 抖音 | 笔革艺术家居"},
+    ]
+    chunks, entities = _materials_from_hits(hits)
+    assert len(chunks) == 2, "同一 chunk_id 只许出现一次"
+    assert all("11_自媒体账号矩阵" in c for c in chunks)
+    assert entities == ["M-001", "抖音", "M-002"], "实体名去重且保持原顺序"
+
+
+def test_materials_from_hits_is_empty_without_hits():
+    from services.content import _materials_from_hits
+
+    chunks, entities = _materials_from_hits([])
+    assert chunks == [] and entities == []
+    # 没有切块文本时不产出空壳行
+    chunks, entities = _materials_from_hits([{"canonical_name": "某实体", "chunk_id": "", "snippet": ""}])
+    assert chunks == [] and entities == ["某实体"]
+
+
+def test_build_context_sources_expose_chunks_and_entities_not_the_retired_name():
+    """来源面板按新口径给来源，且不再出现退役的旧名字（Owner 2026-09-21 指出）。"""
+    from services import content as content_mod
+
+    hits = [{"canonical_name": "M-001", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
+             "snippet": "工作表: 账号矩阵"}]
+
+    async def _search(*_a, **_kw):
+        return {"hits": hits}
+
+    with patch.object(content_mod, "search_knowledge", _search), \
+         patch.object(content_mod, "_official_fact_lines", return_value=["- [正式事实] 销售中心 负责 直客销售与续费"]):
+        ctx = _run(content_mod.build_context(question="亚宇臻隆科技是做什么的", company_name="亚宇臻隆科技"))
+
+    kinds = {s["kind"] for s in ctx["context_sources"]}
+    assert {"enterprise_fact", "document_chunk", "entity"} <= kinds
+    assert "kernel" not in kinds
+    chunk_source = next(s for s in ctx["context_sources"] if s["kind"] == "document_chunk")
+    assert chunk_source["items"] and "工作表: 账号矩阵" in chunk_source["items"][0]["chunk"]
+    assert ctx["materials"][0].startswith("- [正式事实]")
+    assert any(m.startswith("- 文档切块") for m in ctx["materials"])
+
+
+def test_chunk_entries_are_labelled_by_document_not_by_cell_values():
+    """文档切块作为数据点来源时，标签是资料名 + 数据点个数，不是表格单元格。"""
+    from services.content.fact_checker import LABEL_MAX, score_fact_density
+
+    chunk = {
+        "kind": "document_chunk",
+        "canonical_name": "11_自媒体账号矩阵",
+        "document_title": "11_自媒体账号矩阵",
+        "value": "工作表: 账号矩阵 M-001 | 抖音 | 亚宇臻隆AI获客 | 98000 | 吴鑫宇",
+    }
+    out = score_fact_density("这段内容没有写任何数据", [chunk])
+    assert out["missing_facts"], "切块里有数字，应当被当成可注入的数据点"
+    label = out["missing_facts"][0]
+    assert label.startswith("11_自媒体账号矩阵（")
+    assert "数据点" in label
+    assert "98000" not in label, "不许把单元格数值列成「企业事实数据」"
+    assert len(label) <= LABEL_MAX
+
+
+def test_score_uses_entity_names_for_coverage_and_chunks_for_density():
+    """回归：旧实现把「实体名 + 它所在的那段原文」当事实点，建议里出现
+    「M-001（001、98000）」这种把表格单元格当企业事实的假数据点（2026-09-21 实测）。"""
+    from services.content.geo_score import score_geo_content
+
+    result = score_geo_content(
+        "亚宇臻隆科技是一家做 GEO 全域运营的公司，3 月营业收入 1680000 元。",
+        knowledge_facts=[{"canonical_name": "亚宇臻隆AI获客"}, {"canonical_name": "抖音"}],
+        data_sources=[
+            {"kind": "document_chunk", "canonical_name": "经营月报_亚宇臻隆_2026年3月.xlsx",
+             "document_title": "经营月报_亚宇臻隆_2026年3月.xlsx",
+             "value": "工作表: 经营月报 营业收入 | 1680000 | 100.0%"},
+        ],
+        pool_questions=[],
+        sections={},
+        company_name="亚宇臻隆科技",
+    )
+    joined = " ".join(result.get("suggestions") or [])
+    assert "M-001" not in joined
+    assert "（001、" not in joined
+    # 切块里的真实数字被正文用上了 → 事实密度不该是 0
+    assert result["fact_density"] > 0

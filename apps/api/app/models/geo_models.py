@@ -302,8 +302,8 @@ class GeoKnowledgeSnapshots(Base):
 
 
 class GeoEnterpriseProfileKnowledge(Base):
-    """企业资料总揽 · Kernel 全量知识持久化（2026-08-18）：
-    entities/facts/relations 落库，进程重启后 items 详情不重拉 Kernel（秒开）。
+    """企业资料总揽 · 企业知识库全量知识持久化（2026-08-18）：
+    entities/facts/relations 落库，进程重启后 items 详情不重拉 企业知识库（秒开）。
     """
 
     __tablename__ = "enterprise_profile_knowledge"

@@ -124,7 +124,7 @@ async def _daily_distill_job() -> None:
 async def _daily_distill_one() -> None:
     """每日蒸馏闭环（监测跑完后自动，幂等）：知识缺口 → 内容计划 → 内容机会。
 
-    - detect_gaps：新问题 → Kernel 对照 → 缺口落库（existing_q 去重）
+    - detect_gaps：新问题 → 企业知识库对照 → 缺口落库（existing_q 去重）
     - gen_plans：LLM 内容计划（target_question 去重）
     - gen_opportunities：规则内容机会补漏（target_question 去重）
     全链路幂等：重复跑不产生重复缺口/计划；任何一步失败不影响其他步骤和监测。

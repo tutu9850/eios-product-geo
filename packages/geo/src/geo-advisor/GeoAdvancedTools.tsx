@@ -6,11 +6,11 @@ import { GeoBars, GeoKpis, GeoTable, askGeoConfirm, shortDay } from './shared'
 type Row=Record<string,any>
 /**
  * 画像来源是后端内部标识（company_profile.py 的 sources），页面上不给用户看英文代号。
- * 2026-09-21：这张卡原来直接打印「来源 kernel_search、kernel_relations、geo_questions、geo_kb」。
+ * 2026-09-21：这张卡原来直接打印后端的原始来源标识（下划线字段名），用户看不懂。
  */
 const PROFILE_SOURCE_LABEL: Record<string, string> = {
-  kernel_search: '企业知识库检索',
-  kernel_relations: '企业知识库关系',
+  knowledge_search: '企业知识库检索',
+  knowledge_relations: '企业知识库关系',
   geo_questions: 'GEO 客户问题池',
   geo_kb: 'GEO 内容资产',
   enterprise_facts: '知识库正式事实（active fact）',
@@ -47,7 +47,7 @@ export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
 
 /* ── 企业画像正文（2026-09-21）────────────────────────────────────────────
    原来是 `<pre>{JSON.stringify(profile)}</pre>`，直接把接口字段名摊给用户看。
-   结构取自 apps/api/app/services/company_profile.py：Kernel 事实 + 关系 + 本地问题池/资产。
+   结构取自 apps/api/app/services/company_profile.py：知识库事实/对象 + 关系 + 本地问题池/资产。
    归纳不出来的字段就写「暂无记录」——这一条是后端自己的原则，前端保持一致。 */
 const PROFILE_GROUPS: Array<{ key: string; label: string }> = [
   { key: 'industry', label: '行业' },
@@ -104,8 +104,8 @@ function ProfileBody({ profile }: { profile: Row | null }) {
         ]}
       />
       <p className="geo-note">
-        {profile.kernel_ok === false
-          ? `知识库这次读不到：${String(profile.kernel_error ?? '未知原因')}（这是读取失败，不代表企业没有数据）`
+        {profile.knowledge_ok === false
+          ? `知识库这次读不到：${String(profile.knowledge_error ?? '未知原因')}（这是读取失败，不代表企业没有数据）`
           : '知识库读取正常'}
         {profile.built_at ? ` · 画像构建于 ${shortDay(String(profile.built_at))}` : ''}
         {sources.length ? ` · 来源 ${sources.map(profileSourceText).join('、')}` : ''}

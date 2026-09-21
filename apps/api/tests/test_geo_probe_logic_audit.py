@@ -2,7 +2,7 @@
 
 1. 监测探针问出「使用{公司}需要注意什么？」—— 公司不是能「使用」的东西，
    这句话本身不成立，模型只能替我们编一份「注意事项」（实测被计入负面情绪）。
-2. 事实核验里那条 `best < 0.5` 是老 Kernel 的**归一化分**阈值，而 EIOS 知识库的 `n`
+2. 事实核验里那条 `best < 0.5` 是换知识源前的老适配器的**归一化分**阈值，而 EIOS 知识库的 `n`
    是**无界 rank 分**（契约只有 minimum），于是条件恒不成立 = 所有断言都算有依据：
    凭空编的「成立于 2005 年，注册资本 1 亿元」也被判成 grounded。
 3. 知识缺口判定只认「实体名出现在命中片段里」，而企业知识库几乎每张表都写着公司名
@@ -298,7 +298,7 @@ def test_fact_check_hit_kb_only_counts_grounded_claims(monkeypatch):
     monkeypatch.setattr(monitor, "_load_history", lambda: [])
 
     async def fake_check(company_name, snippet, question):  # noqa: ARG001
-        return {"checked": True, "abnormal": False, "reason": "断言均有知识库依据", "kernel_ok": True}
+        return {"checked": True, "abnormal": False, "reason": "断言均有知识库依据", "knowledge_ok": True}
 
     monkeypatch.setattr(monitor, "_check_answer_facts", fake_check)
 

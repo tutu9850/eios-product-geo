@@ -71,7 +71,7 @@ REASONING_PROMPT = """生成 {company_name} 近 {days} 天认知报告 JSON（sc
 {aggregate}
 
 【企业知识库 active 事实摘要（企业真相，只读）】
-{kernel_summary}
+{knowledge_summary}
 
 【输出 JSON】
 {{
@@ -82,7 +82,7 @@ REASONING_PROMPT = """生成 {company_name} 近 {days} 天认知报告 JSON（sc
     {{"competitor": "...", "factors": [{{"factor": "...", "score": 0.9, "support_refs": ["ans_..."]}}]}}
   ],
   "capability_gap": {{
-    "kernel_has": ["..."],
+    "knowledge_has": ["..."],
     "external_perceives": ["..."],
     "gap_summary": "...",
     "support_refs": ["ans_..."]
@@ -93,7 +93,7 @@ REASONING_PROMPT = """生成 {company_name} 近 {days} 天认知报告 JSON（sc
       "gap_type": "capability_missing | capability_hidden | competitor_advantage | market_unknown",
       "competitor_mentions": 0,
       "self_mentions": 0,
-      "kernel_has": true/false,
+      "knowledge_has": true/false,
       "verdict": "🔴补 / 🟢已有 / 🟡空白 / 📌缺口",
       "support_refs": ["ans_..."]
     }}

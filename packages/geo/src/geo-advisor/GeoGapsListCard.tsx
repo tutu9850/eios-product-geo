@@ -73,7 +73,7 @@ export function GeoGapsListCard() {
             .sort((a, b) => LEVEL_ORDER[gapPriority(a).level] - LEVEL_ORDER[gapPriority(b).level])
             .map((g) => {
               const p = gapPriority(g)
-              // 2026-09-21：这张卡以前把内核字段名直接吐给用户（「来源：kernel_search」），
+              // 2026-09-21：这张卡以前把后端检索来源的老名字直接吐给用户，
               // 而且从来不显示「到底缺什么」——用户看不出缺口是不是企业知识库缺的。
               const caps = g.missing_capabilities ?? []
               // 后端 list_gaps 自己就把「missing_information == question」当成「没说清缺什么」

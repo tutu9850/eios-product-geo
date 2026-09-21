@@ -1,4 +1,4 @@
-"""knowledge 模块 — 外部情报 → KnowledgeObject → 写 Kernel
+"""knowledge 模块 — 外部情报 → KnowledgeObject → 写知识库
 
 P0：仅接口骨架。P3 实现。
 模块规则：独立目录、独立日志、只走接口调用（见 GEO_架构方案V2.md §8）。

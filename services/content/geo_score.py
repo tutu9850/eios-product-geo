@@ -1,8 +1,8 @@
 """GEO 评分器（认知编译器 · 质量度量层）
 
 生成后评分 4 个可量化维度 + 1 个启发式维度：
-- 实体覆盖：Kernel 实体（画像 facts 核心词）在文本中的命中率
-- 事实密度：Kernel 事实点（数字/时间/实体）出现数（复用 fact_checker）
+- 实体覆盖：企业知识库实体（画像 facts 核心词）在文本中的命中率
+- 事实密度：企业知识库事实点（数字/时间/实体）出现数（复用 fact_checker）
 - 问题覆盖：客户问题池条目在文本中的出现率
 - 结构完整性：模板分节齐全度（5 节）
 - 引用潜力：启发式加权（结构+事实+实体+问题）——标注"估算"，以上线后真实引用为准
@@ -40,21 +40,28 @@ def _entity_cores(facts: list[dict], company_name: str = "") -> list[str]:
 def score_geo_content(
     content: str,
     *,
-    kernel_facts: list[dict],
+    knowledge_facts: list[dict],
     pool_questions: list[dict],
     sections: dict | None = None,
     company_name: str = "",
+    data_sources: list[dict] | None = None,
 ) -> dict[str, Any]:
     """GEO 评分。返回各维度分 + 总分 + 建议。"""
     # 1) 实体覆盖
-    cores = _entity_cores(kernel_facts, company_name)
+    cores = _entity_cores(knowledge_facts, company_name)
     hit_entities = [c for c in cores if c in content] if cores else []
     entity_score = round(len(hit_entities) / len(cores), 2) if cores else 0.0
 
     # 2) 事实密度（复用 fact_checker）
     from services.content.fact_checker import score_fact_density
 
-    fd = score_fact_density(content, kernel_facts)
+    # 2026-09-21（Owner：内容生成消费「文档切块 + 实体」）：
+    # - **实体覆盖**只用实体名（``knowledge_facts`` 传名字、不带原文）；
+    # - **事实密度**的数据点来自 ``data_sources``（正式事实 + 文档切块）——数字多存在
+    #   原始资料里（经营月报/账号矩阵），正式事实往往是组织职责句。
+    # 旧实现把「实体名 + 它所在的那段原文」当事实点，于是建议里出现
+    # 「M-001（001、98000）」这种把表格单元格当企业事实的假数据点。
+    fd = score_fact_density(content, list(data_sources or knowledge_facts))
     fact_score = fd["score"]
 
     # 3) 问题覆盖

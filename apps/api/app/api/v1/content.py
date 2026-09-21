@@ -10,7 +10,7 @@ class GenerateRequest(BaseModel):
     goal: str = "提升AI推荐概率"
     content_type: str = "企业介绍"
     question: str = ""
-    company_name: str | None = None  # 留空 = 自动从 Kernel 读取
+    company_name: str | None = None  # 留空 = 自动从 企业知识库读取
     style: str = "专业权威"
     length: str = "1500"
     industry: str | None = None
@@ -75,17 +75,32 @@ async def score_content(req: ScoreIn):
 
     company_name = (req.company_name or "").strip()
     if not company_name:
-        # 审计 A3：没给企业名时不再拿空画像评分，自动识别当前企业（读 Kernel 实体）
+        # 审计 A3：没给企业名时不再拿空画像评分，自动识别当前企业（读 企业知识库实体）
         from services.content import _auto_company
 
         company_name, _materials = await _auto_company(req.tenant_id)
         company_name = (company_name or "").strip()
     profile = await build_company_profile(company_name, tenant_id=req.tenant_id) if company_name else {}
-    kernel_facts = profile.get("facts", []) if profile else []
+    # 2026-09-21（Owner：内容生成消费「文档切块 + 实体」）：
+    # - 实体覆盖用**实体名**（``value`` 是那段原文，带着表格里别人的数字，不能当事实值）；
+    # - 事实密度的数据点来自**正式事实 + 文档切块**（数字在原始资料里，正式事实多是职责句）。
+    mentions = [{"canonical_name": (m.get("canonical_name") or "")} for m in (profile.get("facts") or [])]
+    data_sources = [
+        {"canonical_name": (f.get("canonical_name") or "")} for f in (profile.get("knowledge_facts") or [])
+    ] + [
+        {
+            "kind": "document_chunk",
+            "canonical_name": c.get("document_title") or "",
+            "document_title": c.get("document_title") or "",
+            "value": c.get("text") or "",
+        }
+        for c in (profile.get("knowledge_chunks") or [])
+    ]
     sections = parse_sections(req.content)
     result = score_geo_content(
         req.content,
-        kernel_facts=kernel_facts,
+        knowledge_facts=mentions,
+        data_sources=data_sources,
         pool_questions=profile.get("questions", []) if profile else [],
         sections=sections,
         company_name=company_name,  # 审计 P1-9：实体核心词剥离企业名前缀（参数化）

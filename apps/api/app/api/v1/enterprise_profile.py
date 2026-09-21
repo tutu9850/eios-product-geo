@@ -2,14 +2,14 @@
 
 数据链（用户 2026-08-18 拍板）：
   48 子项 ─┬─ question_match_rules → 客户问题池 → 相关问题
-           └─ knowledge_match_rules → Kernel 知识 → 相关知识
+           └─ knowledge_match_rules → 企业知识库知识 → 相关知识
                          ↓
               GEO 覆盖判断（复用 distill._knowledge_check 4级）
                          ↓
               足够(≥70%) / 部分(≥30%) / 太少(<30%)   + 两层状态（有/暂无相关问题）
 
 原则：
-- 全部读既有数据（Kernel + 问题池），不从零 LLM 研究
+- 全部读既有数据（企业知识库 + 问题池），不从零 LLM 研究
 - 覆盖状态与关联状态分开：`太少|0/5`（真缺口）≠ `太少|暂无相关问题`（问题池没覆盖）
 - 覆盖率 = COVERED×1 + PARTIAL×0.5 加权（规则估算，诚实标注）
 """
@@ -348,9 +348,9 @@ def _match_question(qtext: str, rules: list[str], intent: str = "", entities: li
 
 
 # ══════════════════════════════════════════════════════════════════
-# 知识匹配：Kernel 知识 → 子项相关知识
+# 知识匹配：企业知识库知识 → 子项相关知识
 # ══════════════════════════════════════════════════════════════════
-#: 48 子项 knowledge_match_rules.object_types 写的类型词表来自旧 Kernel
+#: 48 子项 knowledge_match_rules.object_types 写的类型词表来自换知识源前的旧适配器
 #: （company/product/service/material/customer/competitor/person/...）。
 #: EIOS 知识对象只有 ``entity`` / ``fact`` 两种类型（2026-09-21 实测 171/29），
 #: 拿旧词表当硬约束 → 每个子项的「已有资料」恒为 0（审计 B3/B5）。
@@ -544,7 +544,7 @@ async def _assess_item(item: dict, questions: list[dict]) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════
-# 知识加载：Kernel 全量知识（带 60s 缓存，refresh 清空）
+# 知识加载：企业知识库全量知识（带 60s 缓存，refresh 清空）
 # ══════════════════════════════════════════════════════════════════
 _knowledge_cache: dict | None = None
 _knowledge_cache_at: float = 0.0
@@ -553,10 +553,10 @@ _KNOWLEDGE_TABLE = "enterprise_profile_knowledge"
 
 
 async def _load_knowledge() -> dict:
-    """拉 Kernel 全量知识（实体 + 事实 + 关系），供已有资料归类。失败返回空。
+    """拉 企业知识库全量知识（实体 + 事实 + 关系），供已有资料归类。失败返回空。
 
-    只读 active（对外契约）；relations 按企业实体名逐个查（空查询 Kernel 返回空）。
-    三级缓存：内存(60s) → SQLite(持久化，进程重启恢复) → Kernel 拉取。
+    只读 active（对外契约）；relations 按企业实体名逐个查（空查询 企业知识库返回空）。
+    三级缓存：内存(60s) → SQLite(持久化，进程重启恢复) → 企业知识库拉取。
     refresh 时 _clear_cache 清空。
     """
     import time as _time
@@ -584,7 +584,7 @@ async def _load_knowledge() -> dict:
     except Exception as e:
         logger.warning("load knowledge cache failed: %s", e)
 
-    # 3) 拉 Kernel
+    # 3) 拉 企业知识库
     from adapters.eios import get_entities, hits_of, search_knowledge, search_relations
 
     entities: list[dict] = []

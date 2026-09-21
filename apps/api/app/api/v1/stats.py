@@ -57,17 +57,17 @@ async def overview():
         if last_questions:
             answered = max(int(q.get("configured_count") or 0) for q in last_questions)
 
-    # 企业知识库（Kernel）状态（H21：purge 后为空 → 前端据此提示"知识库为空，内容生成/缺口判定受限"）
+    # 企业知识库状态（H21：purge 后为空 → 前端据此提示"知识库为空，内容生成/缺口判定受限"）
     try:
         from adapters.eios import get_entities
 
-        kernel_entities = len(await get_entities())
-        kernel_empty = kernel_entities == 0
-        kernel_error = None
+        knowledge_entities = len(await get_entities())
+        knowledge_empty = knowledge_entities == 0
+        knowledge_error = None
     except Exception as exc:  # noqa: BLE001
-        kernel_entities = None
-        kernel_empty = None
-        kernel_error = str(exc)[:120]
+        knowledge_entities = None
+        knowledge_empty = None
+        knowledge_error = str(exc)[:120]
 
     return ok(
         {
@@ -75,6 +75,6 @@ async def overview():
             "links": {"total": len(links), "indexed": linked, "failed": failed, "pending": pending, "unknown": unknown},
             "monitor": {"runs": monitor_count, "mentioned": mentioned, "avg_score": avg_score},
             "engines": {"total": len(engines), "answered": answered},
-            "kernel": {"entities": kernel_entities, "empty": kernel_empty, "error": kernel_error},
+            "knowledge_objects": {"entities": knowledge_entities, "empty": knowledge_empty, "error": knowledge_error},
         }
     )

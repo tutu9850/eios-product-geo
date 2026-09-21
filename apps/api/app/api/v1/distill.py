@@ -84,7 +84,7 @@ def _load_questions() -> list[dict]:
 
 
 async def _auto_keywords() -> list[str]:
-    """从 Kernel 知识库自动提取企业关键词（产品/服务实体）
+    """从 企业知识库知识库自动提取企业关键词（产品/服务实体）
 
     用户要求：一切从知识库找，不预设。种子词为空时用企业真实产品/服务实体。
     """
@@ -323,7 +323,7 @@ async def list_questions(status: str | None = None, limit: int = 100, validated:
         else:
             q.setdefault("source_type", "ai_generated")
         q.setdefault("confidence", 0.65)
-    return ok({"items": items, "total": len(items), "note": "评分为规则估算（优先级/监测词频/Kernel 依据），非 LLM 精判；monitor_count = 真实监测回答条数（没作答的引擎不计入），frequency = 该问法被问到的批次次数，ai_visibility = 真作答条数里被提及占比，validated = 这个问题被真实监测过（不是「答案已验证」）"})
+    return ok({"items": items, "total": len(items), "note": "评分为规则估算（优先级/监测词频/企业知识库依据），非 LLM 精判；monitor_count = 真实监测回答条数（没作答的引擎不计入），frequency = 该问法被问到的批次次数，ai_visibility = 真作答条数里被提及占比，validated = 这个问题被真实监测过（不是「答案已验证」）"})
 
 
 @router.delete("/questions/{qid}")
@@ -439,7 +439,7 @@ async def question_platforms(qid: str):
 async def faq(payload: DistillIn):
     """FAQ 提炼：主题/关键词 → 客户常问的问答对（带 Knowledge Grounding 三态）
 
-    每个问题先查 Kernel：
+    每个问题先查 企业知识库：
     - 🟢 grounded（有企业依据）→ 基于知识库事实回答（不编造）
     - 🟡 partial（有相关但不足）→ 输出"知识库记录不明确"+ 建议补充，不冒充企业能力
     - 🔴 none（完全无依据）→ 输出"知识库暂无相关记录"+ 建议补充资料，禁止编造企业能力
@@ -468,7 +468,7 @@ async def faq(payload: DistillIn):
         return ok({"topic": topic, "keywords": keywords, "items": [], "error": e.message})
 
     questions = _extract_json_array(text)[: payload.count]
-    # 第二步：每个问题 Grounding（Kernel 检索，客观判定）
+    # 第二步：每个问题 Grounding（企业知识库检索，客观判定）
     items = []
     for q in questions:
         qtext = q if isinstance(q, str) else (q.get("q") or q.get("question") or "")
@@ -521,7 +521,7 @@ async def faq(payload: DistillIn):
     return ok({"topic": topic, "keywords": keywords, "items": items, "error": None})
 
 
-# ── 阶段 3：Kernel 知识匹配（已有/缺失判定，默认阈值 0.5） ──
+# ── 阶段 3：企业知识库知识匹配（已有/缺失判定，默认阈值 0.5） ──
 def _infer_intent(question: str) -> str:
     """从问题文本规则推断意图（采购/信任/使用/对比/认知），供充分性检测定位信息要求。
 
@@ -579,8 +579,7 @@ async def _knowledge_check(question: str, entities: list[str] | None = None, int
       ·「2026年国内AI知识库市场最新动态是什么？」→ COVERED（知识库不可能有未来市场动态）
       ·「GEO+知识库系统价格多少？」→ UNRELATED（知识库里明明有产品价格表）→ 反向漏判
     现在相关性 = **问题内容二元组与命中文本的交集 ≥ 2**（见 `_content_bigrams`），
-    并且如实回报 `judge_basis`：判定本来要的是「主体+属性+值」事实三元组，而本机知识库
-    返回的是**文档分块**（predicate=None、value=整张表文本）时标 `document_text`，
+    并且如实回报 `judge_basis`：判定本来要的是「主体+属性+值」事实三元组，而本机知识库返回的是**文档分块**（predicate=None、value=整张表文本）时标 `document_text`，
     让上层能如实说「这次只按文档文本推断，不是按事实三元组判定」。
 
     **待 Owner 复核**：这条判定语义改动过（原实现恒真），已按「修 bug」处理，未新增 Authority。
@@ -590,7 +589,7 @@ async def _knowledge_check(question: str, entities: list[str] | None = None, int
     queries = [question] + [e for e in (entities or [])[:3] if e and e not in question]
     top: list[dict] = []
     seen = set()
-    reachable = 0  # 成功到达 Kernel 的查询数（0 = Kernel 不可达，区别于「无知识」）
+    reachable = 0  # 成功到达 企业知识库的查询数（0 = 企业知识库不可达，区别于「无知识」）
     for q in queries[:3]:
         try:
             res = await search_knowledge(q, top_k=5, include_candidates=False)
@@ -643,7 +642,7 @@ async def _knowledge_check(question: str, entities: list[str] | None = None, int
     # 4 级判定（2026-08-18）：COVERED / PARTIAL / GAP / UNRELATED
     subject_found = bool(best.get("name")) and related
     if not reachable:
-        status = "UNRELATED"; missing = []   # Kernel 不可达，不可判定（防"宕机当缺知识"）
+        status = "UNRELATED"; missing = []   # 企业知识库不可达，不可判定（防"宕机当缺知识"）
     elif subject_found and len(missing) == 0 and substantive:
         status = "COVERED"
     elif subject_found:
@@ -665,7 +664,7 @@ async def _knowledge_check(question: str, entities: list[str] | None = None, int
         "missing_dimensions": missing,
         "best_score": best["score"],
         "refs": top[:3],
-        "kernel_down": reachable == 0,  # 知识库不可达（≠ 企业无知识）
+        "knowledge_down": reachable == 0,  # 知识库不可达（≠ 企业无知识）
         "judge_basis": judge_basis,     # fact_triple=按事实三元组判；document_text=只按文档文本判
         "matched_terms": sorted(overlap)[:6],  # 判定时真正命中的问题内容词（可复盘）
     }
@@ -770,7 +769,7 @@ def _impact_by_priority(p: int) -> str:
 
 @router.post("/gaps")
 async def detect_gaps(limit: int = 30):
-    """知识缺口检测：问题池 → 逐个 Kernel 匹配 → 无知识的问题生成缺口
+    """知识缺口检测：问题池 → 逐个 企业知识库匹配 → 无知识的问题生成缺口
 
     缺口 = 客户问题需要的信息 − 企业已有知识。
     missing_information 由 LLM 批量分析；impact 按优先级映射（≥85 high / ≥70 medium / low）。
@@ -803,15 +802,15 @@ async def detect_gaps(limit: int = 30):
             continue
         has_gap = q.get("question") in existing_q
         already_leveled = q.get("evidence_level") in ("grounded", "partial", "none")
-        # 已有缺口且已判定过 → 不重查（省 Kernel 调用）。**不能因为「已有缺口」就跳过判定**：
+        # 已有缺口且已判定过 → 不重查（省 企业知识库调用）。**不能因为「已有缺口」就跳过判定**：
         # 老问题正是这样被漏掉的——库存问题永远拿不到 evidence_level，漏斗恒 0%。
         if has_gap and already_leveled:
             continue
         intent = str(q.get("intent") or "")
         entities = q.get("related_entities") or []
         kc = await _knowledge_check(qtext, entities)
-        if kc.get("kernel_down"):
-            continue  # Kernel 不可达 → 不判缺口（防「宕机」被当成「缺知识」），也不写 level
+        if kc.get("knowledge_down"):
+            continue  # 企业知识库不可达 → 不判缺口（防「宕机」被当成「缺知识」），也不写 level
         levels[qtext] = kc.get("level") or "none"
         if has_gap or kc["has_knowledge"]:
             continue  # 已有缺口 / 企业已有知识 → 不重复建缺口
@@ -825,7 +824,7 @@ async def detect_gaps(limit: int = 30):
             "entity": (entities or [None])[0] or q.get("keyword") or "",
             "priority": q.get("priority", 50),
             "intent": intent,
-            "kc": kc,  # V1.1 证据链：Kernel 检索结果随缺口落库
+            "kc": kc,  # V1.1 证据链：企业知识库检索结果随缺口落库
             "subitems": [it["id"] for it in hit_items],
             "subitem_names": [it["name"] for it in hit_items],
         })
@@ -880,8 +879,8 @@ async def detect_gaps(limit: int = 30):
             # 就等于 question 本身）。现在如实留空，由页面写「尚未判明」。
             "missing_information": mi_map.get(a["question"]) or None,
             # V1.1 证据链：为什么认为缺（**企业知识库**检索实测）+ 缺什么（子项粒度/规则分类）
-            # 2026-09-21：「kernel_search」是换知识源之前的老名字 —— 知识源早就换成 EIOS
-            # 企业知识库（:8040）了，页面却还打印「来源：kernel_search」。改真名。
+            # 2026-09-21：来源标识曾用过换知识源之前的老名字 —— 知识源早就换成 EIOS
+            # 企业知识库（:8040）了，页面却还打印那个老名字。改真名。
             "source": "enterprise_knowledge_base",
             # 判定依据如实落库：fact_triple=按事实三元组；document_text=知识库只给了文档分块
             "judge_basis": kc.get("judge_basis") or "document_text",
@@ -1055,7 +1054,7 @@ async def gen_opportunities(limit: int = 15):
         }
         seen_names: set[str] = set()
         proj_count = 0
-        # 自家公司（动态）：brand 对象确认的 → Kernel 频次兜底；不再写死「云启」
+        # 自家公司（动态）：brand 对象确认的 → 企业知识库频次兜底；不再写死「云启」
         self_names = await _self_company_names()
         for e in ents:
             obj_t = e.get("object_type") or e.get("type") or ""
@@ -1693,7 +1692,7 @@ class PlanManualIn(BaseModel):
 
 
 class CustomerGapPlanIn(BaseModel):
-    """Customer Agent P6 冻结载荷；不得扩成客户画像或 Kernel 写入。"""
+    """Customer Agent P6 冻结载荷；不得扩成客户画像或 企业知识库写入。"""
     gap_id: str
     question: str
     evidence: dict = {}
@@ -1742,7 +1741,7 @@ async def add_plan_manual(payload: PlanManualIn):
 
 @router.post("/plans/customer-gap")
 async def add_plan_from_customer_gap(payload: CustomerGapPlanIn):
-    """P6 薄接收口：客服知识缺口 → 现有内容计划；不生产、不发布、不写 Kernel。"""
+    """P6 薄接收口：客服知识缺口 → 现有内容计划；不生产、不发布、不写 企业知识库。"""
     gap_id = payload.gap_id.strip()
     question = payload.question.strip()
     if not gap_id or not question:
@@ -1957,7 +1956,7 @@ async def list_plans(status: str | None = None, limit: int = 100, sort: str = "p
 # 总目标：用最少的内容，解决最多的高价值 AI 认知缺口。
 # 简化分层评分（等权相加，不搞加权公式——数据未积累，防伪精确）：
 #   问题价值(Value) × AI缺口(Gap) → 问题优先级 → 压到 48 认知子项 → 子项压力
-#   → Kernel 知识检查 → 待生产 / 待补知识 → 内容计划 Top N
+#   → 企业知识库知识检查 → 待生产 / 待补知识 → 内容计划 Top N
 # 链路：客户问题 → AI 检测 → 问题缺口 → 商业价值 → 问题优先级
 #      → 48 认知子项映射 → 认知节点压力 → 知识缺口检测 → 候选内容 → 内容优先级
 # ══════════════════════════════════════════════════════════════════
@@ -2060,7 +2059,7 @@ async def _subitem_knowledge(questions: list[dict], items: list[dict]) -> dict:
 
     has_knowledge：该子项至少一个问题被知识支撑（COVERED 或 PARTIAL 均可 → 有事实可写）
     **或素材库（geo_kb）有内容命中该子项知识规则**（2026-08-19 用户拍板：
-    "本地有" = Kernel 事实 ∪ 素材库内容，两者任一即视为可生产）；
+    "本地有" = 企业知识库事实 ∪ 素材库内容，两者任一即视为可生产）；
     全 GAP/UNRELATED 且无素材 → False（归知识缺口）。
     """
     from app.api.v1.enterprise_profile import _assess_item
@@ -2101,7 +2100,7 @@ async def gen_content_plan(limit: int = 10):
     输出每条计划（plans 表，兼容旧字段 + 新字段）：
       topic/priority/recommended_content_type/status（兼容）
       subitem/subitem_name/subitem_pressure/covered_questions/state/before_snapshot（新增）
-    state：待生产（Kernel 有事实，可生成）/ 待补知识（Kernel 无事实，先进企业信息采集，不生成）。
+    state：待生产（企业知识库有事实，可生成）/ 待补知识（企业知识库无事实，先进企业信息采集，不生成）。
     重复惩罚：同子项已有 planned 计划 → 跳过（防止为 N 个问题写 N 篇重复内容）。
     返回：{"items": [...], "total": n, "note": ...}
     """
@@ -2144,15 +2143,15 @@ async def gen_content_plan(limit: int = 10):
 
     # 3. 企业知识支撑判定（复用企业资料总揽：子项相关问题 → 企业知识库逐题判定，带缓存；
     #    失败 → 状态可能误判「待补知识」，note 标注，重跑恢复）
-    #    2026-09-21：变量名/文案里的 Kernel 是换知识源之前的老名字，知识源现在是 EIOS 企业知识库。
-    kernel_note = ""
+    #    2026-09-21：变量名/文案里的 企业知识库是换知识源之前的老名字，知识源现在是 EIOS 企业知识库。
+    knowledge_note = ""
     try:
         known = await _subitem_knowledge(questions, items)
     except Exception as e:  # noqa: BLE001
         logger = __import__("logging").getLogger("eios.distill")
         logger.warning("content-plan enterprise knowledge check failed: %s", str(e)[:150])
         known = {}
-        kernel_note = "企业知识库检索失败，状态可能误判为「待补知识」（重跑监测后恢复）"
+        knowledge_note = "企业知识库检索失败，状态可能误判为「待补知识」（重跑监测后恢复）"
 
     # 4. 子项 → 计划（用户拍板 2026-08-19：内容计划只体现「本地已有」——有知识支撑的子项；
     #    无知识的子项不生成计划，全部由知识缺口承载（见 /gaps 子项粒度）。）
@@ -2235,8 +2234,8 @@ async def gen_content_plan(limit: int = 10):
         "只输出「本地已有」（企业知识库事实或素材库命中）的子项——本地没有的全部在知识缺口（按 48 子项粒度），"
         "不再生成「待补知识」计划；旧「待补知识」计划已归档。"
     )
-    if kernel_note:
-        note += kernel_note
+    if knowledge_note:
+        note += knowledge_note
     return ok({"items": rows, "total": len(rows), "note": note})
 
 

@@ -6,7 +6,7 @@
 - 幂等键：(tenant_id, source_type, parent_ref) 唯一，命中即跳过。
 - extraction 版本：同一 evidence 重跑 insert 新 version，查最新用
   ORDER BY version DESC LIMIT 1（外部评审钉死）。
-- 分析结论永不写 Kernel（本模块禁 import write_candidate）。
+- 分析结论永不写 企业知识库（本模块禁 import write_candidate）。
 """
 from __future__ import annotations
 

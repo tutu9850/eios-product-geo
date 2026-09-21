@@ -129,12 +129,13 @@ async def build_company_profile(
     tenant_id: str = "tenant_corp_01",
     top_facts: int = 20,
 ) -> dict:
-    """组装企业画像（Kernel 事实 + 关系 + 本地问题池/资产）。"""
+    """组装企业画像（知识库正式事实 + 检索对象 + 关系 + 本地问题池/资产）。"""
     # 空企业名直接返回空画像（防 "" in blob 恒 True 放过全部命中——审计 P0-2）
     if not company_name.strip():
         return {
             "company": company_name,
             "facts": [],
+            "knowledge_chunks": [],
             "key_facts": [],
             "key_facts_basis": None,
             "relations": [],
@@ -182,40 +183,58 @@ async def build_company_profile(
         facts_error = str(e)[:120]
 
     facts: list[dict] = []
+    # 文档切块：同一条命中 = 一个知识对象 + 它出现的切块；一张表会被多条命中重复带回，
+    # 按 chunk_id 去重（Owner 2026-09-21：内容生成消费「文档切块 + 实体」）。
+    knowledge_chunks: list[dict] = []
     relations: list[dict] = []
-    kernel_ok = False
-    kernel_error = None
+    knowledge_ok = False
+    knowledge_error = None
     try:
         res = await search_knowledge(company_name, tenant_id=tenant_id, top_k=top_facts, include_candidates=False)
         items = hits_of(res)
         for it in items:
-            if it.get("kind") != "chunk":
-                # 相关性过滤：企业名须出现在 name/value/text（第二层：text 归属——
-                # 审计 P1-6，防仅经 subject 挂靠的事实被丢弃）；空名已在入口短路
-                blob = (
-                    f"{it.get('canonical_name') or ''} {it.get('value') or ''} "
-                    f"{str(it.get('text') or '')[:200]}"
-                )
-                if company_name not in blob:
-                    continue
-                facts.append(
+            # 相关性过滤：企业名须出现在 name/value/text（第二层：text 归属——
+            # 审计 P1-6，防仅经 subject 挂靠的事实被丢弃）；空名已在入口短路
+            # 2026-09-21：旧实现在这里判 ``it.get("kind") != "chunk"`` —— 检索契约里
+            # 根本没有 ``kind`` 字段（命中的是知识对象，切块挂在 ``snippet`` 上），
+            # 该条件恒真、等于没写。删掉死条件，保留真正的企业名相关性过滤。
+            blob = (
+                f"{it.get('canonical_name') or ''} {it.get('value') or ''} "
+                f"{str(it.get('text') or '')[:200]}"
+            )
+            if company_name not in blob:
+                continue
+            facts.append(
+                {
+                    "canonical_name": it.get("canonical_name"),
+                    "predicate": it.get("predicate"),
+                    "value": it.get("value"),
+                    "text": str(it.get("text") or "")[:200],
+                    # 2026-09-21：知识库对象类型（entity/fact）与出处，供前端
+                    # 如实区分「实体提及」与「结构化事实」；display 是单行人话标签。
+                    "object_type": it.get("object_type"),
+                    "document_title": it.get("document_title"),
+                    "display": _fact_display(it),
+                    "evidence_ids": it.get("evidence_ids") or [],
+                }
+            )
+        for it in items:
+            chunk_id = str(it.get("chunk_id") or "").strip()
+            text = str(it.get("snippet") or it.get("value") or "").strip()
+            if chunk_id and text and all(c["chunk_id"] != chunk_id for c in knowledge_chunks):
+                knowledge_chunks.append(
                     {
-                        "canonical_name": it.get("canonical_name"),
-                        "predicate": it.get("predicate"),
-                        "value": it.get("value"),
-                        "text": str(it.get("text") or "")[:200],
-                        # 2026-09-21：知识库对象类型（entity/fact）与出处，供前端
-                        # 如实区分「实体提及」与「结构化事实」；display 是单行人话标签。
-                        "object_type": it.get("object_type"),
-                        "document_title": it.get("document_title"),
-                        "display": _fact_display(it),
-                        "evidence_ids": it.get("evidence_ids") or [],
+                        "kind": "document_chunk",
+                        "chunk_id": chunk_id,
+                        "document_id": it.get("document_id"),
+                        "document_title": it.get("document_title") or "",
+                        "text": text,
                     }
                 )
-        kernel_ok = True
+        knowledge_ok = True
     except Exception as e:  # noqa: BLE001
-        logger.warning("profile: Kernel search 失败: %s", e)
-        kernel_error = str(e)[:120]
+        logger.warning("profile: 知识库检索失败: %s", e)
+        knowledge_error = str(e)[:120]
     try:
         relations = await search_relations(company_name, tenant_id=tenant_id)
         # 相关性过滤：关系两端（source/target）须含企业名，防误召回
@@ -227,7 +246,7 @@ async def build_company_profile(
             + str(rel.get("source_name") or "") + str(rel.get("target_name") or "")
         ]
     except Exception as e:  # noqa: BLE001
-        logger.warning("profile: Kernel relations 失败: %s", e)
+        logger.warning("profile: 知识库关系读取失败: %s", e)
 
     # 本地问题池 + 内容资产（按企业过滤——审计 P1-8，防跨企业素材污染）
     from app.services.store import get_store
@@ -255,6 +274,7 @@ async def build_company_profile(
         "facts": facts[:top_facts],
         # 正式企业事实：Knowledge 的 active fact，原样；generation 消费这一批
         "knowledge_facts": knowledge_facts,
+        "knowledge_chunks": knowledge_chunks,  # 去重后的文档切块（评分的数据点来源）
         "fact_groups": fact_groups,
         "facts_error": facts_error,
         "key_facts": key_facts,          # 生成优先引用的核心事实（已随正式事实整体注入）
@@ -272,7 +292,7 @@ async def build_company_profile(
         "questions": questions[:8],
         "assets": assets,
         "built_at": datetime.now(timezone.utc).isoformat(),
-        "sources": ["kernel_search", "kernel_relations", "geo_questions", "geo_kb", "enterprise_facts"],
-        "kernel_ok": kernel_ok,          # 审计 P1-7：Kernel 可用性（失败 ≠ 无数据）
-        "kernel_error": kernel_error,
+        "sources": ["knowledge_search", "knowledge_relations", "geo_questions", "geo_kb", "enterprise_facts"],
+        "knowledge_ok": knowledge_ok,    # 审计 P1-7：知识库可用性（失败 ≠ 无数据）
+        "knowledge_error": knowledge_error,
     }

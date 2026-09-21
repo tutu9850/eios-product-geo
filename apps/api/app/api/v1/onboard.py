@@ -10,7 +10,7 @@
 - POST /auto-config  body: {"step": "run"}                      → 自动监测
 - POST /auto-config  body: {"step": "distill"}                  → 蒸馏闭环
 
-诚实原则：Kernel 无企业资料 → 空候选 + 提示上传，不编造；竞品 LLM 输出失败 → 提示手填。
+诚实原则：企业知识库无企业资料 → 空候选 + 提示上传，不编造；竞品 LLM 输出失败 → 提示手填。
 """
 import json
 import logging
@@ -119,7 +119,7 @@ def _ent_evidence_count(e) -> int:
 async def _step_detect():
     """企业知识库 → 候选名单 → LLM 归类（公司/产品/服务/行业/搜索词）
 
-    2026-09-20 改造（知识源从老 Kernel 换成 EIOS 知识库）：EIOS 的知识对象只有
+    2026-09-20 改造（知识源从换知识源前的老适配器换成 EIOS 知识库）：EIOS 的知识对象只有
     ``entity`` / ``fact`` 两种 type，公司/产品/服务那套分类在 Semantic 不在 Knowledge。
     所以「按 object_type 分组」这条老路在 EIOS 上恒为空 —— 之前的实现就是这么静默
     变成「知识库暂无企业资料」的。现在：
@@ -155,7 +155,7 @@ async def _step_detect():
         }
 
     # ① 候选池：EIOS 的知识对象只有 entity / fact 两种 type —— 公司/产品/服务那套分类在
-    #    Semantic，不在 Knowledge。所以这里不再假装按 object_type 分类（老 Kernel 有
+    #    Semantic，不在 Knowledge。所以这里不再假装按 object_type 分类（换知识源前的老适配器有
     #    company/product/service 字段，那条路在 EIOS 不存在），改成：
     #    名称规则 + 被文档引用频次 → 候选池 → 交给 LLM 归类（见 ②）。
     _COMPANY_SUFFIX = ("公司", "科技", "集团", "工作室", "有限", "研究院", "事务所", "厂", "店")

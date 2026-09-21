@@ -15,7 +15,7 @@ from pathlib import Path
 # engine_status() 与 BUILDER_GEO_ENGINES_URL 已删除 —— 它们是同一件事的第三份答案。
 
 KERNEL_API_URL = os.environ.get("KERNEL_API_URL", "http://localhost:8000")
-# Kernel 企业知识租户（≠ GEO 部门柜）。入驻读实体走这里，避免把部门名当成 Kernel tenant 抽空。
+# 企业知识库企业知识租户（≠ GEO 部门柜）。入驻读实体走这里，避免把部门名当成 企业知识库 tenant 抽空。
 KERNEL_TENANT_ID = os.environ.get("KERNEL_TENANT_ID", "tenant_corp_01")
 
 # 内容生成模型（`adapters/llm.py`）**不在这里配置**：Owner 2026-09-21

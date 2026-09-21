@@ -557,7 +557,7 @@ def strategies(
     days: int | None = 30,
     source_type: str = "ai_answer",
     tenant: str = DEFAULT_TENANT,
-    kernel_probe: bool = True,
+    knowledge_probe: bool = True,
 ) -> dict:
     """内容策略（GEO Action Score，纯规则无 LLM）。
 
@@ -565,7 +565,7 @@ def strategies(
 
     - 用户需求权重(0-10)：该维度总提及 / 全维度提及（用户问题围绕的维度）
     - 认知差距(0-10)：竞品最高认知层级 − 我方层级（无认知=10 差距最大）
-    - 可改变性(0-1)：我方有该维度素材 0.8 / Kernel 有对应能力 1.0 / 否则 0.5
+    - 可改变性(0-1)：我方有该维度素材 0.8 / 企业知识库有对应能力 1.0 / 否则 0.5
     - 证据强度(0-1)：竞品原话含具体证据（数字/案例/认证）1.0，否则 0.5
     - 竞争重要性(0-10)：竞品在该维度的提及占竞品总提及比例
     """
@@ -583,16 +583,16 @@ def strategies(
         max(s["comp_max_level"] + 1, 0) for s in stats.values()
     ) or 1
 
-    # Kernel 对照（可改变性：我方是否有能力素材）——每维度查一次
-    kernel_has: dict[str, bool | None] = {}
-    if kernel_probe:
+    # 企业知识库对照（可改变性：我方是否有能力素材）——每维度查一次
+    knowledge_has: dict[str, bool | None] = {}
+    if knowledge_probe:
         import asyncio
 
-        from services.intelligence.reasoning import _kernel_has as kh
+        from services.intelligence.reasoning import _knowledge_has as kh
 
         async def _probe_all():
             for dim in stats:
-                kernel_has[dim] = await kh(dim)
+                knowledge_has[dim] = await kh(dim)
 
         try:
             asyncio.run(_probe_all())
@@ -616,7 +616,7 @@ def strategies(
         gap = min(10.0, max(1.0, (gap_raw + 1) * 2.0))  # 封顶 10，最低 1
 
         # 可改变性
-        if kernel_has.get(dim):
+        if knowledge_has.get(dim):
             change = 1.0
         elif s["self_quotes"]:
             change = 0.8
@@ -687,13 +687,13 @@ def gap_analysis(
     days: int | None = 30,
     source_type: str = "ai_answer",
     tenant: str = DEFAULT_TENANT,
-    kernel_probe: bool = True,
+    knowledge_probe: bool = True,
 ) -> dict:
     """知识缺口两种分离（方案 V2 §八）：
 
-    - Knowledge Gap（内部）：竞品领先维度 + Kernel 无此能力条目 →
+    - Knowledge Gap（内部）：竞品领先维度 + 企业知识库无此能力条目 →
       需人工确认是「补齐能力」还是「放弃此维度」（AI 无法知道没有记录的能力）
-    - Evidence/GEO Gap（外部）：能力已在 Kernel（内部知道）+ 外部无公开证据 →
+    - Evidence/GEO Gap（外部）：能力已在 企业知识库（内部知道）+ 外部无公开证据 →
       AI 仍不知道 → 发内容/案例/认证建立公开证据
 
     诚实红线：不编造"真实能力"——Knowledge Gap 一律标注"需人工确认"。
@@ -701,15 +701,15 @@ def gap_analysis(
     c = compare(company=company, days=days, source_type=source_type, tenant=tenant)
     stats = _dimension_stats(c)
 
-    kernel_has: dict[str, bool | None] = {}
-    if kernel_probe:
+    knowledge_has: dict[str, bool | None] = {}
+    if knowledge_probe:
         import asyncio
 
-        from services.intelligence.reasoning import _kernel_has as kh
+        from services.intelligence.reasoning import _knowledge_has as kh
 
         async def _probe_all():
             for dim in stats:
-                kernel_has[dim] = await kh(dim)
+                knowledge_has[dim] = await kh(dim)
 
         try:
             asyncio.run(_probe_all())
@@ -734,7 +734,7 @@ def gap_analysis(
                 for q in s["comp_quotes"]
             ][:2],
         }
-        if kernel_has.get(dim):
+        if knowledge_has.get(dim):
             item["action"] = "发内容：能力已在知识库，补齐外部公开证据（技术文档/白皮书/案例/认证）"
             item["gap_type"] = "evidence_gap"
             evidence_gaps.append(item)
@@ -859,7 +859,7 @@ def humanize(
     - risk_notes：AI 风险提示（可转信任建设素材）
     """
     c = compare(company=company, days=days, source_type=source_type, tenant=tenant)
-    s = strategies(company=company, days=days, source_type=source_type, tenant=tenant, kernel_probe=False)
+    s = strategies(company=company, days=days, source_type=source_type, tenant=tenant, knowledge_probe=False)
     f = factor_gaps(company=company, days=days, source_type=source_type, tenant=tenant)
 
     # 我方品牌（取 is_self）

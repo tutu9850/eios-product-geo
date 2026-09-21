@@ -109,7 +109,7 @@ def test_list_tenant_ids_includes_all_cabinets(store):
 
 
 def test_get_entities_reads_the_eios_object_catalog(monkeypatch):
-    """知识源从老 Kernel 换成 EIOS 知识库（2026-09-20）后的契约：
+    """知识源从换知识源前的老适配器换成 EIOS 知识库（2026-09-20）后的契约：
 
     读的是 ``/api/v1/knowledge/objects``（active 对象），租户不再由调用方传 ——
     租户在票上，由部署声明决定。
@@ -184,13 +184,13 @@ def test_media_upload_read(client, tmp_path):
     assert r2.content == png
 
 
-# ── 4. Kernel adapter 契约（top_k 而非 limit）──────────────────
+# ── 4. 企业知识库 adapter 契约（top_k 而非 limit）──────────────────
 
 
 def test_search_knowledge_speaks_the_knowledge_search_contract(monkeypatch):
     """新契约：``eios.knowledge_search/v2``（contract + query + limit + layers）。
 
-    老 Kernel 的 ``top_k`` 已经在权威侧不存在了；``layers`` 取 material|governed，
+    换知识源前的老适配器的 ``top_k`` 已经在权威侧不存在了；``layers`` 取 material|governed，
     ``include_candidates=False`` 必须真的只读 governed（否则「只读正式知识」是句空话）。
     """
     import adapters.eios as eios

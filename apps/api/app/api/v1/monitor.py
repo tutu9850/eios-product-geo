@@ -1935,7 +1935,7 @@ async def generate_questions(payload: GenerateQuestionsIn):
     """AI 生成客户问题（问题池来源）：围绕企业/行业生成真实搜索问法
 
     一切从知识库找（对齐蒸馏页）：企业名空 → 自动识别企业实体；
-    行业空 → 自动提取 Kernel 产品/服务实体作为关键词依据。
+    行业空 → 自动提取 企业知识库产品/服务实体作为关键词依据。
     """
     from adapters.llm import chat, LLMNotConfiguredError, LLMError
 
@@ -1953,7 +1953,7 @@ async def generate_questions(payload: GenerateQuestionsIn):
         except Exception:  # noqa: BLE001
             pass
 
-    # 自动提取产品/服务关键词（Kernel 实体，与蒸馏页同源）
+    # 自动提取产品/服务关键词（企业知识库实体，与蒸馏页同源）
     keywords: list[str] = []
     if not payload.industry:
         try:
@@ -2672,13 +2672,13 @@ _CLAIM_ANCHORS = (
 
 
 async def _check_answer_facts(company_name: str, snippet: str, question: str) -> dict:
-    """单条回答失真检测：提到企业的断言句 → Kernel 检索比对
+    """单条回答失真检测：提到企业的断言句 → 企业知识库检索比对
 
     诚实红线：只标"知识库未覆盖/缺少依据"，不判"造假"（知识库不全 ≠ 企业造假）。
     - 断言句 = 含企业名（或简称）的句子，且含数字/认证/对比锚点
     - 检索 score ≥ 0.5 且命中实体相关 → 有依据（grounded）
     - 否则 → 异常（main_type="缺少依据"）
-    - Kernel 不可用 → 返回 kernel_ok=false（前端区分"不可用"vs"无匹配"）
+    - 知识库不可用 → 返回 knowledge_ok=false（前端区分"不可用"vs"无匹配"）
     """
     if not company_name or not snippet:
         return {"checked": False, "abnormal": False, "reason": "无文本"}
@@ -2699,7 +2699,7 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
     try:
         from adapters.eios import search_knowledge
 
-        kernel_ok = True
+        knowledge_ok = True
         ungrounded: list[str] = []
         for s in claim_sentences[:3]:
             res = await search_knowledge(s, top_k=3, include_candidates=False)
@@ -2707,7 +2707,7 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
             # 证据文本取**全部**命中片段，不只看最高分那条：断言里的数字出现在哪一条都算有依据，
             # 只看第一条会造成「明明有依据却说没依据」的假阳性。
             # 注意：不比较 score —— EIOS 知识库的 n 是无界 rank 分（见下方说明），
-            # 它不是 0~1 的置信度，拿阈值卡它是上一版的老 Kernel 假设。
+            # 它不是 0~1 的置信度，拿阈值卡它是上一版的老知识库假设。
             hit_blob = " ".join(
                 str(h.get(k, "") or "")
                 for h in hits
@@ -2722,7 +2722,7 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
             ngrams = {claim_core[i : i + 4] for i in range(max(0, len(claim_core) - 3)) if len(claim_core[i : i + 4]) == 4}
             related = any(g in hit_blob for g in ngrams) if ngrams else False
             # 2026-09-21 修：原来这里还有一条 `best < 0.5`。
-            # 那个 0.5 是老 Kernel 的归一化分阈值，而 EIOS 知识库的 n 是无界 rank 分
+            # 那个 0.5 是换知识源前的老适配器的归一化分阈值，而 EIOS 知识库的 n 是无界 rank 分
             # （契约 eios.knowledge_retrieval_hit/v2：`n` 只有 minimum，fixture 里就是 1.5 / 3.5；
             #  本机实测同一批检索在 10.0~14.0），所以 `best < 0.5` **永远不成立** ——
             # 等于只要检索回来任何东西，所有断言都算「有依据」。
@@ -2739,12 +2739,12 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
                 "abnormal": True,
                 "main_type": "缺少依据",
                 "claims": ungrounded,
-                "kernel_ok": True,
+                "knowledge_ok": True,
                 "reason": f"{len(ungrounded)} 条断言知识库未覆盖",
             }
-        return {"checked": True, "abnormal": False, "reason": "断言均有知识库依据", "kernel_ok": True}
+        return {"checked": True, "abnormal": False, "reason": "断言均有知识库依据", "knowledge_ok": True}
     except Exception:  # noqa: BLE001
-        return {"checked": True, "abnormal": False, "reason": "知识库不可用", "kernel_ok": False}
+        return {"checked": True, "abnormal": False, "reason": "知识库不可用", "knowledge_ok": False}
 
 
 def _aggregate_fact_check(items: list[dict], company_name: str | None = None) -> dict:
@@ -2752,7 +2752,7 @@ def _aggregate_fact_check(items: list[dict], company_name: str | None = None) ->
 
     数据源：history 中 AI 提到企业的回答（mentioned=True 且 sentiment 非 None 的记录
     取 snippet 做断言检测）。公司名取最近批次 company_name。
-    检测是异步 Kernel 检索——聚合函数返回待检测记录，由路由层并发执行。
+    检测是异步 企业知识库检索——聚合函数返回待检测记录，由路由层并发执行。
     """
     # 确定企业名（最近 batch 的 company_name，兜底从 brand 监测对象取——2026-08-08 修复）
     if not company_name:
@@ -2803,7 +2803,7 @@ async def fact_check():
     items = _load_history()
     base = _aggregate_fact_check(items)
 
-    # 并发检测每条回答（Kernel 检索）——限前 10 条 + 并发 2（Ollama embedding ~4s/次，12s/检索）
+    # 并发检测每条回答（企业知识库检索）——限前 10 条 + 并发 2（Ollama embedding ~4s/次，12s/检索）
     records = base["records"][:10]
     sem = asyncio.Semaphore(2)
 
@@ -2815,7 +2815,7 @@ async def fact_check():
                     timeout=15,
                 )
             except asyncio.TimeoutError:
-                return {"checked": False, "abnormal": False, "reason": "企业知识库检索超时", "kernel_ok": False}
+                return {"checked": False, "abnormal": False, "reason": "企业知识库检索超时", "knowledge_ok": False}
 
     checked = await asyncio.gather(*[_checked(r) for r in records])
     results = [{**rec, **ck} for rec, ck in zip(records, checked)]
@@ -2891,7 +2891,7 @@ async def fact_check():
             "claim_checked": len(claim_checked),    # 其中**真的有企业断言**、比对过知识库的条数
             "candidate_total": len(base["records"]),  # 本轮拉到多少条候选回答（受上限截断）
             "no_claim_count": len(no_claim),        # 有回答但没有任何可核验断言（不计命中也不计失真）
-            "kernel_ok": all(r.get("kernel_ok", True) for r in results) if results else True,
+            "knowledge_ok": all(r.get("knowledge_ok", True) for r in results) if results else True,
         },
         "source_rank": source_rank,
         "question_rank": question_rank,

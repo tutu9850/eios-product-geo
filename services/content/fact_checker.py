@@ -75,7 +75,15 @@ def _fact_label(fact: dict, anchors: list[str]) -> str:
 
     ``value`` 是「这条知识对象出现在哪段原文里」，不是「这条事实是什么」，
     所以只在 **连名字都没有、且原文本来就是一句话**时才用它，否则退回出处资料名。
+
+    2026-09-21（Owner：内容生成消费「文档切块 + 实体」）：**文档切块**自己就是材料，
+    它的标签用资料名 + 数据点个数 —— 一张表里有几十个数字，逐个列出来是噪音。
     """
+    if fact.get("kind") == "document_chunk":
+        doc = _one_line(fact.get("canonical_name") or fact.get("document_title"))
+        if not doc:
+            return ""
+        return (f"{doc}（{len(anchors)} 个数据点）" if anchors else doc)[:LABEL_MAX]
     name = _one_line(fact.get("canonical_name") or fact.get("name"))
     tail = "、".join(a for a in anchors[:3])
     if name and tail:
@@ -94,16 +102,24 @@ def _num_hit(text: str, num_anchors: list[str]) -> bool:
     return any(re.search(rf"(?<!\d){re.escape(a)}(?!\d)", text) for a in num_anchors)
 
 
-def score_fact_density(text: str, kernel_facts: list[dict]) -> dict[str, Any]:
-    """计算文本的 Kernel 事实密度。返回 {score, hit_facts, missing_facts, needs_rewrite, suggestion}"""
-    eligible = [f for f in kernel_facts if _extract_anchors(f)[0]]
+def score_fact_density(text: str, knowledge_facts: list[dict]) -> dict[str, Any]:
+    """计算文本的 企业知识库事实密度。返回 {score, hit_facts, missing_facts, needs_rewrite, suggestion}"""
+    eligible = [f for f in knowledge_facts if _extract_anchors(f)[0]]
     if not eligible:
+        # 2026-09-21：分两种「没数据」——知识库压根没有事实，vs 有事实但都不带数字。
+        # 后者在 GEO 现在的口径下很常见（正式事实多是组织/职责句，数字在原始文档切块里），
+        # 一律说成「暂无该企业带数据的内容」是不准确的。
+        suggestion = (
+            "企业知识库里的正式事实都不含数字/时间，本维度无法注入具体数据"
+            if knowledge_facts
+            else "企业知识库里暂无该企业带数据的内容（数字/年份），无法注入具体数据（内容只能通用介绍）"
+        )
         return {
             "score": 0.0,
             "hit_facts": [],
             "missing_facts": [],
             "needs_rewrite": True,
-            "suggestion": "企业知识库里暂无该企业带数据的内容（数字/年份），无法注入具体数据（内容只能通用介绍）",
+            "suggestion": suggestion,
         }
     hits: list[str] = []
     miss: list[str] = []

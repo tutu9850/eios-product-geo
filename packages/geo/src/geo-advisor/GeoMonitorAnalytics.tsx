@@ -65,7 +65,7 @@ interface FactCheck {
     candidate_total?: number
     /** 有回答但没有任何可核验断言（不计命中也不计失真） */
     no_claim_count?: number
-    kernel_ok: boolean
+    knowledge_ok: boolean
   }
   source_rank: Array<{ rank: number; source: string; count: number; main_type: string }>
   question_rank: Array<{ rank: number; question: string; count: number; main_type: string }>
@@ -293,7 +293,7 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
             value: `${truth.claim_checked ?? truth.total_checked}`,
             detail: `有企业断言并比对过（共 ${truth.total_checked} 条跑完检查，拉到 ${truth.candidate_total ?? truth.total_checked} 条）`,
           },
-          { label: '知识库命中', value: `${truth.hit_kb}`, detail: '断言能在企业知识库对上', tone: truth.kernel_ok ? 'good' : 'bad' },
+          { label: '知识库命中', value: `${truth.hit_kb}`, detail: '断言能在企业知识库对上', tone: truth.knowledge_ok ? 'good' : 'bad' },
           { label: '疑似失真', value: `${truth.abnormal_count}`, detail: `影响 ${truth.affected_questions} 个问题 / ${truth.affected_sources} 个平台`, tone: truth.abnormal_count ? 'warn' : 'good' },
         ]}
       />
@@ -304,7 +304,7 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
         </p>
       ) : null}
       {!truth.available ? <div className="geo-empty">这一轮没有可用于对照的企业知识，结论先不下。</div> : null}
-      {truth.kernel_ok ? null : <p className="geo-note">知识库这次读不到，命中/失真两个数不完整。</p>}
+      {truth.knowledge_ok ? null : <p className="geo-note">知识库这次读不到，命中/失真两个数不完整。</p>}
       {truth.abnormal_count ? (
         <>
           <div className="geo-subhead"><h3>失真平台排行</h3><small>哪个模型最容易说错</small></div>

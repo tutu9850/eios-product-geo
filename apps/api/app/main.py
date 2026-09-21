@@ -169,7 +169,7 @@ for r in (health.router, meta.router, monitor.router, collect.router,
 app.include_router(geo_consumer.router)
 
 # V2 is a product-owned strict path.  It has no legacy Store, tenant header,
-# or Kernel dependency, and only works in auth_context + postgres mode.
+# or 企业知识库 dependency, and only works in auth_context + postgres mode.
 app.include_router(product_monitor.router)
 
 

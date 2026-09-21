@@ -1,8 +1,8 @@
 """GEO 知识库：行业素材 / 问答库（GEO 侧，MVP 本地 JSON 存储）
 
-企业正式知识走 Kernel（/documents 上传 + compile + publish）；
+企业正式知识走 企业知识库（/documents 上传 + compile + publish）；
 这里存 GEO 专用的外部素材（行业报告、竞品文章、FAQ 草稿等），
-P3 阶段可把素材经 Evidence → Fact → Knowledge Object 写入 Kernel。
+P3 阶段可把素材经 Evidence → Fact → Knowledge Object 写入 企业知识库。
 """
 import json
 import uuid
@@ -59,7 +59,7 @@ async def reset_geo_data(confirm: bool = False):
     """重置 GEO 数据（出厂状态）：清空全部业务表 + 媒体文件 + Qdrant 素材向量。
 
     危险操作：confirm 必须为 true，否则拒绝。删除范围 = GEO 自己的数据库
-    （geo.db 9 表 + storage/media + geo_materials 向量）；不动 Kernel/Builder。
+    （geo.db 9 表 + storage/media + geo_materials 向量）；不动 企业知识库/Builder。
     """
     if not confirm:
         return ok({"error": "危险操作：请确认（confirm=true）后再重置", "deleted": {}})
@@ -96,7 +96,7 @@ async def reset_geo_data(confirm: bool = False):
 
 @router.get("/profile")
 async def get_company_profile(company_name: str = "", tenant_id: str = "tenant_corp_01"):
-    """企业画像组装（认知编译器第 1 层）：Kernel 事实+关系 → 画像卡片。"""
+    """企业画像组装（认知编译器第 1 层）：企业知识库事实+关系 → 画像卡片。"""
     from app.services.company_profile import build_company_profile
 
     if not company_name.strip():

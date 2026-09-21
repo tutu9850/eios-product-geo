@@ -1,11 +1,11 @@
 """Intelligence 分析引擎 — Reasoning（周期报告，S2）
 
-流程：聚合摘要 + Kernel active 对照 → 规则定 gap_type → LLM 生成报告文案
+流程：聚合摘要 + 企业知识库 active 对照 → 规则定 gap_type → LLM 生成报告文案
       → 校验 refs → 写 geo_insight_reports。
 
 铁律：
-- Kernel 只读 active（include_candidates=False）；Kernel 不可达 → 保守视为无能力（不编造）
-- gap_type 由规则判定（不让模型自由发挥）：🔴+kernel_has=capability_hidden（推文章）
+- 企业知识库只读 active（include_candidates=False）；企业知识库不可达 → 保守视为无能力（不编造）
+- gap_type 由规则判定（不让模型自由发挥）：🔴 + 知识库已有能力 = capability_hidden（推文章）
   ；🔴+无=capability_missing（知识缺口）；🟢 已有；👁 观察区不处理
 - 无 refs 的 action / knowledge_gaps 不产出；禁无基线定量承诺
 """
@@ -25,13 +25,13 @@ logger = logging.getLogger("eios.intelligence.reasoning")
 DEFAULT_TENANT = "tenant_corp_01"
 
 
-async def _kernel_has(dimension: str) -> bool | None:
-    """Kernel 是否有该维度对应能力（只读 active；保守判定，防编造）。
+async def _knowledge_has(dimension: str) -> bool | None:
+    """企业知识库是否有该维度对应能力（只读 active；保守判定，防编造）。
 
-    三态：True=有能力（检索命中）/ False=无能力（检索无命中）/ None=Kernel 不可达（无法判定）。
-    None 与 False 必须区分——Kernel 宕机不等于企业没能力。
+    三态：True=有能力（检索命中）/ False=无能力（检索无命中）/ None=企业知识库不可达（无法判定）。
+    None 与 False 必须区分——企业知识库宕机不等于企业没能力。
 
-    审计 B7：旧实现用 ``best >= 0.5`` —— 那个 0.5 是按旧 Kernel 的 0–1 余弦分定的。
+    审计 B7：旧实现用 ``best >= 0.5`` —— 那个 0.5 是按换知识源前的旧适配器的 0–1 余弦分定的。
     换成 EIOS 检索后 ``score`` 是排序分（实测 13.5~14.0），条件恒真、阈值成了摆设。
     这里不再假装有个可校准的阈值：以权威侧给的事实为准 —— 命中即有能力。
     """
@@ -42,12 +42,12 @@ async def _kernel_has(dimension: str) -> bool | None:
             return bool(r.get("matched")) or bool(hits)
         return bool(hits)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("kernel check failed for %r: %s", dimension, str(exc)[:120])
-        return None  # Kernel 不可达 → 无法判定（≠ 企业无能力）
+        logger.warning("knowledge check failed for %r: %s", dimension, str(exc)[:120])
+        return None  # 企业知识库不可达 → 无法判定（≠ 企业无能力）
 
 
-async def _kernel_summary(company: str, limit: int = 50) -> str:
-    """Kernel active 摘要（实体名 + 事实短句，≤limit 条，契约钉死防拉爆）。"""
+async def _knowledge_summary(company: str, limit: int = 50) -> str:
+    """企业知识库 active 摘要（实体名 + 事实短句，≤limit 条，契约钉死防拉爆）。"""
     lines: list[str] = []
     try:
         r = await search_knowledge(company or "企业", top_k=limit, include_candidates=False)
@@ -64,8 +64,8 @@ async def _kernel_summary(company: str, limit: int = 50) -> str:
             else:
                 lines.append(name or str(h.get("object_id") or h.get("document_id") or ""))
     except Exception as exc:  # noqa: BLE001
-        lines.append(f"（Kernel 不可达：{str(exc)[:60]}）")
-    return "\n".join([l for l in lines if l][:limit]) or "（Kernel 无 active 内容）"
+        lines.append(f"（企业知识库不可达：{str(exc)[:60]}）")
+    return "\n".join([l for l in lines if l][:limit]) or "（企业知识库暂无 active 内容）"
 
 
 def _aggregate_text(m: dict, p: dict) -> str:
@@ -74,7 +74,7 @@ def _aggregate_text(m: dict, p: dict) -> str:
     for d in m.get("dimensions") or []:
         lines.append(
             f"- 维度「{d['dimension']}」{d['band_label']} 总提及{d['total_mentions']} 我方{d['self_mentions']} 他方{d['other_mentions']}"
-            f" kernel_has={d.get('kernel_has')} gap_type={d.get('gap_type')}"
+            f" knowledge_has={d.get('knowledge_has')} gap_type={d.get('gap_type')}"
         )
         for q in d.get("quotes") or []:
             lines.append(f"    证据[{q.get('evidence_id')}] {q.get('brand')}：{q.get('quote')}")
@@ -100,27 +100,27 @@ async def generate_report(
     overview = aggregator.brand_overview(company=company, days=days, tenant=tenant)
     kw = aggregator.keywords(company=company, days=days, tenant=tenant)
 
-    # 1. Kernel 对照 + 规则定 gap_type（维度逐个查，检索不花生成 token）
-    #    kernel_has 三态：True/False/None(不可达)——None 不判 gap_type，防「Kernel 宕=企业没能力」
+    # 1. 企业知识库对照 + 规则定 gap_type（维度逐个查，检索不花生成 token）
+    #    knowledge_has 三态：True/False/None(不可达)——None 不判 gap_type，防「知识库宕=企业没能力」
     for dim in m["dimensions"]:
-        dim["kernel_has"] = await _kernel_has(dim["dimension"])
+        dim["knowledge_has"] = await _knowledge_has(dim["dimension"])
         if dim["band"] == "red":
-            if dim["kernel_has"] is None:
+            if dim["knowledge_has"] is None:
                 dim["gap_type"] = None
-                dim["kernel_unknown"] = True
+                dim["knowledge_unknown"] = True
             else:
-                dim["gap_type"] = "capability_hidden" if dim["kernel_has"] else "capability_missing"
+                dim["gap_type"] = "capability_hidden" if dim["knowledge_has"] else "capability_missing"
         else:
             dim["gap_type"] = None
 
     # 2. LLM 生成报告文案（actions / knowledge_gaps / diagnosis / why / perception）
-    kernel_summary = await _kernel_summary(company or "")
+    knowledge_summary = await _knowledge_summary(company or "")
     aggregate = _aggregate_text(m, p)
     prompt = REASONING_PROMPT.format(
         company_name=company or "企业",
         days=days,
         aggregate=aggregate,
-        kernel_summary=kernel_summary,
+        knowledge_summary=knowledge_summary,
     )
     llm_json: dict = {}
     try:
@@ -155,7 +155,7 @@ async def generate_report(
                 "band": d["band"],
                 "band_label": d["band_label"],
                 "gap_type": d.get("gap_type"),
-                "kernel_has": d.get("kernel_has"),
+                "knowledge_has": d.get("knowledge_has"),
                 "total_mentions": d["total_mentions"],
                 "self_mentions": d["self_mentions"],
                 "other_mentions": d["other_mentions"],
@@ -225,9 +225,9 @@ def _rule_diagnosis(m: dict) -> str:
     missing = len(m.get("missing") or [])
     parts = []
     if reds:
-        hidden = [d["dimension"] for d in reds if d.get("kernel_has")]
-        miss = [d["dimension"] for d in reds if d.get("kernel_has") is False]
-        unknown = [d["dimension"] for d in reds if d.get("kernel_has") is None]
+        hidden = [d["dimension"] for d in reds if d.get("knowledge_has")]
+        miss = [d["dimension"] for d in reds if d.get("knowledge_has") is False]
+        unknown = [d["dimension"] for d in reds if d.get("knowledge_has") is None]
         if hidden:
             parts.append(f"外界未感知但有能力的维度：{'、'.join(hidden)}")
         if miss:

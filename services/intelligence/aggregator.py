@@ -11,7 +11,7 @@
   🟢 我方被夸≥2 → 已有；观察区 = 总提及 1 次
 - 竞品名单：monitor_item config_json.competitor 或 context.competitors；
   无竞品时不出假数据（他方提及仍统计并标注 brand）
-- gap_type（Kernel 对照）属 S2，matrix 留空字段
+- gap_type（企业知识库对照）属 S2，matrix 留空字段
 """
 import json
 import logging
@@ -207,7 +207,7 @@ def matrix(
     source_type: str = "ai_answer",
     tenant: str = DEFAULT_TENANT,
 ) -> dict:
-    """差距矩阵（S1：维度提及聚合 + 三色；gap_type 留 S2 Kernel 对照）。"""
+    """差距矩阵（S1：维度提及聚合 + 三色；gap_type 留 S2 企业知识库对照）。"""
     since_dt = datetime.now(timezone.utc) - timedelta(days=days) if days else None
     ev_ids = _succeeded_evidence_ids(since_dt, company, source_type, tenant)
     mentions = _load_mentions(ev_ids, tenant)
@@ -278,7 +278,7 @@ def matrix(
                 "other_mentions": d["other_mentions"],
                 "competitor_mentions": d["brands"],
                 "quotes": d["quotes"],
-                "gap_type": None,  # S2 Kernel 对照后填
+                "gap_type": None,  # S2 企业知识库对照后填
             }
         )
 

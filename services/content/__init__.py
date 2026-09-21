@@ -1,7 +1,7 @@
 """GEO 内容生成（草稿，不自动发布）— 平台化完整版
 
 蓝本：GEO优化系统 content-generator（PLATFORM_CONFIGS / SEO_PLATFORM_CONFIGS / 双 prompt 模板）
-适配：企业资料自动读取（Kernel）、模型走 GEO 专用模型（服务端转发）、不自动发布。
+适配：企业资料自动读取（EIOS 企业知识库）、模型走 EIOS 统一模型入口（服务端转发）、不自动发布。
 流程：企业知识(自动) + 用户问题 + 内容目标/类型 + 平台 → GEO Prompt 编译 → 生成
 """
 import logging
@@ -320,6 +320,52 @@ async def quality(content: str, question: str = "", company_name: str | None = N
     return {"score": min(total, 100), "checks": checks, "suggestions": suggestions}
 
 
+#: 内容生成材料的上限。实测「亚宇臻隆科技」一次检索 61 条命中只对应 **5 个不同文档切块**，
+#: 旧实现把 61 条命中里前 8 条按「实体名: 切片」拼出来 —— 同一张工作表被重复喂 8 遍。
+_MAX_CHUNKS = 6
+_MAX_ENTITIES = 12
+_CHUNK_CHARS = 800
+
+
+def _materials_from_hits(hits: list[dict]) -> tuple[list[str], list[str]]:
+    """检索命中 →（文档切块材料, 实体名）。
+
+    Owner 2026-09-21 拍板：内容生成消费「**知识库的文档切块内容 + 实体**」——
+    只吃实体和语义，现阶段知识库还没那么精准，切块更合适。
+
+    实测一条命中的结构 = 一个知识对象（实体）+ 它出现的**文档切块**
+    （``snippet`` 与知识库 ``/documents/{id}/chunks`` 返回的 ``content`` 逐字相同，已实测比对）。
+    因此这里按 ``chunk_id`` 去重、只留切块原文（带文档名），实体名单独成行：
+    既不重复喂同一张表，也不再把「实体名」当成切片标题。
+    """
+    chunks: dict[str, str] = {}
+    entities: list[str] = []
+    for hit in hits or []:
+        text = " ".join(str(hit.get("snippet") or hit.get("value") or "").split())
+        chunk_id = str(hit.get("chunk_id") or "").strip()
+        if chunk_id and text and chunk_id not in chunks:
+            title = " ".join(str(hit.get("document_title") or "").split())
+            label = f"《{title}》" if title else "（知识库未标文档名）"
+            chunks[chunk_id] = f"- 文档切块 {label}：{text[:_CHUNK_CHARS]}"
+        name = " ".join(str(hit.get("canonical_name") or hit.get("name") or "").split())
+        if name and name not in entities:
+            entities.append(name)
+    return list(chunks.values())[:_MAX_CHUNKS], entities[:_MAX_ENTITIES]
+
+
+def _entity_line(entities: list[str]) -> list[str]:
+    """实体名合成一行（供 prompt 用；没有实体就没有这一行，不写「无」占位）。"""
+    return [f"- 知识库实体：{'、'.join(entities)}"] if entities else []
+
+
+async def _resolve_self_company(tenant_id: str) -> str | None:
+    """认出「本公司」的名字（认不出来就 None，绝不猜）。"""
+    from services.company_identity import resolve_self_company
+
+    resolved = await resolve_self_company(tenant_id)
+    return resolved.get("name")
+
+
 async def _auto_company(tenant_id: str) -> tuple[str | None, list[str]]:
     """识别「本公司」→ 检索相关企业资料，返回 (企业名, 资料列表)。
 
@@ -329,37 +375,30 @@ async def _auto_company(tenant_id: str) -> tuple[str | None, list[str]]:
     ``services.company_identity``（用户点选确认的档案 → brand 对象 → 严格公司名规则），
     认不出来就返回 None，由上游如实说「未识别到企业名称」。
     """
-    from services.company_identity import resolve_self_company
-
-    resolved = await resolve_self_company(tenant_id)
-    company_name = resolved.get("name")
+    company_name = await _resolve_self_company(tenant_id)
     if not company_name:
         return None, []
     materials: list[str] = []
     # 资料检索照旧：拿认定的公司名去知识库捞，捞到几条就带几条（捞不到不是错，如实为空）。
+    # 2026-09-21：材料口径与 build_context 统一为「文档切块 + 实体」（Owner 拍板），
+    # 不再把「实体名: 整段切片」拼成一条。
     try:
         res = await search_knowledge(company_name, tenant_id=tenant_id, top_k=8, include_candidates=False)
-        items = hits_of(res)
-        for it in items[:8]:
-            name = it.get("canonical_name") or it.get("name") or ""
-            val = str(it.get("value") or it.get("summary") or "")[:200]
-            if name and val:
-                materials.append(f"- {name}: {val}")
-            elif name:
-                materials.append(f"- {name}")
+        chunks, entities = _materials_from_hits(hits_of(res))
+        materials = [*chunks, *_entity_line(entities)]
     except Exception:  # noqa: BLE001
         pass
     return company_name, materials
 
 
 # ============ Content Context Builder（P0.5：内容生成引用层） ============
-# 聚合 Kernel 事实 + FAQ 资产 + 历史素材 + 客户问题池 → 可追溯上下文
-# 原则：知识库与内容资产保持隔离；每条带来源标注；无资产时纯 Kernel 路径
+# 聚合 企业知识库（文档切块 + 实体 + 正式事实）+ FAQ 资产 + 历史素材 + 客户问题池 → 可追溯上下文
+# 原则：知识库与内容资产保持隔离；每条带来源标注；无资产时纯知识库路径
 # 素材/问题池统一读 SQLite store（kb/questions），不再读 geo_kb.json / geo_questions.json 残留文件
 
 # ============ Fact Gate（事实闸门）：用户声明 vs 企业事实边界 ============
-# 设计：Kernel=唯一事实源；用户输入里的"声明性语句"（获得/通过/认证…）必须经过验证：
-#   kernel（强：Kernel 检索命中）→ material（中：内容资产素材命中）→ none（弱：无依据）
+# 设计：企业知识库=唯一事实源；用户输入里的"声明性语句"（获得/通过/认证…）必须经过验证：
+#   knowledge（强：知识库检索命中）→ material（中：内容资产素材命中）→ none（弱：无依据）
 # 三种模式：strict（严谨：无依据拒绝生成）/ creative（创作：生成但标注待核验）/ draft（草稿：完全开放标注非事实）
 _FACT_VERBS = ("获得", "通过", "荣获", "评为", "入选", "认证", "取得", "达到", "拥有", "成为", "获评", "认定", "获批", "授予", "拿下", "中标")
 # 审计 B12：原截尾词表只有中文，英文/口语化输入提取不到声明。补英文动词与请求尾词。
@@ -404,7 +443,7 @@ def _extract_fact_claims(text: str) -> list[str]:
 
 
 async def _fact_gate(text: str) -> dict:
-    """事实闸门：多路验证用户声明（Kernel 强依据 / 内容资产素材 中依据 / 无依据）"""
+    """事实闸门：多路验证用户声明（知识库强依据 / 内容资产素材 中依据 / 无依据）"""
     claims = _extract_fact_claims(text or "")
     if not claims:
         return {"claims": [], "unverified": [], "verified": []}
@@ -432,12 +471,12 @@ async def _fact_gate(text: str) -> dict:
         except Exception:  # noqa: BLE001
             best = 0.0
         # 实体相关性：命中知识必须与声明实质相关（防"认证→智能体部署"式向量虚高）
-        # 审计 B7：旧条件 ``best >= 0.5`` 是按旧 Kernel 的 0–1 分定的；EIOS 的 score 是
+        # 审计 B7：旧条件 ``best >= 0.5`` 是按旧知识库的 0–1 分定的；EIOS 的 score 是
         # 排序分（实测 13.5~14.0），该条件恒真、等于没有。真正把关的是下面的 related。
         claim_core = c.replace("我们", "").replace("本公司", "").replace("公司", "").replace("企业", "").replace("刚", "").replace("已", "").replace("了", "")
         related = bool(hit_name and (hit_name in c or claim_core[:12] in hit_blob))
         if hit_name and related:
-            results.append({"claim": c, "level": "kernel", "score": round(best, 2), "evidence": hit_name})
+            results.append({"claim": c, "level": "knowledge", "score": round(best, 2), "evidence": hit_name})
             continue
         core = c.replace("我们", "").replace("公司", "").replace("企业", "").replace("本公司", "")
         if core and core in asset_blob:
@@ -504,7 +543,7 @@ async def build_context(
 ) -> dict:
     """Content Context Builder：按权重聚合内容生成上下文
 
-    1. Kernel 事实知识（最高权重，带出处）
+    1. 正式企业事实 + 知识库文档切块 + 知识库实体（最高权重，带出处）
     2. GEO FAQ 资产（store.kb source_type=faq，按相关性）
     3. 历史内容资产（source_type=generated/text/url）
     4. 客户问题池（store.questions，客户在问什么 → 文章结构参考）
@@ -512,23 +551,26 @@ async def build_context(
     返回 {"company_name", "materials", "faq_assets", "other_assets", "pool_questions", "context_sources"}
     """
     auto_name: str | None = company_name
-    materials: list[str] = []
+    chunk_lines: list[str] = []
+    entity_names: list[str] = []
     # 正式企业事实（Knowledge 的 active fact）：Owner 2026-09-21 拍板「fact 接进内容生成」。
-    # 原样注入、排在检索片段之前 —— 事实是权威给的句子，GEO 不改写；检索片段只作补充证据。
+    # 原样注入、排在切块之前 —— 事实是权威给的句子，GEO 不改写。
     official_facts = await _official_fact_lines()
     if company_name:
         # 2026-08-19 用户拍板：GEO 消息来源含部门库浅抽深抽的 candidate（未发布也算），
         # 显式包含候选——此前写死 False 导致候选知识读不到
         res = await search_knowledge(company_name, tenant_id=tenant_id, include_candidates=True)
-        items = hits_of(res)
-        for it in items[:8]:
-            name = it.get("canonical_name") or it.get("name") or ""
-            val = str(it.get("value") or "")[:200]
-            materials.append(f"- {name}: {val}" if val else f"- {name}")
+        chunk_lines, entity_names = _materials_from_hits(hits_of(res))
     else:
-        auto_name, materials = await _auto_company(tenant_id)
-    if official_facts:
-        materials = [*official_facts, *materials]
+        # 没给企业名时先认出「本公司」，再按同一口径取材料（切块 + 实体）。
+        auto_name = await _resolve_self_company(tenant_id)
+        if auto_name:
+            try:
+                res = await search_knowledge(auto_name, tenant_id=tenant_id, include_candidates=True)
+                chunk_lines, entity_names = _materials_from_hits(hits_of(res))
+            except Exception:  # noqa: BLE001 — 读不到 ≠ 没有资料，来源面板如实为空
+                chunk_lines, entity_names = [], []
+    materials = [*official_facts, *chunk_lines, *_entity_line(entity_names)]
 
     # FAQ 资产 + 历史素材（按问题相关性排序，第一版字符重叠；统一读 SQLite store.kb）
     try:
@@ -573,7 +615,12 @@ async def build_context(
         {"kind": "enterprise_fact", "label": "正式企业事实（知识库已发布事实）", "items": [
             {"fact": line.lstrip("- ").strip()} for line in official_facts[:30]
         ]},
-        {"kind": "kernel", "label": "企业知识库检索片段", "items": materials[len(official_facts):][:6]},
+        {"kind": "document_chunk", "label": "知识库文档切块（原文）", "items": [
+            {"chunk": line} for line in chunk_lines
+        ]},
+        {"kind": "entity", "label": "知识库实体（命中对象）", "items": [
+            {"name": name} for name in entity_names
+        ]},
         {"kind": "faq_asset", "label": "FAQ 内容资产", "items": [
             {"title": a.get("title"), "id": a.get("id"), "content": str(a.get("content") or "")[:200]} for a in faq_assets
         ]},
@@ -618,7 +665,7 @@ async def generate(
     structure: str = "free",  # 认知编译器：free（自由长文，默认）/ geo（可抽取结构模板）
     materials_extra: list[dict] | None = None,  # H19：外部个人素材并入生成上下文
 ) -> dict:
-    # 0) Fact Gate：提取用户声明 → 多路验证（Kernel 强 / 素材 中 / 无依据）
+    # 0) Fact Gate：提取用户声明 → 多路验证（知识库强 / 素材 中 / 无依据）
     fg = await _fact_gate(question)
     if fg["unverified"] and mode == "strict":
         return {
@@ -630,7 +677,7 @@ async def generate(
             ),
             "unverified_facts": fg["unverified"],
         }
-    # 1) Content Context Builder：聚合 Kernel 事实 + FAQ 资产 + 历史素材 + 问题池
+    # 1) Content Context Builder：聚合 正式事实/文档切块/实体 + FAQ 资产 + 历史素材 + 问题池
     ctx = await build_context(question=question, company_name=company_name, tenant_id=tenant_id)
     auto_name = ctx["company_name"]
     materials = ctx["materials"]
@@ -652,7 +699,7 @@ async def generate(
             "unverified_facts": [],
         }
 
-    # 认知编译器（structure=geo）：企业画像提前构建——材料与 fact_check 同源（审计 P1-4），只查一次 Kernel
+    # 认知编译器（structure=geo）：企业画像提前构建——材料与 fact_check 同源（审计 P1-4），只查一次知识库
     profile = None
     if structure == "geo":
         from app.services.company_profile import build_company_profile

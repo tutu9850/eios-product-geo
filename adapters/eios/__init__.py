@@ -3,7 +3,7 @@
 Owner 2026-09-20 拍板（本文件是它的落地）：
 - **只读**。scope 常量表里只有读：``knowledge.search`` / ``knowledge.objects.read`` /
   ``knowledge.documents.read``。申请写 scope 的代码在这里不存在，也不接受调用方传入 scope。
-- **不写**。知识库不接受 GEO 写入；旧 Kernel 的 ``write_candidate`` 已删除，调用它会明确
+- **不写**。知识库不接受 GEO 写入；换知识源前那个适配器的 ``write_candidate`` 已删除，调用它会明确
   失败（``AuthorityWriteNotAllowed``），不让「外部情报写回知识库」静默丢数据。
 - **每一次读都留下快照**（``app/services/knowledge_snapshot.py``）：命中带回
   object_id / document_id / chunk_id / evidence_ids / 契约名 / 读的时刻。正本永远在知识库，
@@ -13,7 +13,7 @@ Owner 2026-09-20 拍板（本文件是它的落地）：
   身份只有那一处），和 eios-product-api / eios-product-advisor 是同一条路；scope 是本模块
   写死的只读表，调用方传不进来。
 
-旧实现的记忆（为什么换）：老 Kernel 适配器打 ``KERNEL_API_URL``（默认 localhost:8000），
+旧实现的记忆（为什么换）：换知识源前的适配器打的是 ``KERNEL_API_URL``（默认 localhost:8000），
 那台在 EIOS 里根本不存在 —— dev 栈里 ``:8000`` 无人监听，所以「企业资料检测 / 缺口判定 /
 内容生成」一直在拨空号。现在换成 EIOS 的知识库（``EIOS_KNOWLEDGE_URL``，dev 是 :8040）。
 """
@@ -55,8 +55,8 @@ class EIOSKnowledgeError(RuntimeError):
         self.status = status
 
 
-#: 旧名字保留：老 Kernel 适配器里这个类叫 KernelError，调用点仍按名字捕获。
-KernelError = EIOSKnowledgeError
+#: 兼容别名：这个异常在换知识源前另有名字，调用点统一按知识库的名字捕获即可。
+KnowledgeError = EIOSKnowledgeError
 
 
 class AuthorityWriteNotAllowed(EIOSKnowledgeError):
@@ -182,7 +182,7 @@ def _provenance(**extra: Any) -> dict[str, Any]:
 def _map_hit(hit: dict[str, Any]) -> dict[str, Any]:
     """知识库 hit → GEO 内部沿用字段。
 
-    ``value`` 放知识库给的原文片段（snippet）。这不是老 Kernel 的 fact value：
+    ``value`` 放知识库给的原文片段（snippet）。这不是换知识源前那种 fact value：
     判定链（缺口/覆盖）读的是「有没有实质文本证据」，而片段就是权威给出的那段证据，
     所以这里如实当文本用，不伪造 predicate。
     """
@@ -239,7 +239,7 @@ async def search_knowledge(
     """
     text = (query or "").strip()
     if not text:
-        # 空查询在老 Kernel 里等于「列全部」。EIOS 的检索契约要求 query 非空，
+        # 空查询在换知识源前的老适配器里等于「列全部」。EIOS 的检索契约要求 query 非空，
         # 所以这里改走对象目录，并如实标成 list（不是 search 命中）。
         listed = await list_knowledge_objects(limit=MAX_LIMIT * 2)
         hits = [
@@ -346,8 +346,8 @@ async def get_entities(
 ) -> list[dict[str, Any]]:
     """企业知识对象（老调用点沿用这个名字）。
 
-    与老 Kernel 的差别必须说清：EIOS 的知识对象只有 ``entity`` / ``fact`` 两种 type，
-    没有 Kernel 那套 ``company`` / ``product`` / ``service`` 分类 —— 分类在 Semantic。
+    与换知识源前的老适配器的差别必须说清：EIOS 的知识对象只有 ``entity`` / ``fact`` 两种 type，
+    没有 企业知识库那套 ``company`` / ``product`` / ``service`` 分类 —— 分类在 Semantic。
     所以 ``object_type`` 就是 EIOS 给的那两种，调用方不要再假设能拿到 company/product。
     ``company_id`` / ``tenant_id`` 保留只为兼容：租户由票决定。
     """
@@ -477,7 +477,7 @@ __all__ = [
     "hits_of",
     "AuthorityWriteNotAllowed",
     "EIOSKnowledgeError",
-    "KernelError",
+    "KnowledgeError",
     "KNOWLEDGE_AUDIENCE",
     "KNOWLEDGE_READ_SCOPES",
     "get_entities",
