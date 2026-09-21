@@ -394,6 +394,41 @@ def test_apply_reports_the_chunks_it_brought_over_for_every_picked_document(monk
     assert data["chunks_total"] == 3
 
 
+# ── 同步时把切块**存进 GEO 自己的台账**（Owner 2026-09-22） ──────────
+
+def test_sync_stores_the_chunks_it_brings_over_into_geos_own_ledger(monkeypatch, tenant):
+    """Owner：「同步知识库的时候就能看得到一并带过来存起来啊」。
+
+    以前 ``_pull_documents`` 只数了数就把切块丢了 —— ``kind=chunks`` 台账从来没人写过，
+    于是内容生成的「知识库文档切块（原文）」恒为 0。同步之后就该读得到。
+    """
+    from app.api.v1 import kb_init
+    from app.services import knowledge_snapshot
+
+    _patch_kb(monkeypatch, chunks={
+        "doc_1": [{"chunk_id": "chk_a", "text": "薪酬制度正文"}],
+        "doc_2": [{"chunk_id": "chk_b", "text": "产品说明正文"}, {"chunk_id": "chk_c", "text": "又一段"}],
+    })
+    asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1", "doc_2"])))
+
+    stored = knowledge_snapshot.all_chunks()
+    assert {c["chunk_id"] for c in stored} == {"chk_a", "chk_b", "chk_c"}
+    # 读得到 ≠ 冒充权威：快照就是快照
+    assert {c["document_id"] for c in stored} == {"doc_1", "doc_2"}
+    assert knowledge_snapshot.chunks_for_document("doc_2")
+
+
+def test_a_sync_that_could_not_read_chunks_stores_nothing(monkeypatch, tenant):
+    """门关着又没有快照 → 如实 0，不许存半条假装有。"""
+    from app.api.v1 import kb_init
+    from app.services import knowledge_snapshot
+
+    _patch_kb(monkeypatch, chunks_error="resource is not available in the caller's view")
+    asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1"])))
+
+    assert knowledge_snapshot.all_chunks() == []
+
+
 def test_a_document_whose_chunks_cannot_be_read_is_still_recorded_but_reported(monkeypatch, tenant):
     """切块拉不到（门关着又没有快照）不能把「选中文档」这件事弄失败，但必须如实报 0。"""
     from app.api.v1 import kb_init

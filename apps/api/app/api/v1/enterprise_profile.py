@@ -751,7 +751,11 @@ async def profile_item(item_id: str):
     # 相关文档块：按子项关键词语义检索（补结构化盲区）
     doc_chunks: list[dict] = []
     try:
-        from adapters.eios import search_knowledge
+        # ``hits_of`` 以前没 import —— 这一段每次都在 ``NameError`` 上被下面的 except 吞掉，
+        # 于是企业资料的每个子项「相关文档」**恒为空**（geo.log 里堆着
+        # 「search doc chunks failed: name 'hits_of' is not defined」）。审计 B5 修过字段名，
+        # 却没发现这行压根没跑起来过。
+        from adapters.eios import hits_of, search_knowledge
 
         kws = (k_rules.get("keywords") or [])[:2]
         if kws:

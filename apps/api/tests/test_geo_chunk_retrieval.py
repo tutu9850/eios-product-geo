@@ -115,6 +115,42 @@ def _context(question: str, assets: list[dict]) -> dict:
         return _run(build_context(question=question, company_name="亚宇臻隆科技"))
 
 
+def test_content_generation_reads_the_chunks_sync_stored_in_geos_own_ledger():
+    """Owner 2026-09-22：「同步知识库的时候就能看得到一并带过来存起来啊」。
+
+    切块确实在同步时存进了 GEO 自己的台账，但生成这条路只走实时检索 —— 检索不给切块正文时
+    面板就恒显「知识库文档切块（原文）0 条」。这里钉住：台帐里有的，生成要读得到，而且
+    必须如实标出「取自 GEO 同步的快照」，不冒充是实时从权威读的。
+    """
+    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+
+    record(
+        kind="chunks",
+        payload=chunk_snapshot_payload(
+            [
+                {"document_id": "doc_1", "document_title": "渠道复盘.docx", "chunk_id": "chk_1",
+                 "text": "成都、重庆、无锡三地演示间的成交路径与复购。"},
+                {"document_id": "doc_1", "document_title": "渠道复盘.docx", "chunk_id": "chk_2",
+                 "text": "售后与续费政策说明。"},
+            ]
+        ),
+    )
+
+    async def _search(*_a, **_kw):
+        return {"hits": []}
+
+    with patch("app.services.store.get_store", return_value=_Store([])), \
+         patch("services.content.search_knowledge", _search), \
+         patch("services.content._official_fact_lines", return_value=[]):
+        ctx = _run(build_context(question="无锡演示间的成交路径", company_name="亚宇臻隆科技"))
+
+    row = next(s for s in ctx["context_sources"] if s["kind"] == "document_chunk")
+    assert len(row["items"]) == 2, "台账里的切块必须进生成上下文"
+    assert "取自 GEO 同步的快照" in row["label"], "来源要如实说是快照，不冒充实时权威读"
+    # 命中的那一段要排在最前（按问题相关度排，不是按台账顺序）
+    assert "无锡" in row["items"][0]["chunk"]
+
+
 def test_uploaded_file_now_reaches_content_generation():
     """既存缺口：上传件是 source_type=file，原来被「历史素材」排除在外 → 生成时用不上。"""
     assets = [_material("m_up", "渠道复盘.txt", LONG) | {"source_type": "file"}]

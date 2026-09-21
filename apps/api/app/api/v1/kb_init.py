@@ -207,8 +207,29 @@ async def _pull_documents(wanted_ids: list[str], list_documents, list_document_c
         truncated = False
         try:
             got = await list_document_chunks(doc_id)
-            pulled = len(got.get("items") or [])
+            found = got.get("items") or []
+            pulled = len(found)
             truncated = bool(got.get("truncated"))
+            # **存下来**（Owner 2026-09-22：「同步知识库的时候就能看得到一并带过来存起来啊」）。
+            # 以前这里只数了数就丢了 —— 台账 kind=chunks 从来没人写过，于是内容生成的
+            # 「知识库文档切块（原文）」恒为 0。正本仍在知识库，这里存的是 GEO 读到的快照。
+            if found:
+                knowledge_snapshot.record(
+                    kind="chunks",
+                    payload=knowledge_snapshot.chunk_snapshot_payload(
+                        [
+                            {
+                                **c,
+                                # 台账按 document_id 取回某份文档的切块 —— 不管上游有没有给，
+                                # 这里都用本次循环的 doc_id 钉死，别存成孤儿行。
+                                "document_id": c.get("document_id") or doc_id,
+                                "document_title": str(c.get("document_title") or item.get("title") or ""),
+                            }
+                            for c in found
+                        ]
+                    ),
+                    source_url="",
+                )
         except Exception as exc:  # noqa: BLE001 — 拉不到切块不影响「选中文档」这件事，但要如实报
             logger.warning("kb-init apply: chunks for %s failed: %s", doc_id, exc)
         entry = {"document_id": doc_id, "chunks": pulled}

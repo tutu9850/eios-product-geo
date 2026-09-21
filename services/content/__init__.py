@@ -363,6 +363,44 @@ def _entity_line(entities: list[str]) -> list[str]:
     return [f"- 知识库实体：{'、'.join(entities)}"] if entities else []
 
 
+def _chunk_lines_from_snapshot(question: str, *, need: int) -> list[str]:
+    """GEO 同步时从知识库带回来、存在**自己柜里**的文档切块（台账 ``kind=chunks``）。
+
+    Owner 2026-09-22：「应该同步知识库的时候就能看得到一并带过来存起来啊」。切块确实是
+    同步时带回来的，但生成这条路一直只走实时检索，从没读过自己那份台账 —— 检索不给切块
+    正文时，面板就恒显「知识库文档切块（原文）0 条」。这里按与问题的相关度取前几段。
+
+    正本仍在知识库；GEO 读的是自己同步时留下的快照，不冒充权威。
+    """
+    if need <= 0:
+        return []
+    try:
+        from app.services.knowledge_snapshot import all_chunks
+
+        rows = all_chunks(limit=2000)
+    except Exception:  # noqa: BLE001 — 台账读不到 ≠ 没有资料，如实为空
+        return []
+    if not rows:
+        return []
+    # ``_relevance_order`` 按 ``id`` 配对分数，台账里的键叫 ``chunk_id`` —— 这里对齐字段名。
+    docs = [
+        {
+            "id": str(c.get("chunk_id") or ""),
+            "title": " ".join(str(c.get("document_title") or "").split()),
+            "content": " ".join(str(c.get("text") or "").split()),
+        }
+        for c in rows
+    ]
+    out: list[str] = []
+    for c in _relevance_order(question or "", docs, "title")[:need]:
+        text = c["content"]
+        if not text:
+            continue
+        label = f"《{c['title']}》" if c["title"] else "（知识库未标文档名）"
+        out.append(f"- 文档切块 {label}：{text[:_CHUNK_CHARS]}")
+    return out
+
+
 async def _resolve_self_company(tenant_id: str) -> str | None:
     """认出「本公司」的名字（认不出来就 None，绝不猜）。"""
     from services.company_identity import resolve_self_company
@@ -661,6 +699,8 @@ async def build_context(
     # 正式企业事实（Knowledge 的 active fact）：Owner 2026-09-21 拍板「fact 接进内容生成」。
     # 原样注入、排在切块之前 —— 事实是权威给的句子，GEO 不改写。
     official_facts = await _official_fact_lines(question)
+    # 切块是从哪读到的不许含糊：实时检索给的 vs GEO 同步时存下的快照 —— 后者要在面板上说出来。
+    chunks_from_snapshot = False
     if company_name:
         # 2026-08-19 用户拍板：GEO 消息来源含部门库浅抽深抽的 candidate（未发布也算），
         # 显式包含候选——此前写死 False 导致候选知识读不到
@@ -675,6 +715,16 @@ async def build_context(
                 chunk_lines, entity_names = _materials_from_hits(hits_of(res))
             except Exception:  # noqa: BLE001 — 读不到 ≠ 没有资料，来源面板如实为空
                 chunk_lines, entity_names = [], []
+    # 实时检索没给够切块正文时，补上**同步时已经存进 GEO 自己柜**的那些（Owner 2026-09-22）。
+    if len(chunk_lines) < _MAX_CHUNKS:
+        seen_text = {line.split("：", 1)[-1] for line in chunk_lines}
+        for line in _chunk_lines_from_snapshot(question, need=_MAX_CHUNKS - len(chunk_lines)):
+            body = line.split("：", 1)[-1]
+            if body in seen_text:
+                continue
+            seen_text.add(body)
+            chunk_lines.append(line)
+            chunks_from_snapshot = True
     materials = [*official_facts, *chunk_lines, *_entity_line(entity_names)]
 
     # FAQ 资产 + 历史素材（按问题相关性排序，第一版字符重叠；统一读 SQLite store.kb）
@@ -724,7 +774,10 @@ async def build_context(
         {"kind": "enterprise_fact", "label": "正式企业事实（与主题相关的部分）", "items": [
             {"fact": line.lstrip("- ").strip()} for line in official_facts[:30]
         ]},
-        {"kind": "document_chunk", "label": "知识库文档切块（原文）", "items": [
+        {"kind": "document_chunk", "label": (
+            "知识库文档切块（原文 · 取自 GEO 同步的快照）" if chunks_from_snapshot
+            else "知识库文档切块（原文）"
+        ), "items": [
             {"chunk": line} for line in chunk_lines
         ]},
         {"kind": "entity", "label": "知识库实体（命中对象）", "items": [
