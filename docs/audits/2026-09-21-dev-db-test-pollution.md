@@ -155,3 +155,49 @@ dev 栈的 GEO（`:8091`）用的是 `apps/geo.db`（`GEO_DB_PATH` 的 dev 默�
 
 - 接受（与既有脏数据同处置）；或
 - 授权建一个正式的快照台账维护门（目前不存在，建门 = 新增 Authority 面，需先拍板）。
+
+---
+
+# 追加登记：「输出正常但不正确」审计那一轮的真机验证又动了 dev 库（2026-09-21 · 本卡）
+
+## 事实（读到的，未改）
+
+本轮（Owner「自己找一遍」）为了核对逻辑错误，做了两类**读**动作：
+
+1. 打开 dev 栈 `:4173/app/geo` 的各页（企业资料总揽、认知差距、高级工具的企业画像…）
+   与直连 `:8091` 的只读接口（`/monitor/fact-check`、`/monitor/items/{id}/trend`、
+   `/distill/cognition/profile`、`/enterprise-profile/*`）。
+2. 一个 in-process 探针脚本（`search_knowledge` 三次：企业简介 / 价格 / 服务流程），
+   用来确认知识库检索分的量级（实测 0.65 / 10.1 / 10.14 / 13.02 —— 无界序位分，
+   不是 0~1 相似度，这就是页面上那句「匹配度 12.4」被判为口径错误的依据）。
+
+这些读按设计会写 `geo_knowledge_snapshots` 台账（按 `payload_hash` 去重，
+新内容才建行，重复读只累加 `read_count` / 推 `last_read_at`）。
+
+读到的现状（只读连接，`mode=ro`）：
+
+| kind | 行数 | min(first_read_at) | max(first_read_at) |
+|---|---|---|---|
+| documents | 7 | 2026-09-20 16:39:31 | 2026-09-21 12:46:15 |
+| objects | 12 | 2026-09-20 16:39:31 | 2026-09-20 16:59:10 |
+| relations | 11 | 2026-09-21 09:31:38 | 2026-09-21 10:02:38 |
+| search | 51 | 2026-09-20 16:39:31 | 2026-09-21 12:59:19 |
+
+其中 `first_read_at >= 2026-09-21 12:30` UTC（本卡时间窗）的行：documents 1 + search 26 = **27**。
+
+同一张表里 `geo_questions` 7 行、`geo_gaps` 4 行、`geo_monitor_history` 8 行、
+`geo_monitor_items` 7 行 —— 与前面几节登记的一致，**本轮没有新增行、没有删行、没有改内容**。
+
+## 为什么没有清理
+
+- 本轮只做读，没有任何写动作是产品功能发出的；快照台账是**读的副作用**，不是产品数据。
+- 全仓 `router.delete` 共 7 个（questions / plans / materials / links / watchlist / items / tasks），
+  **没有**针对 `geo_knowledge_snapshots` 的退役门；`geo_gaps` 同样没有删除门。
+- 裸 SQL 删行/改计数 = 红线明确禁止的「绕过生命周期门」。**没有执行**。
+- Owner 既有拍板「`apps/geo.db` 从 git 运行态剥离，但历史脏数据不清」适用于此。
+
+## 待 Owner
+
+- 接受（与既有脏数据同处置）；或
+- 授权建一个正式的**快照台账维护门**（目前不存在；建门 = 新增 Authority 面，需先拍板），
+  以及 `geo_gaps` 的按来源退役门（同上）。
