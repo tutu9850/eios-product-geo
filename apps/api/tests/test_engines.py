@@ -264,23 +264,129 @@ def test_a_result_echoing_another_consumer_is_still_refused_for_that_face(entry)
         asyncio.run(engines.ask("alpha", "q", consumer=engines.BATTLE_CONSUMER))
 
 
-def test_onboarding_asks_doubao_by_name_through_the_same_entry(entry):
-    """入驻的竞品发现点名豆包（Owner 2026-09-21 拍板「问豆包」）。
+def test_onboarding_asks_every_registered_model_about_the_local_market(entry):
+    """入驻的竞品发现：按**所在地**分问，问**每个登记且能答**的模型（Owner 2026-09-21 重做）。
 
-    点的是**部署目录里的 model_id**：端点/凭据/形状仍然是部署的。部署没登记豆包 →
-    如实失败（这里回退成空串，调用方走通用对标），而不是 GEO 自己找一条豆包连接。
+    原来的实现只问一个写死的豆包、只问一句话，而且城市只能从公司名里抠 ——
+    「笔革家居」抠不出城市，实测退化成全国（返回三维家/酷家乐一类的平台，不是成都本地公司）。
+    现在：问题按 行业 / 产品 / 服务 分组，每个模型都问，consumer 仍是 geo.onboard；
+    哪个模型没配凭据就如实跳过，并把「几个答了」带回去。
     """
     from app.api.v1 import onboard
 
-    fake = entry(_Entry(catalog=_catalog(_item("alpha")),
-                        invoke={"ok": True, "capability": "model.text_generation", "data": {"text": '[{"name":"某竞品","company":"某公司"}]'}}))
-    text = asyncio.run(onboard._ask_doubao_for_brands("谁在做类似的事？"))
-    assert "某竞品" in text
-    request = fake.calls[-1][1]
-    assert request["model_id"] == "doubao"
-    assert request["consumer"] == "geo.onboard"
+    seen_prompts: list[tuple[str, str]] = []
 
-    # 部署没给豆包凭据 → 回退空串，调用方走通用对标（与改造前豆包失败时的行为一致）
-    entry(_Entry(catalog=_catalog(_item("alpha")),
-                 invoke={"ok": False, "error": {"code": "MODEL_SECRET_UNAVAILABLE", "message": "no"}}))
-    assert asyncio.run(onboard._ask_doubao_for_brands("谁在做类似的事？")) == ""
+    class _PerModelEntry(_Entry):
+        """按 model_id 回不同答案：alpha 与 gamma 都提「成都锦华」，beta 是没配凭据。"""
+
+        def invoke(self, *, request, auth_context):  # noqa: ARG002
+            self.calls.append(("invoke", request))
+            model_id = request["model_id"]
+            seen_prompts.append((model_id, request["messages"][-1]["content"]))
+            if model_id == "beta":
+                return _Response(200, {"ok": False, "error": {"code": "MODEL_SECRET_UNAVAILABLE",
+                                                             "message": "no key"}})
+            names = {"alpha": ["成都锦华设计", "我们自家"], "gamma": ["成都锦华设计", "蜀韵家装"]}[model_id]
+            # 权威侧会把 model_id / consumer 原样回执，签名的调用方据此确认「这是给我的答复」
+            body = {"ok": True, "capability": "model.text_generation",
+                    "data": {"text": "[%s]" % ",".join(
+                        '{"name": "%s", "company": "%s公司"}' % (n, n) for n in names),
+                        "model_id": model_id, "consumer": request["consumer"]}}
+            return _Response(200, body)
+
+    entry(_PerModelEntry(catalog=_catalog(_item("alpha"), _item("beta"), _item("gamma"))))
+    out = asyncio.run(onboard._step_discover(
+        ["全案定制"], own_names=["笔革家居", "我们自家"], company="笔革家居",
+        industry="家装设计", city="成都", services=["全案设计"],
+    ))
+
+    # ① 每个模型都被问了，且用的是入驻自己的 consumer
+    assert {m for m, _ in seen_prompts} == {"alpha", "beta", "gamma"}
+    assert all(prompt for _, prompt in seen_prompts)
+
+    # ② 问题按「所在地 + 行业/产品/服务」分组提出来（不再只问一句）
+    assert any("家装设计" in q for q in out["questions"])
+    assert any("全案定制" in q for q in out["questions"])
+    assert any("全案设计" in q for q in out["questions"])
+    for _, prompt in seen_prompts:
+        assert "成都" in prompt
+
+    # ③ 没配凭据的模型跳过，但如实报出「几个答了」
+    assert out["engines_total"] == 3
+    assert out["engines_answered"] == 2
+    assert out["not_answered"] == ["beta"]
+
+    # ④ 两个模型都提到的排在最前；自家名字被剔掉
+    names = [c["name"] for c in out["competitors"]]
+    assert names[0] == "成都锦华设计"
+    assert out["competitors"][0]["mentioned_by"] == ["alpha", "gamma"]
+    assert "我们自家" not in names and "笔革家居" not in names
+
+
+def test_onboarding_falls_back_to_the_company_name_for_the_city(entry):
+    """用户没填所在地时退回从公司名抠（旧行为），并如实说明城市是从哪来的。"""
+    from app.api.v1 import onboard
+
+    class _One(_Entry):
+        def invoke(self, *, request, auth_context):  # noqa: ARG002
+            self.calls.append(("invoke", request))
+            return _Response(200, {"ok": True, "capability": "model.text_generation",
+                                   "data": {"text": '[{"name": "蓉城设计", "company": "蓉城"}]',
+                                            "model_id": request["model_id"],
+                                            "consumer": request["consumer"]}})
+
+    entry(_One(catalog=_catalog(_item("alpha"))))
+    out = asyncio.run(onboard._step_discover(
+        [], own_names=[], company="成都亚宇臻隆科技", industry="家装设计", city="",
+    ))
+    assert out["city"] == "成都"
+    assert out["city_source"] == "company_name"
+    assert any("成都" in q for q in out["questions"])
+
+
+def test_onboarding_says_so_when_there_is_no_model_to_ask(entry):
+    """部署一个模型都没登记 → 空候选 + 明确提示，不编造竞品。"""
+    from app.api.v1 import onboard
+
+    entry(_Entry(catalog=_catalog()))
+    out = asyncio.run(onboard._step_discover(
+        ["全案定制"], own_names=["笔革家居"], company="笔革家居", industry="家装设计", city="成都",
+    ))
+    assert out["competitors"] == []
+    assert out["empty"] is True
+    assert out["engines_total"] == 0
+    assert out["hint"]
+
+
+# ── 竞品发现：模型回答被截断也不能把整步弄挂 ──────────────────────────────
+
+
+def test_a_truncated_model_answer_still_yields_candidates():
+    """max_tokens 截断是常态（实测第 45 行断在第 31 列）。
+
+    解析必须尽力而为：完整的名字照收，取不到的当没有；绝不允许一次截断
+    让整步 discover 失败（改造前 `json.loads` 没兜底，实测就是这么挂的）。
+    """
+    from app.api.v1 import onboard
+
+    truncated = ('[{"name": "成都锦华设计", "company": "锦华设计有限公司"},\n'
+                 '{"name": "蜀韵家装", "company": "蜀韵装饰"}, \n'
+                 '{"name": "未写完的公司", "comp')
+    got = onboard._candidates_from(truncated, own_names=[])
+    assert [c["name"] for c in got] == ["成都锦华设计", "蜀韵家装"]
+    assert got[0]["company"] == "锦华设计有限公司"
+
+
+def test_a_model_answer_that_is_not_json_at_all_falls_back_to_lines():
+    """连 JSON 影子都没有（模型改成编号列表）→ 逐行取名字，不抛异常。"""
+    from app.api.v1 import onboard
+
+    got = onboard._candidates_from("1. 成都锦华设计\n2. 蜀韵家装\n以上是我的回答", own_names=[])
+    assert "成都锦华设计" in [c["name"] for c in got]
+
+
+def test_the_json_helper_never_raises_on_garbage():
+    from app.api.v1 import onboard
+
+    for junk in ("", "[", "{{", "【不是 JSON】", "[\"未闭合"):
+        assert onboard._extract_json_array(junk) == []

@@ -41,6 +41,10 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
   // 公司可点选（单选 chips）+ 行业文本输入（确认继续时保存，create 步骤使用）
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null)
   const [industryText, setIndustryText] = useState('')
+  // 所在地（Owner 2026-09-21）：竞品发现按「{城市}的{行业}都有哪些公司」去问。
+  // 以前只能从公司名里抠城市，「笔革家居」抠不出来 → 退化成全国结果（实测返回的是
+  // 三维家/酷家乐这类平台，不是成都本地的家装公司），所以这里让用户直接填。
+  const [cityText, setCityText] = useState('')
   // 第 2 步竞品可勾选（按名字保存 + localStorage 持久化，刷新/重进保留）
   const [selectedCompetitorNames, setSelectedCompetitorNames] = useState<Set<string>>(loadSavedCompetitors())
 
@@ -116,6 +120,7 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
         products: [...selectedProducts],
         company: selectedCompany ?? detect?.company?.[0] ?? '',
         industry: industryText.trim(),
+        city: cityText.trim(),
       })
       const names = d.competitors?.map((c) => c.name) ?? []
       setSelectedCompetitorNames((prev) => {
@@ -151,6 +156,7 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
         products: [...selectedProducts],
         services: [...selectedServices],
         industry: industryText.trim(),
+        city: cityText.trim(),
         competitors,
         // 不传 keywords：监测对象只建勾选的产品/服务/竞品，不为未勾选关键词建 keyword 监测
       })
@@ -314,6 +320,16 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
                 className="w-full rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1.5 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
               />
             </div>
+            {/* 所在地：竞品发现按「成都本地的家装都有哪些公司」这类问法去问；留空则退回从公司名抠 */}
+            <div className="pt-1">
+              <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">所在地（用于发现本地同行）</div>
+              <input
+                value={cityText}
+                onChange={(e) => setCityText(e.target.value)}
+                placeholder="如：成都（留空则从公司名里找）"
+                className="w-full rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1.5 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+              />
+            </div>
             <div className="pt-1">
               <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
                 产品（{selectedProducts.size}/{detect?.products?.length ?? 0}，点击取消不想监测的）
@@ -390,6 +406,31 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
               竞品候选（{competitors.filter((c) => selectedCompetitorNames.has(c.name)).length}/{competitors.length}，点击取消不想监测的）
             </div>
+            {/* 诚实交代：问了几个模型、问了哪几句、城市哪来的 —— 不替部署吹牛说「已联网搜过」 */}
+            {discover && (discover.engines_total ?? 0) > 0 ? (
+              <p className="text-[10.5px] leading-relaxed text-[var(--yayu-faint)]">
+                本次问了 {discover.engines_total} 个模型，{discover.engines_answered ?? 0} 个作答
+                {discover.not_answered && discover.not_answered.length > 0
+                  ? `（未作答：${discover.not_answered.join('、')}，通常是这个部署还没给它们配凭据）`
+                  : ''}
+                ；候选按「被多少个模型提到」排序，取前 10。
+              </p>
+            ) : null}
+            {discover?.questions && discover.questions.length > 0 ? (
+              <p className="text-[10.5px] leading-relaxed text-[var(--yayu-faint)]">
+                提问：{discover.questions.join(' / ')}
+              </p>
+            ) : null}
+            {discover?.city_source === 'company_name' ? (
+              <p className="text-[10.5px] leading-relaxed text-[var(--yayu-faint)]">
+                所在地「{discover.city}」是从公司名里读出来的。想按别的城市发现，回上一步填写。
+              </p>
+            ) : null}
+            {discover?.city_source === 'none' ? (
+              <p className="text-[10.5px] leading-relaxed text-[var(--yayu-faint)]">
+                没有填所在地，这次是按「本地」问的 —— 结果可能不限于你所在的城市。回上一步填写会更准。
+              </p>
+            ) : null}
             <div className="flex flex-wrap gap-1.5">
               {competitors.map((c) => {
                 const active = selectedCompetitorNames.has(c.name)
@@ -404,8 +445,13 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
                         : 'border-[var(--yayu-border)] bg-[var(--yayu-input)] text-[var(--yayu-faint)] line-through hover:border-[var(--yayu-muted)]'
                     }`}
                   >
-                    {c.name}
-                    {c.company ? <span className="opacity-70">{`（${c.company}）`}</span> : null}
+                    <span title={c.mentioned_by?.length ? `提到它的模型：${c.mentioned_by.join('、')}` : undefined}>
+                      {c.name}
+                      {c.company ? <span className="opacity-70">{`（${c.company}）`}</span> : null}
+                      {c.mentioned_by && c.mentioned_by.length > 1 ? (
+                        <span className="ml-1 opacity-70">{`×${c.mentioned_by.length}`}</span>
+                      ) : null}
+                    </span>
                   </button>
                 )
               })}
@@ -428,8 +474,14 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
         ) : (
           <>
             <p className="text-[12px] leading-relaxed text-[var(--yayu-muted)]">
-              未能自动发现竞品候选。可以手填竞品名称，或跳过。
+              {discover?.hint || '未能自动发现竞品候选。可以手填竞品名称，或跳过。'}
             </p>
+            {discover?.questions && discover.questions.length > 0 ? (
+              <p className="text-[10.5px] leading-relaxed text-[var(--yayu-faint)]">
+                已经问过：{discover.questions.join(' / ')}
+                {discover.engines_total ? `（${discover.engines_total} 个模型，${discover.engines_answered ?? 0} 个作答）` : ''}
+              </p>
+            ) : null}
             <GeoButtonRow>
               <Button size="sm" onClick={() => setManualOpen(true)}>
                 手填竞品

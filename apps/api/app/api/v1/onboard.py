@@ -35,6 +35,7 @@ class AutoConfigIn(BaseModel):
     products: list[str] = []
     services: list[str] = []
     industry: str | None = None
+    city: str | None = None  # 所在地（Owner 2026-09-21：竞品发现按所在地问，不再靠抠公司名）
     competitors: list[dict] = []  # [{name, company}]
     keywords: list[str] = []  # 行业搜索词（detect 挖出）→ 建 keyword 对象扩大监测面
     monitor_ids: list[str] = []  # 本次 create 返回的对象 id（run 只跑这些）
@@ -63,18 +64,46 @@ def _item_company(it) -> str:
 
 
 def _extract_json_array(text: str) -> list:
-    m = json.loads(text) if text.strip().startswith("[") else None
-    if isinstance(m, list):
-        return m
+    """从模型回答里尽力取出 JSON 数组；**取不到就返回空，绝不抛异常**。
+
+    模型输出被 max_tokens 截断是常态（实测：一条 45 行的数组在第 31 列断掉）。
+    以前这里第一句 `json.loads(text)` 没兜底 —— 一次截断就会让整步失败。
+    """
     import re
 
-    m = re.search(r"\[[\s\S]*\]", text or "")
+    raw = (text or "").strip()
+    if raw.startswith("["):
+        try:
+            m = json.loads(raw)
+            if isinstance(m, list):
+                return m
+        except Exception:  # noqa: BLE001 — 截断/夹杂说明文字都不该炸
+            pass
+    m = re.search(r"\[[\s\S]*\]", raw)
     if m:
         try:
             return json.loads(m.group(0))
         except Exception:  # noqa: BLE001
             pass
     return []
+
+
+def _salvage_pairs(text: str) -> list[dict]:
+    """截断的 JSON 里逐条把 `"name": "...", "company": "..."` 抠出来。
+
+    比逐行文本提取准得多：即使数组没闭合，前面完整的对象仍然可用。
+    """
+    import re
+
+    out: list[dict] = []
+    for chunk in re.finditer(r'\{[^{}]*\}', text or ""):
+        blob = chunk.group(0)
+        name = re.search(r'"name"\s*:\s*"([^"]+)"', blob)
+        company = re.search(r'"company"\s*:\s*"([^"]+)"', blob)
+        if name and name.group(1).strip():
+            out.append({"name": name.group(1).strip(),
+                        "company": company.group(1).strip() if company else ""})
+    return out
 
 
 # ── step 1：知识库检测（实体提取 + LLM 语义分类） ───────────
@@ -318,126 +347,280 @@ def _is_own(name: str, own_names: list[str]) -> bool:
     return False
 
 
-# ── 竞品发现：按所在地对标（问豆包，一次回答里的所有品牌） ─────────
+# ── 竞品发现：按所在地 + 行业/产品/服务分问，问部署里能答的每个模型 ─────────
 _CITIES = [
     "北京", "上海", "广州", "深圳", "成都", "杭州", "重庆", "武汉", "西安", "苏州", "天津", "南京",
     "郑州", "长沙", "东莞", "青岛", "沈阳", "宁波", "昆明", "大连", "厦门", "合肥", "佛山", "福州",
     "哈尔滨", "济南", "无锡", "长春", "温州", "石家庄", "南宁", "常州", "泉州", "南昌", "贵阳", "太原",
     "烟台", "嘉兴", "南通", "金华", "珠海", "惠州", "徐州", "海口", "乌鲁木齐", "绍兴", "中山", "台州",
     "兰州", "潍坊", "保定", "镇江", "扬州", "桂林", "唐山", "三亚", "湖州", "汕头", "新乡", "廊坊",
-    "呼和浩特", "赣州", "盐城", "泰州", "洛阳", "宜昌", "襄阳", "绵阳", "泸州", "遵义", "佛山",
+    "呼和浩特", "赣州", "盐城", "泰州", "洛阳", "宜昌", "襄阳", "绵阳", "泸州", "遵义",
 ]
+
+#: 一次发现问几组问题：行业 1 + 产品 ≤2 + 服务 ≤2（Owner 2026-09-21：
+#: 「问这几个 ai，成都本地的家装都有哪些公司，笔革家居下面的全案定制成都都有哪些公司」）
+_MAX_PRODUCT_QUESTIONS = 2
+_MAX_SERVICE_QUESTIONS = 2
+#: 给用户勾选的候选上限（Owner：「用排名前十的给用户选择」）
+_DISCOVERY_LIMIT = 10
+#: 并发上限：问题 × 模型最坏 5×6=30 次调用，串行太慢，但要压住对模型入口的冲击
+_DISCOVERY_CONCURRENCY = 4
 
 
 def _extract_city(company: str) -> str:
-    """从公司名提取城市（成都笔革设计公司 → 成都）；提取不到返回空（用「本地」）"""
+    """从公司名提取城市（成都笔革设计公司 → 成都）；提取不到返回空。
+
+    这是**兜底**：入驻页现在有「所在地」输入框，用户填了就用用户填的 ——
+    「笔革家居」这种名字里没城市的，靠抠名字永远抠不出来（实测退化成全国结果）。
+    """
     for c in _CITIES:
         if c in (company or ""):
             return c
     return ""
 
 
-#: 竞品发现固定问**豆包** —— Owner 2026-09-21 拍板（「问豆包」）。
-#: 这仍然是**点名部署目录里的一个 model_id**，不是 GEO 替企业选 provider / 端点 / 凭据：
-#: 豆包是否登记、怎么连、用哪把 key 都是部署的事（部署没登记就如实失败并回退通用对标）。
-ONBOARD_MODEL_ID = "doubao"
+def _discovery_questions(*, company: str, city: str, industry: str,
+                         products: list[str], services: list[str]) -> list[dict]:
+    """构造「问 AI 找同行」的问题：行业一句、产品/服务各不超过两句。
 
-
-async def _ask_doubao_for_brands(prompt: str, max_tokens: int = 800) -> str:
-    """竞品发现要一次「问 AI」：点名豆包，走部署的统一模型入口。
-
-    以前这里是 GEO 自己拿豆包的 key 直连 —— Owner 2026-09-21：「GEO 不保留 Builder /
-    .env / 自己的模型 Key」「Model Capability 必须成为所有产品统一调用模型的唯一正规入口」。
-
-    失败（部署没登记豆包 / 没给凭据 / 权威侧拒绝）一律返回空串，调用方回退通用对标逻辑 ——
-    与改造前豆包失败时的行为一致。
+    只列中国品牌；自家名字明确排除（模型很爱把自己也列进来）。
     """
-    from adapters.engines import EngineFaceError, EngineNotConfigured, ONBOARD_CONSUMER, ask
+    where = city or "本地"
+    ind = (industry or "").strip()
+    out: list[dict] = []
 
-    try:
-        return (await ask(ONBOARD_MODEL_ID, prompt, max_tokens=max_tokens, consumer=ONBOARD_CONSUMER)).strip()
-    except (EngineNotConfigured, EngineFaceError) as exc:
-        logger.warning("竞品发现问豆包失败（回退通用对标）：%s", str(exc)[:150])
-        return ""
-
-def _extract_brands(content: str) -> list[str]:
-    """从豆包一次回答里提取所有品牌/公司名：按行/编号/顿号拆分，过滤噪声词"""
-    out: list[str] = []
-    for line in content.splitlines():
-        name = line.strip().lstrip("0123456789.、)）·-— \t")
-        name = name.split("：")[-1].strip()
-        if not name or len(name) > 24:
-            continue
-        if any(t in name for t in ("公司", "品牌", "比如", "例如", "介绍", "以上", "回答", "包括", "主要", "还有", "相关", "可以", "以下", "这类")):
-            continue
-        out.append(name)
+    if ind:
+        out.append({"kind": "industry", "topic": ind,
+                    "text": f"{where}的{ind}都有哪些公司？"})
+    for p in [x for x in products if (x or "").strip()][:_MAX_PRODUCT_QUESTIONS]:
+        name = p.strip()
+        out.append({"kind": "product", "topic": name,
+                    "text": f"{company or '我们公司'}旗下的{name}，{where}都有哪些公司在做？"})
+    for sv in [x for x in services if (x or "").strip()][:_MAX_SERVICE_QUESTIONS]:
+        name = sv.strip()
+        out.append({"kind": "service", "topic": name,
+                    "text": f"{name}{where}本地有哪些公司？"})
     return out
 
 
-async def _step_discover(products: list[str], own_names: list[str] | None = None, company: str = "", industry: str = ""):
-    """竞品发现（按所在地对标）：基于公司/产品/行业构造本地问题问豆包，
-    豆包一次回答里提到的所有品牌记下来 = 竞品。
-    豆包失败（无 key/异常/空结果）→ 回退原逻辑（通用产品对标）。
+def _discovery_prompt(question: str, own_names: list[str]) -> str:
+    own_text = "、".join(own_names[:12]) if own_names else "（无）"
+    return (
+        f"{question}\n"
+        "请把你了解到的相关公司/品牌一次列全，每个都带所属公司。\n"
+        f"注意：以下名称属于我们自己，绝对不能列出来：{own_text}\n"
+        "只列中国企业和中国品牌（如字节跳动、腾讯、阿里、华为、百度等），"
+        "绝对不要国外品牌（OpenAI/Google/Microsoft/Salesforce 等）。\n"
+        '严格 JSON 数组输出：[{"name": "公司或品牌名", "company": "所属公司名"}]'
+    )
+
+
+#: 逐行兜底时要扔掉的「这是人话不是公司名」标记。只放句子特征词，
+#: 不放「公司 / 设计 / 家装」这类**正当名字里会出现**的词（「蜀韵装饰有限公司」是候选，不是噪声）。
+_PROSE_MARKS = (
+    "以上", "以下", "我们", "哪些", "什么", "为什么", "回答", "介绍", "例如", "比如", "包括",
+    "主要", "还有", "其他", "这些", "那些", "总结", "备注", "结论", "建议", "希望", "根据",
+    "相关", "可以", "这类", "如下", "首先", "其次", "最后", "好的", "注意",
+)
+
+
+def _extract_brands(text: str) -> list[str]:
+    """模型没按 JSON 答（改成编号列表 / 顿号串）→ 逐行抠公司名。
+
+    这是 `_candidates_from` 的**最后一层兜底**：模型答「1. 成都锦华设计\n2. 蜀韵家装」
+    这类文本时，JSON 与截断抢救都取不到东西，只能靠这个。
+    宁可少取，不要取句子：带人话标记的整行/整段一律丢掉。
     """
-    from adapters.llm import chat
+    out: list[str] = []
+    for line in (text or "").splitlines():
+        raw = line.strip().lstrip("0123456789.、)）(（·-—*# \t").strip()
+        if not raw or len(raw) > 60:
+            continue
+        if "？" in raw or "?" in raw:
+            continue
+        if "{" in raw or "}" in raw or '"' in raw:
+            continue  # JSON 残渣：这行不是「人写的列表」
+        # 「如：成都锦华设计」→「如」太短被丢掉，落到真名字；
+        # 「成都锦华设计：本地龙头」→ 前半是真名字，后半是解释。
+        parts = [x.strip() for x in raw.split("：")] if "：" in raw else [raw]
+        segments: list[str] = []
+        for piece in parts:
+            segments.extend(x.strip() for x in piece.split("、"))
+        for seg in segments:
+            name = seg.strip().strip("。；;，,")
+            if not (2 <= len(name) <= 24):
+                continue
+            if any(m in name for m in _PROSE_MARKS):
+                continue
+            if name not in out:
+                out.append(name)
+    return out
+
+
+def _candidates_from(text: str, own_names: list[str]) -> list[dict]:
+    """一条模型回答 → 候选公司列表。
+
+    三层兜底：完整 JSON → 从截断 JSON 里抢救 name/company → 逐行品牌名。
+    """
+    out: list[dict] = []
+    parsed = _extract_json_array(text)
+    if not parsed:
+        parsed = _salvage_pairs(text)
+    if parsed:
+        for it in parsed:
+            if not isinstance(it, dict):
+                continue
+            name = str(it.get("name") or "").strip()
+            if name and not _is_own(name, own_names):
+                out.append({"name": name, "company": str(it.get("company") or "").strip()})
+        return out
+    for name in _extract_brands(text):
+        if name and not _is_own(name, own_names):
+            out.append({"name": name, "company": ""})
+    return out
+
+
+def _rank_candidates(hits: list[dict]) -> list[dict]:
+    """候选去重 + 排序：**被越多的模型提到越靠前**，其次被越多组问题提到，再次按出现先后。
+
+    hits: [{name, company, engine, kind, order}]
+    """
+    merged: dict[str, dict] = {}
+    for h in hits:
+        key = h["name"]
+        cur = merged.get(key)
+        if cur is None:
+            merged[key] = {
+                "name": key,
+                "company": h["company"],
+                "engines": {h["engine"]},
+                "kinds": {h["kind"]},
+                "order": h["order"],
+            }
+            continue
+        cur["engines"].add(h["engine"])
+        cur["kinds"].add(h["kind"])
+        cur["order"] = min(cur["order"], h["order"])
+        if not cur["company"] and h["company"]:
+            cur["company"] = h["company"]
+
+    _KIND_CN = {"industry": "行业", "product": "产品", "service": "服务"}
+    rows = []
+    for item in merged.values():
+        rows.append({
+            "name": item["name"],
+            "company": item["company"],
+            "mentioned_by": sorted(item["engines"]),
+            "asked": [_KIND_CN.get(k, k) for k in sorted(item["kinds"])],
+            "engine_count": len(item["engines"]),
+            "kind_count": len(item["kinds"]),
+            "order": item["order"],
+        })
+    rows.sort(key=lambda r: (-r["engine_count"], -r["kind_count"], r["order"]))
+    return rows
+
+
+async def _step_discover(products: list[str], own_names: list[str] | None = None, company: str = "",
+                         industry: str = "", city: str = "", services: list[str] | None = None):
+    """竞品发现（Owner 2026-09-21 重做）：按**所在地** + 行业/产品/服务分组提问。
+
+    - 问题：行业 1 句 + 产品 ≤2 句 + 服务 ≤2 句（「成都本地的家装都有哪些公司」这类问法）；
+    - 问谁：**部署登记且这次真能答的每个模型**（不再写死豆包）。某个模型没配凭据就如实跳过，
+      结果里带上「N 个模型里 M 个答了」—— 谁配了 key 是部署的事，不是 GEO 能补的；
+    - 汇总：合并去重 → 按「被几个模型提到」排序 → 取前 10 给用户勾选。
+
+    以前这里只问**一个**模型、只问**一句**话，而且城市只能从公司名里抠；
+    「笔革家居」抠不出城市 → 退化成全国，实测返回的是三维家/酷家乐/土巴兔一类的
+    **全国性平台**，而不是成都本地的家装公司。
+    """
+    from adapters.engines import (
+        EngineFaceError,
+        EngineNotConfigured,
+        ONBOARD_CONSUMER,
+        ask,
+        list_engines,
+    )
 
     own_names = [o for o in (own_names or []) if o]
-    own_text = "、".join(own_names[:12]) if own_names else "（无）"
-    results: dict[str, dict] = {}  # name → {name, company}
+    asked_city = (city or "").strip()
+    parsed_city = _extract_city(company)
+    city = asked_city or parsed_city
+    city_source = "user" if asked_city else ("company_name" if parsed_city else "none")
 
-    # ① 主路径：问豆包（按所在地对标）
-    city = _extract_city(company)
-    city_text = f"{city}" if city else "本地"
-    q_text = (
-        f"我们是{company or '一家公司'}，主要产品/服务：{'、'.join(products[:3])}，"
-        f"属于{industry or '相关'}行业。\n"
-        f"请问{city_text}的{industry or '相关'}行业里，有哪些公司/品牌在做类似产品或服务？\n"
-        "请把你了解到的所有相关公司/品牌一次列全，每个都带所属公司。\n"
-        f"注意：以下名称属于我们自己，绝对不能列出来：{own_text}\n"
-        "只列中国企业和中国品牌（如字节跳动、腾讯、阿里、华为、百度等），绝对不要国外品牌（OpenAI/Google/Microsoft/Salesforce 等）。\n"
-        '严格 JSON 数组输出：[{"name": "竞品品牌名", "company": "所属公司名"}]'
+    questions = _discovery_questions(
+        company=company, city=city, industry=industry or "",
+        products=products or [], services=services or [],
     )
-    doubao_text = await _ask_doubao_for_brands(q_text)
-    if doubao_text:
-        # 2026-08-19：优先 JSON 解析（带 company）；失败退回文本品牌提取（company 空）
-        parsed = _extract_json_array(doubao_text)
-        if parsed:
-            for it in parsed:
-                name = str(it.get("name") or "").strip()
-                if name and name not in results and not _is_own(name, own_names):
-                    results[name] = {"name": name, "company": str(it.get("company") or "").strip()}
-        else:
-            for name in _extract_brands(doubao_text):
-                if name and name not in results and not _is_own(name, own_names):
-                    results[name] = {"name": name, "company": ""}
-        logger.info("discover(doubao) brands: %s", list(results.keys())[:10])
+    if not questions:
+        return {
+            "competitors": [], "empty": True, "city": city, "questions": [],
+            "engines_total": 0, "engines_answered": 0,
+            "hint": "还没有行业/产品可问——先在第 1 步确认行业与产品，再来发现竞品。",
+        }
 
-    # ② 回退：豆包没结果 → 原通用逻辑（产品 → chat）
-    if not results:
-        for p in products[:5]:
-            try:
-                text = await chat(
-                    f"当前市面上「{p}」的主要产品/平台有哪些？列出 5-8 个，每个带所属公司。\n"
-                    f"注意：以下名称属于本公司或本公司产品，绝对不能输出它们：{own_text}\n"
-                    "只列外部竞争对手的产品/平台。\n"
-                    "只列中国企业和中国品牌（如字节跳动、腾讯、阿里、华为、百度等），"
-                    "绝对不要国外品牌（如 OpenAI、Google、Microsoft、Salesforce 等）。\n"
-                    '严格 JSON 数组输出：[{"name": "飞书", "company": "字节跳动"}]',
-                    max_tokens=600,
-                )
-                for it in _extract_json_array(text):
-                    name = str(it.get("name") or "").strip()
-                    if name and name not in results and not _is_own(name, own_names):
-                        results[name] = {"name": name, "company": str(it.get("company") or "").strip()}
-            except Exception as e:  # noqa: BLE001
-                logger.warning("discover failed for %s: %s", p, e)
-    items = list(results.values())[:10]
+    try:
+        engines = await list_engines()
+    except (EngineNotConfigured, EngineFaceError) as exc:
+        logger.warning("竞品发现拿不到模型清单：%s", str(exc)[:150])
+        engines = []
+    engines = [e for e in engines if e.get("id")]
+
+    hits: list[dict] = []
+    answered: set[str] = set()
+    failed: list[str] = []
+    order = 0
+
+    if engines:
+        sem = asyncio.Semaphore(_DISCOVERY_CONCURRENCY)
+
+        async def _one(engine_id: str, q: dict) -> tuple[str, dict, str]:
+            async with sem:
+                try:
+                    text = await ask(engine_id, _discovery_prompt(q["text"], own_names),
+                                     max_tokens=900, consumer=ONBOARD_CONSUMER)
+                    return engine_id, q, (text or "")
+                except EngineNotConfigured as exc:
+                    # 「这个部署还没给这个模型配凭据」不是故障：如实跳过它，其余模型照问。
+                    logger.info("竞品发现：模型 %s 未配置，跳过（%s）", engine_id, str(exc)[:120])
+                    return engine_id, q, ""
+                except EngineFaceError as exc:
+                    logger.info("竞品发现：模型 %s 没答（%s）", engine_id, str(exc)[:120])
+                    return engine_id, q, ""
+                except Exception as exc:  # noqa: BLE001 — 单个模型坏掉不该毁掉整次发现
+                    logger.warning("竞品发现：模型 %s 异常 %s", engine_id, str(exc)[:150])
+                    return engine_id, q, ""
+
+        results = await asyncio.gather(*[_one(e["id"], q) for q in questions for e in engines])
+        for engine_id, q, text in results:
+            if not text.strip():
+                continue
+            answered.add(engine_id)
+            for c in _candidates_from(text, own_names):
+                order += 1
+                hits.append({"name": c["name"], "company": c["company"],
+                             "engine": engine_id, "kind": q["kind"], "order": order})
+    else:
+        failed.append("这个部署还没登记任何模型")
+
+    ranked = _rank_candidates(hits)
+    items = [{k: r[k] for k in ("name", "company", "mentioned_by", "asked")}
+             for r in ranked[:_DISCOVERY_LIMIT]]
+
+    hint = None
+    if not items:
+        hint = ("没有任何模型返回候选——请手动在监测中心添加竞品对象"
+                if engines else "这个部署还没有可用模型，请手动添加竞品对象")
     return {
         "competitors": items,
         "empty": not items,
-        "hint": None if items else "大模型未返回竞品清单——请手动在监测中心添加竞品对象",
+        "hint": hint,
         "city": city,
-        "question": q_text if not items else None,
+        "city_source": city_source,
+        "questions": [q["text"] for q in questions],
+        "engines_total": len(engines),
+        "engines_answered": len(answered),
+        "engines_used": sorted(answered),
+        "not_answered": [e["id"] for e in engines if e["id"] not in answered],
     }
 
 
@@ -795,6 +978,8 @@ async def auto_config(payload: AutoConfigIn):
                     own_names=[payload.company, *payload.aliases, *payload.products, *payload.services],
                     company=payload.company or "",
                     industry=payload.industry or "",
+                    city=payload.city or "",
+                    services=[x for x in (payload.services or []) if x],
                 )
             )
         if step == "create":

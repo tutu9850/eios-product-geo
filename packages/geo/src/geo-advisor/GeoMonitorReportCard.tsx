@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { geoGet } from './geo-api'
 import { GeoCardShell, GeoError, GeoLoading } from './shared'
 
@@ -12,7 +12,12 @@ export interface MonitorAnswer {
   rank_est: number | null
   sentiment: string
   snippet: string
+  /** 模型回答全文（后端一直有返回；以前只渲染了 snippet，长回答看不到） */
+  answer?: string
 }
+
+/** 一次最多铺几个问题卡片：铺太多整页全是卡片，超出的在下面如实说明 */
+const _MAX_QUESTION_GROUPS = 12
 
 interface SentimentOverview {
   total: number
@@ -56,13 +61,16 @@ export function GeoMonitorReportCard() {
   const [reasons, setReasons] = useState<{ reasons: Array<{ query: string; engine: string; snippet: string }>; missing_evidence: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // 同一个问题的 6 家回答叠成一组：默认展开第一家，其余用平台按钮切换（Owner 2026-09-21）
+  const [picked, setPicked] = useState<Record<string, string>>({})
+  const [openFull, setOpenFull] = useState<Record<string, boolean>>({})
 
   const load = async () => {
     setLoading(true)
     setError(null)
     try {
       const [a, m] = await Promise.all([
-        geoGet<{ answers: MonitorAnswer[] }>(`/monitor/answers?limit=20${answerType !== 'all' ? `&item_type=${answerType}` : ''}`),
+        geoGet<{ answers: MonitorAnswer[] }>(`/monitor/answers?limit=60${answerType !== 'all' ? `&item_type=${answerType}` : ''}`),
         geoGet<{ items: Array<{ monitor_id: string; type: string }> }>('/monitor/items'),
       ])
       setAnswers(a.answers ?? [])
@@ -107,6 +115,18 @@ export function GeoMonitorReportCard() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
+
+  // 按问题分组：同一个问题的所有平台叠在一起，一家一条（取最新那次监测）
+  const groups = useMemo(() => {
+    const map = new Map<string, MonitorAnswer[]>()
+    for (const a of answers) {
+      const q = a.query || '（无问题）'
+      const list = map.get(q) ?? []
+      if (!list.some((x) => x.engine === a.engine)) list.push(a)
+      map.set(q, list)
+    }
+    return [...map.entries()]
+  }, [answers])
 
   if (loading) return <GeoLoading text="监测报告加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
@@ -182,29 +202,93 @@ export function GeoMonitorReportCard() {
               </button>
             ))}
           </div>
-          {answers.length === 0 ? (
+          {groups.length === 0 ? (
             <p className="text-[11px] text-[var(--yayu-faint)]">暂无监测回答，先运行一次监测。</p>
           ) : (
-            <div className="space-y-1.5">
-              {answers.slice(0, 10).map((a, index) => {
-                const pos = positionOf(a)
+            <div className="space-y-2">
+              {groups.slice(0, _MAX_QUESTION_GROUPS).map(([query, list]) => {
+                const activeEngine = picked[query] ?? list[0]?.engine ?? ''
+                const current = list.find((x) => x.engine === activeEngine) ?? list[0]
+                const expanded = !!openFull[query]
+                const pos = current ? positionOf(current) : null
+                const body = (current?.answer || current?.snippet || '').trim()
                 return (
-                <div key={index} className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-surface-raised)] px-2 py-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-[12px] text-[var(--yayu-foreground)]">{a.query}</span>
-                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${pos.cls}`}>{pos.label}</span>
+                  <div key={query} className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-surface-raised)] px-2 py-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="text-[12px] leading-snug text-[var(--yayu-foreground)]">{query}</span>
+                      <span className="shrink-0 rounded bg-[var(--yayu-input)] px-1.5 py-0.5 text-[10px] text-[var(--yayu-faint)]">
+                        {list.length} 个平台
+                      </span>
+                    </div>
+                    {/* 平台切换：一个按钮一家，未提及的置灰 —— 一眼看出哪几家根本没提到我们 */}
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {list.map((a) => {
+                        const on = a.engine === activeEngine
+                        const dot = !a.mentioned
+                          ? 'bg-[var(--yayu-border)]'
+                          : (a.rank_est ?? 99) <= 3
+                            ? 'bg-[var(--yayu-foreground)]'
+                            : 'bg-[var(--yayu-muted)]'
+                        return (
+                          <button
+                            key={a.engine}
+                            type="button"
+                            title={a.mentioned ? `已提及${a.rank_est !== null ? `（排名 ${a.rank_est}）` : ''}` : '未提及本企业'}
+                            onClick={() => setPicked((prev) => ({ ...prev, [query]: a.engine }))}
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10.5px] transition-colors ${
+                              on
+                                ? 'border-[var(--yayu-foreground)] bg-[var(--yayu-foreground)] text-[var(--yayu-input)]'
+                                : 'border-[var(--yayu-border)] bg-[var(--yayu-input)] text-[var(--yayu-muted)] hover:border-[var(--yayu-muted)]'
+                            }`}
+                          >
+                            <span className={`mr-1 inline-block size-1.5 rounded-full ${dot}`} />
+                            {a.engine}
+                            {a.mentioned && a.rank_est !== null ? <span className="ml-1 opacity-70">{a.rank_est}</span> : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {current ? (
+                      <>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[var(--yayu-faint)]">
+                          {pos ? <span className={`rounded px-1.5 py-0.5 ${pos.cls}`}>{pos.label}</span> : null}
+                          {current.rank_est !== null ? <span>排名 {current.rank_est}</span> : null}
+                          <span>{current.sentiment}</span>
+                          {body ? <span className="ml-auto">{body.length} 字</span> : null}
+                        </div>
+                        {/* 全文放进一个框里滚动看，不把整页撑长（Owner：「用页面滑轮去调整」） */}
+                        {expanded ? (
+                          body ? (
+                            <div className="mt-1 max-h-72 overflow-y-auto whitespace-pre-wrap rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1.5 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+                              {body}
+                            </div>
+                          ) : (
+                            <p className="mt-1 text-[10.5px] text-[var(--yayu-faint)]">这家没有返回正文。</p>
+                          )
+                        ) : (
+                          <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+                            {current.snippet || '（这家没有返回正文）'}
+                          </div>
+                        )}
+                        {body ? (
+                          <button
+                            type="button"
+                            onClick={() => setOpenFull((prev) => ({ ...prev, [query]: !expanded }))}
+                            className="mt-1 text-[10.5px] text-[var(--yayu-muted)] underline decoration-dotted"
+                          >
+                            {expanded ? '收起全文' : `展开全文（${body.length} 字）`}
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--yayu-faint)]">
-                    <span>{a.engine}</span>
-                    {a.rank_est !== null ? <span>· 排名 {a.rank_est}</span> : null}
-                    <span>· {a.sentiment}</span>
-                  </div>
-                  {a.snippet ? (
-                    <div className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">{a.snippet}</div>
-                  ) : null}
-                </div>
                 )
               })}
+              {groups.length > _MAX_QUESTION_GROUPS ? (
+                <p className="text-[10.5px] text-[var(--yayu-faint)]">
+                  只显示最近 {_MAX_QUESTION_GROUPS} 个问题（本次拉到 {groups.length} 个）——先运行一轮新监测再看最新的。
+                </p>
+              ) : null}
             </div>
           )}
         </>

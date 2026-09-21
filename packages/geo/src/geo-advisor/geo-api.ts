@@ -403,8 +403,26 @@ export interface GeoProfileCategory {
 }
 
 export interface GeoDiscoverResult {
-  competitors: Array<{ name: string; company?: string; reason?: string }>
+  competitors: Array<{
+    name: string
+    company?: string
+    reason?: string
+    /** 哪些模型提到了它（Owner 2026-09-21：问「这几个 AI」，谁答了要如实说） */
+    mentioned_by?: string[]
+    /** 它在哪几组问题里出现：行业 / 产品 / 服务 */
+    asked?: string[]
+  }>
   empty?: boolean
+  hint?: string | null
+  /** 城市从哪来：user=用户填的所在地；company_name=从公司名抠的；none=没有（问「本地」） */
+  city?: string
+  city_source?: 'user' | 'company_name' | 'none'
+  /** 这次实际问了哪几句 */
+  questions?: string[]
+  engines_total?: number
+  engines_answered?: number
+  engines_used?: string[]
+  not_answered?: string[]
 }
 
 /**
