@@ -401,6 +401,10 @@ export interface GeoKbInitApply {
   recorded: boolean
   revision: string | null
   read_count?: number | null
+  /** 这次一个都没勾选（Owner 2026-09-22：都可以不选，照样初始化工作空间） */
+  selection_empty?: boolean
+  /** 空选择时顺带带回 GEO 自己柜子的企业知识：对象 / 正式事实 / 关系各几条 */
+  captured?: { objects: number; facts: number; relations: number; error: string | null } | null
   note: string
 }
 

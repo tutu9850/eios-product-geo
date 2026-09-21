@@ -54,7 +54,7 @@ DOCS = [
 
 
 def _patch_kb(monkeypatch, *, detect=None, documents=None, documents_error=None,
-              chunks=None, chunks_error=None, chunks_truncated=False):
+              chunks=None, chunks_error=None, chunks_truncated=False, entities=None):
     from app.api.v1 import onboard
     import adapters.eios as eios
 
@@ -79,7 +79,10 @@ def _patch_kb(monkeypatch, *, detect=None, documents=None, documents_error=None,
         }
 
     async def _entities():
-        return [{"canonical_name": "亚宇臻隆", "object_type": "entity", "status": "active"}]
+        rows = entities if entities is not None else [
+            {"canonical_name": "亚宇臻隆", "object_type": "entity", "status": "active"}
+        ]
+        return list(rows)
 
     async def _facts():
         return [{"canonical_name": "吴鑫宇 负责人 自媒体运营", "object_type": "fact", "status": "active"}]
@@ -237,15 +240,40 @@ def test_an_unknown_document_id_is_reported_not_silently_dropped(monkeypatch, te
     assert [d["document_id"] for d in data["added"]["documents"]] == ["doc_1"]
 
 
-def test_apply_refuses_an_empty_selection(monkeypatch, tenant):
-    """一项都没选就不落库 —— 空选择不是「初始化」。"""
+def test_an_empty_selection_still_initializes_the_workspace_when_the_base_has_objects(monkeypatch, tenant):
+    """Owner 2026-09-22：公司 / 产品 / 相关文档**都可以不选**。
+
+    「20 个知识库对象 + 0 个文档」这种情形仍然要把 GEO 工作空间初始化出来：不勾选不是
+    「拒绝」，只是这一次没往公司/产品/文档三张清单里记东西；企业对象/事实照样带回自己的柜。
+    """
     from app.api.v1 import kb_init
 
-    _patch_kb(monkeypatch)
+    # 知识库里有对象（这里 20 个），一个文档都没有
+    _patch_kb(monkeypatch, documents=[], entities=[
+        {"canonical_name": f"对象{i}", "object_type": "entity", "status": "active"} for i in range(20)
+    ])
+    body = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn()))
+
+    assert body["ok"] is True
+    data = body["data"]
+    assert data["first_time"] is True          # 工作空间是这次建起来的
+    assert data["selection_empty"] is True     # 如实说这次没勾选
+    assert data["total"] == {"companies": 0, "products": 0, "documents": 0}
+    assert data["captured"]["objects"] == 20   # 对象真带回 GEO 自己的柜
+    assert data["revision"]                    # 台账里真落了修订
+    assert "没勾选" in data["note"]
+
+
+def test_apply_still_refuses_an_empty_selection_when_the_base_is_actually_empty(monkeypatch, tenant):
+    """知识库里真的什么都没有 → 仍然拒：不做一个空壳初始化（读不到 ≠ 是空的）。"""
+    from app.api.v1 import kb_init
+
+    _patch_kb(monkeypatch, documents=[], entities=[])
     body = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn()))
 
     assert body["ok"] is False
     assert body["error"]["code"] == "empty_selection"
+    assert "知识库里也没有" in body["error"]["message"]
 
 
 def test_apply_refuses_to_store_document_titles_it_could_not_verify(monkeypatch, tenant):

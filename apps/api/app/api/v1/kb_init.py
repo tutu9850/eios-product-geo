@@ -144,6 +144,35 @@ async def _capture_enterprise_knowledge(company_names: list[str]) -> dict:
     return captured
 
 
+async def _knowledge_content_probe() -> dict:
+    """知识库里到底有没有东西（**必须在放行块内调用**）。
+
+    Owner 2026-09-22：``公司产品可以不选，相关文档也可以不选``，而「20 个知识库对象 +
+    0 个文档」仍然要把 GEO 工作空间初始化出来。所以空选择能不能落库，判据不是「人勾了
+    几项」，而是**知识库里到底有没有货**：
+
+    - 有对象（哪怕一个文档都没有）→ 有货，照常初始化；
+    - 什么都没有 → 这才是「真的没东西」，仍然拒 ``empty_selection``，不做一个空壳初始化；
+    - 读不到（票签不出来 / 连不上）→ 如实报 ``error``，调用方按 ``knowledge_unreadable``
+      处理 —— 读不到 ≠ 是空的。
+    """
+    out: dict = {"objects": 0, "documents": 0, "has_content": False, "error": None}
+    try:
+        from adapters.eios import get_entities
+
+        out["objects"] = len(await get_entities() or [])
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"读企业知识对象失败：{str(exc)[:160]}"
+    try:
+        from adapters.eios import list_documents
+
+        out["documents"] = len(await list_documents(limit=1) or [])
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"读知识库文档列表失败：{str(exc)[:160]}"
+    out["has_content"] = bool(out["objects"] or out["documents"])
+    return out
+
+
 async def _pull_documents(wanted_ids: list[str], list_documents, list_document_chunks):
     """在放行块里核对文档标题并拉回切块（只被 ``/apply`` 调用，调用方负责开门）。
 
@@ -324,20 +353,37 @@ async def kb_init_apply(payload: KbInitApplyIn):
       payload_hash 去重），返回里如实说这次「新增了什么 / 一直是哪些」。
     - 文档标题由 GEO 自己去知识库核对：客户端只报 id。核不到的 id 不静默丢掉，
       原样列进 ``unknown_documents``。
+    - **公司 / 产品 / 文档都可以不选**（Owner 2026-09-22）：空选择时先探一下知识库
+      到底有没有货 —— 有（哪怕只有对象、0 个文档）就照样初始化工作空间并把企业对象 /
+      事实带回 GEO 自己的柜；真什么都没有才拒 ``empty_selection``。
     """
     from adapters.eios import knowledge_read_grant, list_document_chunks, list_documents
 
     companies = _clean_names(payload.companies)
     products = _clean_names(payload.products)
     wanted_ids = _clean_names(payload.documents, limit=MAX_CANDIDATES)
-    if not companies and not products and not wanted_ids:
-        return err("empty_selection", "一项都没选：至少勾选一个公司 / 产品 / 文档再提交")
+    # Owner 2026-09-22：公司 / 产品 / 相关文档**都可以不选**。不勾选不再等于「拒绝」——
+    # 只要知识库里确实有东西（例如 20 个知识对象 + 0 个文档），这一次同步照样把 GEO
+    # 工作空间初始化出来（顺带把企业对象 / 正式事实 / 关系带回 GEO 自己的柜）。
+    selection_empty = not companies and not products and not wanted_ids
 
     prev = _current_profile()
 
-    # 同一次「手动同步」的放行块：核对文档标题 + 拉切块都要读知识库。
+    # 同一次「手动同步」的放行块：核对文档标题 + 拉切块 + （空选择时）探知识库有没有货。
+    captured: dict | None = None
     try:
         with knowledge_read_grant("kb_sync"):
+            if selection_empty:
+                probe = await _knowledge_content_probe()
+                if probe["error"]:
+                    return err("knowledge_unreadable", str(probe["error"])[:300])
+                if not probe["has_content"]:
+                    return err(
+                        "empty_selection",
+                        "一项都没选，知识库里也没有可用的对象 / 文档：先去知识库放资料，"
+                        "或者扫描后勾选已有的项。",
+                    )
+                captured = await _capture_enterprise_knowledge([])
             documents, unknown, chunks_pulled = await _pull_documents(
                 wanted_ids, list_documents, list_document_chunks
             )
@@ -394,7 +440,16 @@ async def kb_init_apply(payload: KbInitApplyIn):
             "recorded": bool(outcome.get("recorded")),
             "revision": outcome.get("snapshot_id"),
             "read_count": outcome.get("read_count"),
-            "note": "落在 GEO 自己的快照台账里；正本仍在企业知识库，GEO 只读不写",
+            # 空选择 = 只是「把工作空间初始化出来」：公司 / 产品 / 文档清单还是空的，
+            # 但企业对象 / 事实 / 关系已经带回 GEO 自己的柜（本次带回多少如实报 captured）。
+            "selection_empty": selection_empty,
+            "captured": captured,
+            "note": (
+                "这次没勾选任何项：工作空间已初始化，企业对象 / 正式事实已带回 GEO 自己的柜，"
+                "公司 / 产品 / 文档清单还是空的，随时可以回去勾选。"
+                if selection_empty
+                else "落在 GEO 自己的快照台账里；正本仍在企业知识库，GEO 只读不写"
+            ),
         }
     )
 

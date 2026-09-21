@@ -183,6 +183,13 @@ export function GeoKnowledgeInitCard() {
         ? '已纳入'
         : '新增'
 
+  // 空选择的结果要单独说：别让它看起来像「记了 0 项」。
+  const emptySelectionLine = result?.selection_empty
+    ? result.first_time
+      ? '工作空间已初始化。这次一项都没勾选：公司 / 产品 / 文档清单还是空的，公司资料随时可以回去勾。'
+      : '工作空间已刷新。这次一项都没勾选：清单没有变化。'
+    : null
+
   const resultLine = result
     ? result.first_time
       ? `第一次初始化完成：新增公司 ${result.added.companies.length} / 产品 ${result.added.products.length} / 文档 ${result.added.documents.length}，共 ${result.total.companies + result.total.products + result.total.documents} 项`
@@ -194,13 +201,19 @@ export function GeoKnowledgeInitCard() {
   return (
     <GeoCardShell title="企业事实源" className="geo-profile-workbench">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={() => void apply()} disabled={applying || pickedCount === 0}>
+        {/* Owner 2026-09-22：公司 / 产品 / 相关文档都可以不选 —— 不勾选不再锁按钮。
+            知识库里只要有东西（哪怕只有对象、0 个文档），照样把 GEO 工作空间建起来。 */}
+        <Button size="sm" onClick={() => void apply()} disabled={applying}>
           <Database className="size-3.5" />
           {applying
             ? '写入中…'
-            : scan.initialized
-              ? `增量刷新进我的库（${pickedCount} 项）`
-              : `初始化进我的库（${pickedCount} 项）`}
+            : pickedCount === 0
+              ? scan.initialized
+                ? '刷新工作空间（不勾选也可以）'
+                : '初始化工作空间（不勾选也可以）'
+              : scan.initialized
+                ? `增量刷新进我的库（${pickedCount} 项）`
+                : `初始化进我的库（${pickedCount} 项）`}
         </Button>
         <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading || applying}>
           <RefreshCw className="size-3.5" /> 重新扫描知识库
@@ -213,7 +226,25 @@ export function GeoKnowledgeInitCard() {
         </span>
       </div>
 
-      {resultLine ? <p className="text-[11px] text-[var(--yayu-muted)]">{resultLine}</p> : null}
+      {pickedCount === 0 && !result ? (
+        <p className="text-[11px] text-[var(--yayu-muted)]">
+          一项都不勾也可以点：知识库里只要有资料，GEO 工作空间就会建起来（这次不往公司 / 产品 / 文档清单里记）。
+        </p>
+      ) : null}
+      {emptySelectionLine ? (
+        <p className="text-[11px] text-[var(--yayu-muted)]">{emptySelectionLine}</p>
+      ) : null}
+      {/* 空选择时不要再来一行「共 0 项」——那是同一件事的第二种说法。 */}
+      {resultLine && !result?.selection_empty ? (
+        <p className="text-[11px] text-[var(--yayu-muted)]">{resultLine}</p>
+      ) : null}
+      {result?.selection_empty && result.captured ? (
+        <p className="text-[11px] text-[var(--yayu-muted)]">
+          顺手带回 GEO 自己的库：企业知识对象 {result.captured.objects} 条、正式事实{' '}
+          {result.captured.facts} 条、关系 {result.captured.relations} 条
+          {result.captured.error ? `（有一项没读到：${result.captured.error}）` : ''}
+        </p>
+      ) : null}
       {result && (result.chunks_total ?? 0) > 0 ? (
         <p className="text-[11px] text-[var(--yayu-muted)]">
           同步时一并带回 {result.chunks_total} 块文档切块，存进 GEO 自己的库（正本仍在知识库）
