@@ -324,6 +324,10 @@ async def list_knowledge_objects(limit: int = 100, name: str | None = None) -> l
                     "object_type": item.get("type"),
                     "status": item.get("status"),
                     "object_scope": item.get("object_scope"),
+                    # 权威语义关联 + 权威等级：归类只许依据这两个权威字段，
+                    # 不许 GEO 自己按关键词给事实分类（Owner 2026-09-21）。
+                    "semantic_object_id": item.get("semantic_object_id"),
+                    "authority_level": item.get("authority_level"),
                     "evidence_ids": list(item.get("evidence_ids") or []),
                 }
             )
@@ -368,10 +372,39 @@ async def get_entities(
                 "evidence_ids": item["evidence_ids"],
                 "object_id": item["object_id"],
                 "object_scope": item.get("object_scope"),
+                "semantic_object_id": item.get("semantic_object_id"),
+                "authority_level": item.get("authority_level"),
                 "source": "eios-knowledge",
             }
         )
     return out
+
+
+async def list_enterprise_facts(limit: int = 400) -> list[dict[str, Any]]:
+    """企业正式事实（``type=fact`` 的 active 知识对象）。
+
+    Owner 2026-09-21 拍板：Knowledge 里的 active fact 就是正式企业事实，GEO 应当消费；
+    GEO 只读、只展示、只给生成用，**不创建也不改写**事实。
+
+    为什么走「对象目录」而不是检索：事实的 ``canonical_name`` 是一句三元组
+    （如「吴鑫宇 负责人 自媒体运营」），里面通常不含公司名，用公司名检索**永远搜不到**
+    （实测 77 条 fact 里 0 条含企业名）。目录才是企业自己那批对象的全集。
+
+    ``limit`` 默认 400：实测本部署企业可见对象 371 条（entity 342 + fact 29），
+    目录会自己按页取完并提前结束。
+    """
+    items = await list_knowledge_objects(limit=limit)
+    facts = [it for it in items if it.get("object_type") == "fact"]
+    _record(
+        "objects",
+        {
+            "contract": "eios.knowledge_object_list",
+            "kind_filter": "fact",
+            "count": len(facts),
+            "items": facts,
+        },
+    )
+    return facts
 
 
 async def list_documents(limit: int = 50) -> list[dict[str, Any]]:
@@ -450,6 +483,7 @@ __all__ = [
     "get_entities",
     "knowledge_url",
     "list_documents",
+    "list_enterprise_facts",
     "list_knowledge_objects",
     "search_knowledge",
     "search_relations",

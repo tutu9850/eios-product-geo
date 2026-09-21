@@ -4,6 +4,8 @@
 适配：企业资料自动读取（Kernel）、模型走 GEO 专用模型（服务端转发）、不自动发布。
 流程：企业知识(自动) + 用户问题 + 内容目标/类型 + 平台 → GEO Prompt 编译 → 生成
 """
+import logging
+
 from adapters.eios import hits_of, search_knowledge
 from adapters.llm import chat
 import re
@@ -469,6 +471,28 @@ def _relevance_order(query: str, docs: list[dict], text_key: str) -> list[dict]:
     return sorted(docs, key=lambda d: -scores.get(str(d.get("id") or ""), 0.0))
 
 
+async def _official_fact_lines(limit: int = 30) -> list[str]:
+    """正式企业事实（Knowledge ``type=fact`` 的 active 对象）→ 生成用的一行一句。
+
+    为什么必须单独拉：事实的 ``canonical_name`` 是一句三元组，通常不含企业名，
+    用企业名检索永远搜不到（实测 77 条 fact 里 0 条含企业名），只能走对象目录。
+    读不到就返回空 —— 由 ``context_sources`` 如实体现「这轮没有正式事实」，
+    绝不用通用话术顶替。GEO 不创建、不改写这些事实（Owner 2026-09-21）。
+    """
+    try:
+        from adapters.eios import list_enterprise_facts
+
+        lines: list[str] = []
+        for f in (await list_enterprise_facts())[:limit]:
+            name = str(f.get("canonical_name") or "").strip()
+            if name:
+                lines.append(f"- [正式事实] {name}")
+        return lines
+    except Exception as e:  # noqa: BLE001 — 读不到 ≠ 没有事实，由来源面板如实体现
+        logging.getLogger("eios.geo.content").warning("正式事实读取失败: %s", e)
+        return []
+
+
 async def build_context(
     *,
     question: str = "",
@@ -489,6 +513,9 @@ async def build_context(
     """
     auto_name: str | None = company_name
     materials: list[str] = []
+    # 正式企业事实（Knowledge 的 active fact）：Owner 2026-09-21 拍板「fact 接进内容生成」。
+    # 原样注入、排在检索片段之前 —— 事实是权威给的句子，GEO 不改写；检索片段只作补充证据。
+    official_facts = await _official_fact_lines()
     if company_name:
         # 2026-08-19 用户拍板：GEO 消息来源含部门库浅抽深抽的 candidate（未发布也算），
         # 显式包含候选——此前写死 False 导致候选知识读不到
@@ -500,6 +527,8 @@ async def build_context(
             materials.append(f"- {name}: {val}" if val else f"- {name}")
     else:
         auto_name, materials = await _auto_company(tenant_id)
+    if official_facts:
+        materials = [*official_facts, *materials]
 
     # FAQ 资产 + 历史素材（按问题相关性排序，第一版字符重叠；统一读 SQLite store.kb）
     try:
@@ -541,7 +570,10 @@ async def build_context(
                    "report_findings": [], "available": False}
 
     context_sources = [
-        {"kind": "kernel", "label": "企业知识库", "items": materials[:6]},
+        {"kind": "enterprise_fact", "label": "正式企业事实（知识库已发布事实）", "items": [
+            {"fact": line.lstrip("- ").strip()} for line in official_facts[:30]
+        ]},
+        {"kind": "kernel", "label": "企业知识库检索片段", "items": materials[len(official_facts):][:6]},
         {"kind": "faq_asset", "label": "FAQ 内容资产", "items": [
             {"title": a.get("title"), "id": a.get("id"), "content": str(a.get("content") or "")[:200]} for a in faq_assets
         ]},

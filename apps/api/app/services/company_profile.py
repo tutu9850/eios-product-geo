@@ -1,13 +1,19 @@
 """企业画像组装（认知编译器 · 第 1 层：企业理解层）
 
 输入企业名 → 自动构建画像卡片：
-  Kernel 事实（实体/数字/时间，带出处） + Kernel 关系（人话）
-  + 本地问题池（客户在问什么） + 本地内容资产
+  正式企业事实（Knowledge 的 active ``fact``，原样）+ 检索命中对象（实体/数字，带出处）
+  + 知识库关系（人话）+ 本地问题池（客户在问什么） + 本地内容资产
 
-原则：
-- 全部读既有数据（Kernel search/relations + 本地 questions/kb），不从零 LLM 研究
-- 归纳字段（行业/产品/客户/优势/竞争）用规则从 Kernel 事实提取；
-  提取不到 → 「暂无记录」，绝不编造
+原则（Owner 2026-09-21 拍板）：
+- Knowledge 里的 active fact **就是正式企业事实**，GEO 只读、只展示、给生成消费；
+  **不创建、不改写**（事实原文一律原样带出）。
+- fact 的画像归类**只依据权威语义**（Knowledge 对象上的 ``semantic_object_id`` 前缀：
+  ``atr_`` = 属性、``rel_`` = 关系），**不再用 GEO 自己维护的关键词表硬分类**；
+  没有权威关联就不要塞进七类，统一保留在「企业事实」里等人（或上游）判定。
+- 七类归纳（行业/产品/客户/优势/竞争/大事记/人物）今天**只可能由权威语义填**：
+  本部署 371 条企业可见对象里 ``semantic_object_id`` 全为空，所以七类如实为空
+  （不是「没读到」，是「还没有可依据的权威语义」）。
+- 全部读既有数据，不从零 LLM 研究；读不到 → 「暂无记录」，绝不编造
 """
 import logging
 import re
@@ -17,16 +23,39 @@ from adapters.eios import hits_of, search_knowledge, search_relations
 
 logger = logging.getLogger("eios.geo.profile")
 
-# 归纳字段的 predicate/关键词 规则（从 Kernel 事实归类）
-_RULES = {
-    "industry": ["行业", "industry", "领域", "分类"],
-    "products": ["产品", "产品线", "solution", "方案", "平台", "系统", "产品名称"],
-    "customers": ["客户", "医院", "学校", "企业客户", "覆盖", "服务"],
-    "advantages": ["优势", "领先", "首创", "首个", "认证", "专利", "奖项"],
-    "competitors": ["竞争", "竞品", "对标"],
-    "timeline": ["成立", "成立于", "创立", "上线", "发布", "中标", "签约", "202"],
-    "people": ["负责", "对接", "职务", "担任", "负责人"],
+# 画像七类：**只允许由权威语义填**。键名固定，前端按它取。
+_PROFILE_FIELDS = ("industry", "products", "customers", "advantages", "competitors", "timeline", "people")
+
+#: 权威语义前缀（eios.knowledge_object/v1 的 semantic_object_id 家族）→ 事实种类。
+#: 这是**读上游给的字段**，不是 GEO 自建的分类规则。
+_SEMANTIC_KINDS = {
+    "atr_": "attribute",
+    "rel_": "relation",
+    "cpt_": "concept",
+    "met_": "metric",
+    "ent_": "entity_object",
+    "trm_": "term",
+    "rul_": "rule",
 }
+_GROUP_LABELS = {
+    "attribute": "属性事实（Semantic 属性）",
+    "relation": "关系事实（Semantic 关系）",
+    "concept": "概念事实（Semantic 概念）",
+    "metric": "指标事实（Semantic 指标）",
+    "entity_object": "对象事实（Semantic 实体）",
+    "term": "术语事实（Semantic 术语）",
+    "rule": "规则事实（Semantic 规则）",
+    "enterprise_fact": "企业事实（尚未关联 Semantic）",
+}
+
+
+def _fact_group(fact: dict) -> str:
+    """权威分组：只认 Knowledge 对象上的 ``semantic_object_id`` 前缀；没有就进企业事实。"""
+    sid = str(fact.get("semantic_object_id") or "").strip()
+    for prefix, kind in _SEMANTIC_KINDS.items():
+        if sid.startswith(prefix):
+            return kind
+    return "enterprise_fact"
 
 
 def _one_line(text, limit: int = 120) -> str:
@@ -37,12 +66,11 @@ def _one_line(text, limit: int = 120) -> str:
 def _fact_display(hit: dict) -> str:
     """前端「企业画像」用的单行人话标签。
 
-    2026-09-21：知识库命中里的 ``value`` 是这条对象**出现在哪段原文里**
+    2026-09-21：知识库检索命中里的 ``value`` 是这条对象**出现在哪段原文里**
     （``adapters/eios._map_hit`` 把 snippet 放 value，predicate 恒为 None），
-    实测一张账号矩阵表就是 502 字。旧前端直接 ``name：value`` 打印，
-    于是画像卡里出现整段表格。现在：
-      - 有 predicate 的真事实 → 「名：值」
-      - 只有名字的实体 → 「名 · 来自《资料名》」
+    实测一张账号矩阵表就是 502 字。旧前端直接 ``name：value`` 打印，于是画像卡里
+    出现整段表格。现在：有 predicate 的真事实 → 「名：值」；只有名字的实体 →
+    「名 · 来自《资料名》」。
     """
     name = _one_line(hit.get("canonical_name"), 40)
     doc = _one_line(hit.get("document_title"), 40)
@@ -54,21 +82,33 @@ def _fact_display(hit: dict) -> str:
 
 
 def _classify(facts: list[dict]) -> dict[str, list[dict]]:
-    """把 Kernel 事实按 predicate/名称 归类到画像字段。"""
-    out: dict[str, list[dict]] = {k: [] for k in _RULES}
+    """七类归纳：**只由权威语义填**（Owner 2026-09-21）。
+
+    旧实现用 GEO 自己维护的关键词表（「负责/产品/客户…」）把事实硬塞进七类 ——
+    那是 GEO 自造的事实分类体系，已按拍板删除。现在只有带权威 ``semantic_object_id``
+    且能确定落到哪一类的事实（``profile_field``）才会进这里；本部署还没有这种关联，
+    因此返回七类空表，前端如实显示「暂无记录」。
+    """
+    out: dict[str, list[dict]] = {k: [] for k in _PROFILE_FIELDS}
     for f in facts:
-        pred = str(f.get("predicate") or "")
-        name = str(f.get("canonical_name") or "")
-        blob = f"{pred} {name}"
-        for field, keywords in _RULES.items():
-            if any(k.lower() in blob.lower() for k in keywords):
-                out[field].append(f)
-                break
+        field = str(f.get("profile_field") or "")
+        if field in out:
+            out[field].append(f)
     return out
 
 
+def _has_number_or_time(fact: dict) -> bool:
+    """这条事实是否带数字/时间（生成式引擎最爱引用「有数字」的句子）。"""
+    return bool(re.search(r"\d", f"{fact.get('canonical_name')} {fact.get('value')}"))
+
+
 def _pick_number_facts(facts: list[dict], top_n: int = 5) -> list[dict]:
-    """优先挑带数字/时间的事实（实体+数字+时间 = 生成式引擎最爱引用的句子）。"""
+    """优先挑带数字/时间的事实（实体+数字+时间 = 生成式引擎最爱引用的句子）。
+
+    注意：这是**排序**不是**筛选** —— 一条都没有数字时会退化成「按证据强度取前几条」。
+    因此调用方必须用 ``key_facts_basis`` 如实告诉用户这一批到底是不是带数字的，
+    不能一律贴「带数字/时间」（2026-09-21 浏览器验收发现的「输出正常但不正确」）。
+    """
     def _score(f):
         txt = f"{f.get('canonical_name')} {f.get('value')}"
         s = 0
@@ -96,14 +136,50 @@ async def build_company_profile(
             "company": company_name,
             "facts": [],
             "key_facts": [],
+            "key_facts_basis": None,
             "relations": [],
-            "classified": {k: [] for k in _RULES},
+            "knowledge_facts": [],
+            "fact_groups": {},
+            "classified": {k: [] for k in _PROFILE_FIELDS},
+            "classified_basis": "semantic_linkage",
             "questions": [],
             "assets": [],
             "built_at": datetime.now(timezone.utc).isoformat(),
             "sources": [],
             "empty": True,
         }
+
+    # ── 正式企业事实：Knowledge 的 active fact（Owner 2026-09-21 拍板：GEO 应当消费）──
+    # 走对象目录而不是检索：事实的 canonical_name 是一句三元组，通常不含企业名，
+    # 用企业名检索永远搜不到（实测 77 条 fact 里 0 条含企业名）。
+    knowledge_facts: list[dict] = []
+    facts_error: str | None = None
+    try:
+        from adapters.eios import list_enterprise_facts
+
+        for f in await list_enterprise_facts():
+            raw_name = str(f.get("canonical_name") or "").strip()
+            if not raw_name:
+                continue
+            group = _fact_group(f)
+            knowledge_facts.append(
+                {
+                    # 原样带出，不改写事实（GEO 不是事实的作者）
+                    "canonical_name": raw_name,
+                    "display": _one_line(raw_name, 160),
+                    "object_type": f.get("object_type"),
+                    "object_id": f.get("object_id"),
+                    "semantic_object_id": f.get("semantic_object_id"),
+                    "authority_level": f.get("authority_level"),
+                    "object_scope": f.get("object_scope"),
+                    "evidence_ids": f.get("evidence_ids") or [],
+                    "fact_group": group,
+                    "fact_group_label": _GROUP_LABELS.get(group, group),
+                }
+            )
+    except Exception as e:  # noqa: BLE001 — 读不到就如实标错，不假装没有事实
+        logger.warning("profile: 正式事实读取失败: %s", e)
+        facts_error = str(e)[:120]
 
     facts: list[dict] = []
     relations: list[dict] = []
@@ -164,19 +240,39 @@ async def build_company_profile(
         and company_name in f"{a.get('title') or ''} {a.get('content') or ''}"[:300]
     ][:8]
 
-    classified = _classify(facts)
-    key_facts = _pick_number_facts(facts, top_n=6)
+    classified = _classify(knowledge_facts)
+    key_facts = _pick_number_facts(knowledge_facts, top_n=6) or _pick_number_facts(facts, top_n=6)
+    # 这批到底是不是「带数字/时间」——如实回给前端，避免把排序结果说成筛选结果
+    key_facts_basis = "number_or_time" if any(_has_number_or_time(f) for f in key_facts) else "evidence_strength"
+
+    fact_groups: dict[str, int] = {}
+    for f in knowledge_facts:
+        g = str(f.get("fact_group") or "enterprise_fact")
+        fact_groups[g] = fact_groups.get(g, 0) + 1
 
     return {
         "company": company_name,
         "facts": facts[:top_facts],
-        "key_facts": key_facts,          # 带数字/时间的核心事实（生成强制注入用）
+        # 正式企业事实：Knowledge 的 active fact，原样；generation 消费这一批
+        "knowledge_facts": knowledge_facts,
+        "fact_groups": fact_groups,
+        "facts_error": facts_error,
+        "key_facts": key_facts,          # 生成优先引用的核心事实（已随正式事实整体注入）
+        "key_facts_basis": key_facts_basis,  # number_or_time / evidence_strength（前端照实说明）
         "relations": relations[:12],     # 人话关系（"陈砚舟 负责 华信精工"）
         "classified": {k: v[:6] for k, v in classified.items()},
+        # 七类只由权威语义填：本部署 semantic_object_id 全空 → 七类空，如实说明
+        "classified_basis": "semantic_linkage",
+        "classification_note": (
+            "画像七类只依据 Knowledge 对象上的权威 Semantic 关联（semantic_object_id）。"
+            f"当前读到 {len(knowledge_facts)} 条正式企业事实，其中带 Semantic 关联的 "
+            f"{sum(1 for f in knowledge_facts if f.get('semantic_object_id'))} 条 —— "
+            "没有权威关联的事实一律保留在「企业事实」里，不按关键词硬塞进七类。"
+        ),
         "questions": questions[:8],
         "assets": assets,
         "built_at": datetime.now(timezone.utc).isoformat(),
-        "sources": ["kernel_search", "kernel_relations", "geo_questions", "geo_kb"],
+        "sources": ["kernel_search", "kernel_relations", "geo_questions", "geo_kb", "enterprise_facts"],
         "kernel_ok": kernel_ok,          # 审计 P1-7：Kernel 可用性（失败 ≠ 无数据）
         "kernel_error": kernel_error,
     }

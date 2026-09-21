@@ -13,6 +13,7 @@ const PROFILE_SOURCE_LABEL: Record<string, string> = {
   kernel_relations: '企业知识库关系',
   geo_questions: 'GEO 客户问题池',
   geo_kb: 'GEO 内容资产',
+  enterprise_facts: '知识库正式事实（active fact）',
 }
 const profileSourceText = (value: string) => PROFILE_SOURCE_LABEL[value] ?? `其他来源（${value}）`
 
@@ -81,7 +82,11 @@ function ProfileBody({ profile }: { profile: Row | null }) {
   if (typeof profile.error === 'string' && profile.error) return <div className="geo-inline-error">{profile.error}</div>
 
   const facts = (profile.facts ?? []) as Array<Record<string, unknown>>
+  const enterpriseFacts = (profile.knowledge_facts ?? []) as Array<Record<string, unknown>>
+  const factGroups = (profile.fact_groups ?? {}) as Record<string, number>
+  const linkedFacts = enterpriseFacts.filter((f) => String(f.semantic_object_id ?? '').trim()).length
   const keyFacts = (profile.key_facts ?? []) as Array<Record<string, unknown>>
+  const keyFactsBasis = String(profile.key_facts_basis ?? '')
   const relations = (profile.relations ?? []) as Array<Record<string, unknown>>
   const questions = (profile.questions ?? []) as Array<Record<string, unknown>>
   const assets = (profile.assets ?? []) as Array<Record<string, unknown>>
@@ -92,8 +97,8 @@ function ProfileBody({ profile }: { profile: Row | null }) {
     <div className="geo-profile-readout">
       <GeoKpis
         items={[
-          { label: '知识库对象', value: `${facts.length} 条`, detail: profile.company ? String(profile.company) : '未指明企业' },
-          { label: '关键事实', value: `${keyFacts.length} 条`, detail: '带数字/时间，最适合被 AI 引用' },
+          { label: '正式企业事实', value: `${enterpriseFacts.length} 条`, detail: '知识库里已发布的事实（原样消费）' },
+          { label: '企业名检索命中', value: `${facts.length} 条`, detail: '按企业名检索到的知识对象（相关性前 20 条）' },
           { label: '对象关系', value: `${relations.length} 条`, detail: '人、产品、客户之间的连接' },
           { label: '内容资产', value: `${assets.length} 个`, detail: '本企业已入库的素材' },
         ]}
@@ -106,22 +111,54 @@ function ProfileBody({ profile }: { profile: Row | null }) {
         {sources.length ? ` · 来源 ${sources.map(profileSourceText).join('、')}` : ''}
       </p>
 
-      {facts.length && !facts.some((f) => String(f.predicate ?? '').trim()) ? (
+      {profile.facts_error ? (
+        <p className="geo-note">正式事实这次读不到：{String(profile.facts_error)}（这是读取失败，不代表企业没有事实）</p>
+      ) : null}
+
+      {enterpriseFacts.length ? (
+        <>
+          <div className="geo-subhead">
+            <h3>正式企业事实</h3>
+            <small>
+              知识库里已发布的事实（facts），原样展示，不由 GEO 改写；共 {enterpriseFacts.length} 条
+              {Object.keys(factGroups).length ? ` · ${Object.entries(factGroups).map(([k, v]) => `${k === 'enterprise_fact' ? '未关联 Semantic' : k} ${v}`).join(' / ')}` : ''}
+            </small>
+          </div>
+          <ul className="geo-lines">
+            {enterpriseFacts.slice(0, 12).map((row, index) => (
+              <li key={index}>
+                {String(row.display ?? row.canonical_name ?? '')}
+                <span className="geo-muted">{String(row.fact_group_label ?? '')}</span>
+              </li>
+            ))}
+          </ul>
+          {enterpriseFacts.length > 12 ? <p className="geo-note">仅展示前 12 条，共 {enterpriseFacts.length} 条。</p> : null}
+        </>
+      ) : null}
+
+      {enterpriseFacts.length ? (
         <p className="geo-note">
-          企业知识库里目前只有<strong>实体提及</strong>（公司/账号/人名等），还没有结构化的
-          「属性 = 值」事实，所以下面的行业、产品、客户等归纳会显示「暂无记录」——这不是没读到，
-          是知识库里还没有这类事实。
+          正式事实里带权威 Semantic 关联的只有 <strong>{linkedFacts}</strong> 条，
+          因此下面的七类归纳暂时只会显示「暂无记录」——事实没有被丢掉，它们都在上面；
+          是「谁属于哪一类」还没有权威依据，GEO 不按关键词替你猜。
         </p>
       ) : null}
 
       {keyFacts.length ? (
         <>
-          <div className="geo-subhead"><h3>关键事实</h3><small>带数字/时间，生成内容时会强制注入这几条</small></div>
+          <div className="geo-subhead">
+            <h3>关键事实</h3>
+            <small>
+              {keyFactsBasis === 'number_or_time'
+                ? '带数字/时间，生成内容时优先引用（已随正式企业事实整体注入）'
+                : '当前事实里没有带数字/时间的，这里按证据强度列出前几条（同样随正式企业事实注入）'}
+            </small>
+          </div>
           <ul className="geo-lines">{keyFacts.slice(0, 6).map((row, index) => <li key={index}>{factLine(row)}</li>)}</ul>
         </>
       ) : null}
 
-      <div className="geo-subhead"><h3>画像归纳</h3><small>规则从知识库事实里提取，提取不到就写暂无记录</small></div>
+      <div className="geo-subhead"><h3>画像归纳</h3><small>只依据知识库对象的权威 Semantic 关联归类；没有关联就写暂无记录</small></div>
       <GeoTable
         columns={['类别', '内容']}
         template="96px minmax(0,2fr)"
@@ -165,7 +202,7 @@ function ProfileBody({ profile }: { profile: Row | null }) {
         </>
       ) : null}
 
-      {!facts.length && !relations.length && !questions.length && !assets.length ? (
+      {!facts.length && !enterpriseFacts.length && !relations.length && !questions.length && !assets.length ? (
         <div className="geo-empty">知识库里还没有这家企业的可读事实，先去「企业资料」执行一次知识库初始化。</div>
       ) : null}
     </div>
