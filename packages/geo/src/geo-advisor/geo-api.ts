@@ -289,6 +289,12 @@ export interface GeoMaterial {
   chunks?: number
   /** 原文件名（上传的资料才有） */
   file_name?: string
+  /** 检索命中定位到的那一段的片段（素材检索接口返回；列表接口没有） */
+  snippet?: string
+  /** 命中在第几段（0 起；没切块或没命中为 null） */
+  chunk_ordinal?: number | null
+  /** 命中那一段的 id（素材 id#序号） */
+  chunk_id?: string | null
 }
 
 export interface GeoKnowledgeReadiness {

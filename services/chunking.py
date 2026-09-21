@@ -140,6 +140,10 @@ def chunk_material(item: dict[str, Any], *, now: datetime | None = None) -> dict
     """
     content = str(item.get("content") or "")
     chunks = chunk_text(content)
+    mid = str(item.get("id") or "").strip()
+    for c in chunks:
+        # 稳定 id：素材 id + 段序号。检索命中要能指回「哪份素材的第几段」。
+        c["id"] = f"{mid}#{c['ordinal']}" if mid else f"chunk#{c['ordinal']}"
     item["text_chunks"] = chunks
     item["chunks"] = len(chunks)
     item["chunked_at"] = (now or datetime.now(timezone.utc)).isoformat()

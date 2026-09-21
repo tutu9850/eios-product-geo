@@ -510,6 +510,40 @@ def _relevance_order(query: str, docs: list[dict], text_key: str) -> list[dict]:
     return sorted(docs, key=lambda d: -scores.get(str(d.get("id") or ""), 0.0))
 
 
+def _asset_excerpt(question: str, asset: dict, limit: int) -> dict:
+    """这份素材该注入哪一段（Owner 2026-09-21：「内容生成注入最相关的几段」）。
+
+    切过块 → 取问句最贴的那一段（并带上它在素材里的序号，来源面板能指回「第几段」）；
+    没切块（老素材）→ 退回整篇开头 ``limit`` 字，如实不带段号。
+    """
+    text = str(asset.get("content") or "")
+    out = {"text": text[:limit], "chunk_id": None, "chunk_ordinal": None}
+    try:
+        from services.embed import best_chunk
+
+        chunk = best_chunk(question, asset)
+    except Exception:  # noqa: BLE001 — 取不到段不该让生成失败
+        return out
+    if chunk is None:
+        return out
+    chunk_text = str(chunk.get("text") or "")
+    if not chunk_text:
+        return out
+    return {"text": chunk_text[:limit], "chunk_id": chunk.get("id"), "chunk_ordinal": chunk.get("ordinal")}
+
+
+def _asset_source_item(question: str, asset: dict, limit: int) -> dict:
+    """来源面板里的一条素材：注入的是哪一段，就如实报哪一段。"""
+    excerpt = _asset_excerpt(question, asset, limit)
+    return {
+        "title": asset.get("title"),
+        "id": asset.get("id"),
+        "chunk_id": excerpt["chunk_id"],
+        "chunk_ordinal": excerpt["chunk_ordinal"],
+        "content": excerpt["text"],
+    }
+
+
 async def _official_fact_lines(limit: int = 30) -> list[str]:
     """正式企业事实（Knowledge ``type=fact`` 的 active 对象）→ 生成用的一行一句。
 
@@ -580,7 +614,11 @@ async def build_context(
     except Exception:  # noqa: BLE001
         assets = []
     faq_assets = [a for a in assets if a.get("source_type") == "faq"]
-    other_assets = [a for a in assets if a.get("source_type") in ("generated", "text", "url")]
+    # 上传的文件（source_type=file）也要进来 —— 以前这里只收 generated/text/url，
+    # 于是「上传了资料，生成时用不上」（2026-09-21 修）。
+    other_assets = [
+        a for a in assets if a.get("source_type") in ("generated", "text", "url", "file")
+    ]
     faq_assets = _relevance_order(question, faq_assets, "title")[:max_faq]
     other_assets = _relevance_order(question, other_assets, "title")[:max_assets]
 
@@ -622,10 +660,10 @@ async def build_context(
             {"name": name} for name in entity_names
         ]},
         {"kind": "faq_asset", "label": "FAQ 内容资产", "items": [
-            {"title": a.get("title"), "id": a.get("id"), "content": str(a.get("content") or "")[:200]} for a in faq_assets
+            _asset_source_item(question, a, 200) for a in faq_assets
         ]},
-        {"kind": "asset", "label": "历史内容资产", "items": [
-            {"title": a.get("title"), "id": a.get("id"), "content": str(a.get("content") or "")[:150]} for a in other_assets
+        {"kind": "asset", "label": "历史内容资产（含上传的文件）", "items": [
+            _asset_source_item(question, a, 150) for a in other_assets
         ]},
         {"kind": "question_pool", "label": "客户问题池", "items": [
             {"question": q.get("question"), "priority": q.get("priority")} for q in pool_questions
@@ -727,11 +765,16 @@ async def generate(
     if ctx["faq_assets"]:
         asset_lines.append("GEO FAQ 资产（已有问答，可复用其答案，来源：内容资产）：")
         for a in ctx["faq_assets"]:
-            asset_lines.append(f"- Q：{a.get('title')}\n  A：{str(a.get('content') or '')[:300]}")
+            ex = _asset_excerpt(question, a, 300)
+            where = f"（第 {int(ex['chunk_ordinal']) + 1} 段）" if ex["chunk_ordinal"] is not None else ""
+            asset_lines.append(f"- Q：{a.get('title')}\n  A{where}：{ex['text']}")
     if ctx["other_assets"]:
-        asset_lines.append("历史内容素材（来源：内容资产，可参考不可照抄）：")
+        asset_lines.append("历史内容素材（含上传的文件；可参考不可照抄，来源：内容资产）：")
         for a in ctx["other_assets"]:
-            asset_lines.append(f"- {a.get('title')}：{str(a.get('content') or '')[:150]}")
+            # 注入问句最贴的那一段，而不是整篇开头固定 150 字（Owner 2026-09-21）。
+            ex = _asset_excerpt(question, a, 400)
+            where = f"（命中第 {int(ex['chunk_ordinal']) + 1} 段）" if ex["chunk_ordinal"] is not None else ""
+            asset_lines.append(f"- {a.get('title')}{where}：{ex['text']}")
     if ctx["pool_questions"]:
         asset_lines.append("客户问题池（客户正在问这些，文章结构应尽量覆盖，来源：GEO 问题池）：")
         for q in ctx["pool_questions"]:

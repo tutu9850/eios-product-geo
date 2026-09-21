@@ -249,10 +249,16 @@ export function GeoAssetsListCard() {
                       {m.chunks ? (
                         <span className="ml-1.5 text-[10.5px] text-[var(--yayu-muted)]">{m.chunks} 段</span>
                       ) : null}
+                      {typeof m.chunk_ordinal === 'number' ? (
+                        <span className="ml-1.5 text-[10.5px] text-[var(--yayu-muted)]">
+                          命中第 {m.chunk_ordinal + 1} 段
+                        </span>
+                      ) : null}
                     </span>
                     {!active ? (
                       <span className="mt-0.5 block truncate text-[11px] text-[var(--yayu-muted)]">
-                        {m.content?.slice(0, 60) ?? ''}
+                        {/* 检索命中时显示命中的那一段，而不是整篇开头 60 字 */}
+                        {m.snippet ?? m.content?.slice(0, 60) ?? ''}
                       </span>
                     ) : null}
                   </button>

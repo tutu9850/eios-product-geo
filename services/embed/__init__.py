@@ -209,15 +209,41 @@ async def ensure_vectors(materials: list[dict] | None = None) -> dict:
     return {"use_qdrant": use_qdrant, "indexed": indexed, "skipped": skipped, "failed": failed, "total": len(materials)}
 
 
+def material_chunks(material: dict) -> list[dict]:
+    """这份素材切好的块（没切块 → 空列表）。"""
+    return [c for c in (material.get("text_chunks") or []) if str(c.get("text") or "").strip()]
+
+
+def best_chunk(query: str, material: dict) -> dict | None:
+    """问句最贴的那**一段**（Owner 2026-09-21：「命中定位到具体那一段」）。
+
+    素材切过块就在块里挑命中核心词最多的一段；没切块（老素材）返回 None，
+    调用方按整篇处理 —— 不假装它有块。
+    """
+    q_keys = _n_gram_keys(query or "")
+    if not q_keys:
+        return None
+    best: dict | None = None
+    best_hit = 0
+    for c in material_chunks(material):
+        hit = len(q_keys & _n_gram_keys(str(c.get("text") or "")))
+        if hit > best_hit:
+            best, best_hit = c, hit
+    return best
+
+
 def n_gram_scores(
     q: str, docs: list[dict], title_key: str = "title", content_key: str = "content"
 ) -> dict[str, float]:
     """通用 n-gram 相关性打分（hybrid_search 主路径的可复用入口）。
 
-    与 hybrid_search 同一口径：查询核心词（去停用字 2-gram）在标题/正文的重叠，
-    标题 2x + 正文 1x。不依赖向量与网络，确定性可复现。
-    供内容生成 build_context 等「需要按问句排序任意文档」的场景使用
-    （审计 A5：此前用的是标题字符重叠计数，不看向量与正文）。
+    口径：查询核心词（去停用字 2-gram）在标题/正文的重叠，**标题 2x + 正文 1x**。
+    不依赖向量与网络，确定性可复现。供内容生成 build_context 等
+    「需要按问句排序任意文档」的场景使用（审计 A5：此前只数标题的字符重叠）。
+
+    注意：这里**故意保持整篇口径**（核心词是集合，长度不会抬高分数）。
+    「命中定位到具体哪一段」由 ``best_chunk`` 单独负责，不掺进打分数值 ——
+    排序口径不变，素材页看到的 n_gram 分数因此也不会因为切块而跳动。
     返回 {doc_id: score}，只含命中项。
     """
     q_keys = _n_gram_keys(q or "")
@@ -302,6 +328,18 @@ async def hybrid_search(q: str, top_k: int = 8) -> list[dict]:
             continue  # 孤儿向量（素材已删除但 Qdrant/缓存点残留）→ 跳过不展示
         r["title"] = m.get("title", "")
         r["source_type"] = m.get("source_type", "text")
+        # 命中定位到具体那一段（Owner 2026-09-21）：切过块就给那一块（id / 序号 / 片段），
+        # 没切块的老素材给整篇里命中的那个片段 —— 都不假装有块。
+        chunk = best_chunk(q, m)
+        if chunk is not None:
+            r["chunk_id"] = chunk.get("id")
+            r["chunk_ordinal"] = chunk.get("ordinal")
+            r["chunk_chars"] = chunk.get("chars")
+            r["snippet"] = _snippet(str(chunk.get("text") or ""), q, span=160)
+        else:
+            r["chunk_id"] = None
+            r["chunk_ordinal"] = None
+            r["snippet"] = _snippet(str(m.get("content") or ""), q, span=160)
         out.append(r)
     return out
 
