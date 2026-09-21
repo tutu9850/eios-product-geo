@@ -16,6 +16,10 @@
 4. **过滤**：只在正文出现 1 次的候选必须另有证据（标题命中 / 引号命中）；设计风格词
    （见 ``looks_like_style_word``）一律不算产品。
 
+5. **产品和服务的分界只看尾巴**（Owner 2026-09-22）：以「服务 / 课程」收尾的是**服务**，
+   其余是产品。第一版把「服务」也当成产品尾巴，结果「设计服务」被摆进「产品」那一行 ——
+   页面上一眼就是错的。这里不猜语义，只认尾巴，两边喂给模型的池子分开。
+
 它**不写库、不调模型、不碰知识库**，只读传入的材料列表；输出按分数排序的候选名，
 供 detect 当规则兜底、也当提示词的参考池。
 """
@@ -30,9 +34,14 @@ from services.company_identity import _STRIP_CHARS, _prefix_is_noise, _word_char
 _PRODUCT_TAILS = (
     "背景墙", "榻榻米", "护墙板", "床垫", "窗帘", "地板", "瓷砖", "浴室柜", "餐边柜",
     "沙发", "衣柜", "橱柜", "书柜", "酒柜", "吊顶",
-    "系列", "套装", "套餐", "型号", "系统", "平台", "软件", "方案", "课程", "服务",
+    "系列", "套装", "套餐", "型号", "系统", "平台", "软件", "方案",
     "床", "柜", "桌", "椅", "几", "门", "窗", "灯", "版",
 )
+#: 服务/课程尾巴：这些是「能干的一件活儿」，不是摆在店里的一件货。切词口径与产品相同，
+#: 只是归行不同 —— 以这些收尾的名字进「服务」那一行。
+_SERVICE_TAILS = ("服务", "课程")
+#: 切词用的全部尾巴（产品 + 服务）；产品/服务怎么分见 ``is_service_name``。
+_ALL_TAILS = _PRODUCT_TAILS + _SERVICE_TAILS
 #: 前缀里出现这些词 = 不是在命名一个产品（「以上系统」「相关服务」）。
 _PRODUCT_PREFIX_NOISE = (
     "以上", "以下", "这些", "那些", "其他", "相关", "各种", "多项", "所有", "部分",
@@ -45,7 +54,7 @@ _PRODUCT_CONTEXT_WORDS = ("产品", "系列", "型号", "名称", "主打", "畅
 #: 设计风格/调性词不是产品（「意式极简」「奶油风」）——只在没有产品尾巴时命中。
 _STYLE_WORDS = ("极简", "轻奢", "法式", "中式", "简约", "中古", "奶油风", "侘寂", "北欧", "日式", "美式", "意式")
 #: 以这些收尾说明它是一个「东西」（「奶油风沙发」是产品），不是光秃秃的风格词。
-_PRODUCT_LIKE_TAILS = _PRODUCT_TAILS + ("包", "机", "仪", "锅", "壶", "垫")
+_PRODUCT_LIKE_TAILS = _ALL_TAILS + ("包", "机", "仪", "锅", "壶", "垫")
 
 #: 「命名动作词 + 最多 6 个字的修饰 + 引号名」——只有这种紧邻结构才算命名。
 _QUOTE_RE = re.compile(
@@ -53,7 +62,15 @@ _QUOTE_RE = re.compile(
 )
 #: 引号名里出现这些字符 = 是句子/说明，不是名字。
 _QUOTE_NAME_OK = re.compile(r"^[\u4e00-\u9fffA-Za-z0-9·\-+ ]+$")
-_PRODUCT_TAILS_DESC = tuple(sorted(_PRODUCT_TAILS, key=len, reverse=True))
+_ALL_TAILS_DESC = tuple(sorted(_ALL_TAILS, key=len, reverse=True))
+
+
+def is_service_name(name: str) -> bool:
+    """名字以「服务 / 课程」收尾 = 它是服务，不是产品。
+
+    只看尾巴，不做语义判断 —— 「琥珀沙发服务」这种也确实是在卖服务。
+    """
+    return str(name or "").strip().endswith(_SERVICE_TAILS)
 
 
 def looks_like_style_word(name: str) -> bool:
@@ -77,7 +94,7 @@ def _tail_candidates(text: str) -> list[str]:
     """按产品尾巴在正文里切候选（同一次出现只给一个候选：能取最长就不退而取短的）。"""
     out: list[str] = []
     raw = str(text or "")
-    for tail in _PRODUCT_TAILS_DESC:
+    for tail in _ALL_TAILS_DESC:
         start = 0
         while True:
             i = raw.find(tail, start)
@@ -118,8 +135,8 @@ def _quoted_candidates(text: str) -> list[str]:
     return out
 
 
-def product_candidates_from_materials(materials: list[dict[str, Any]], *, limit: int = 30) -> list[str]:
-    """从内容资产里按规则挑产品/服务候选，按证据强度排序。
+def _ranked_candidates(materials: list[dict[str, Any]]) -> list[str]:
+    """从内容资产里按规则切出产品 + 服务候选，按证据强度排序（不做产品/服务分家）。
 
     证据要求（防「正文里碰巧凑出来的四个字」）：全文出现 ≥2 次，或上过标题，
     或出现在引号里。分数再低于 2.0 的不要 —— 只有一次正文命中的弱证据不够。
@@ -164,4 +181,14 @@ def product_candidates_from_materials(materials: list[dict[str, Any]], *, limit:
         ):
             continue
         kept_names.append(name)
-    return kept_names[:limit]
+    return kept_names
+
+
+def product_candidates_from_materials(materials: list[dict[str, Any]], *, limit: int = 30) -> list[str]:
+    """内容资产里的**产品**候选（尾巴不是「服务 / 课程」）。"""
+    return [n for n in _ranked_candidates(materials) if not is_service_name(n)][:limit]
+
+
+def service_candidates_from_materials(materials: list[dict[str, Any]], *, limit: int = 30) -> list[str]:
+    """内容资产里的**服务**候选（尾巴是「服务 / 课程」）—— 与产品同一套证据规则。"""
+    return [n for n in _ranked_candidates(materials) if is_service_name(n)][:limit]

@@ -346,6 +346,94 @@ def test_a_product_that_only_shows_up_once_without_evidence_is_not_a_candidate()
     assert "无CRM系统" not in got
 
 
+def test_a_name_ending_in_fuwu_is_a_service_not_a_product():
+    """Owner 2026-09-22：「尾巴含『服务』不在服务里在产品里？这能对吗？」
+
+    第一版把「服务」也当产品尾巴，于是「设计服务」被摆进「产品」那一行。分家只看尾巴，
+    不做语义猜测：产品和服务的候选池共用同一套证据规则，只是归到不同的行。
+    """
+    from services.product_identity import (
+        is_service_name,
+        product_candidates_from_materials,
+        service_candidates_from_materials,
+    )
+
+    materials = [
+        {
+            "title": "笔革家居主理人访谈纪要",
+            "content": (
+                "畅销产品是「琥珀沙发」，定制柜也是主力。"
+                "我们提供设计服务，也做3D建模与打板服务，还有量尺、效果图、安装交付。"
+                "设计服务按平米收费，3D建模与打板服务按件收费，定制柜按投影面积算。"
+            ),
+        }
+    ]
+    products = product_candidates_from_materials(materials)
+    services = service_candidates_from_materials(materials)
+
+    assert "定制柜" in products
+    for name in ("设计服务", "打板服务"):
+        assert name in services, f"服务候选里应该有：{name}"
+        assert name not in products, f"以「服务」收尾的不该出现在产品行：{name}"
+    assert "琥珀沙发" in products and "琥珀沙发" not in services
+    # 分家只看尾巴，不猜语义
+    assert is_service_name("量尺服务") and is_service_name("每周课程")
+    assert not is_service_name("琥珀沙发") and not is_service_name("量尺")
+
+
+def test_the_fallback_pool_is_split_by_tail_too():
+    """知识库那一档的池子里混着服务；当兜底用时不能又把服务塞回「产品」行。"""
+    from app.api.v1 import onboard
+
+    out = _run(
+        onboard._finalize_detect(
+            {
+                "company": ["亚宇臻隆科技"],
+                "products": [],
+                "services": [],
+                "industry": None,
+                "keywords": [],
+                "classification_source": "heuristic",
+            },
+            biz_fallback=["琥珀沙发", "设计服务", "自媒体代运营服务"],
+        )
+    )
+    assert out["products"] == ["琥珀沙发"]
+    assert set(out["services"]) == {"设计服务", "自媒体代运营服务"}
+
+
+def test_merging_a_rule_pool_never_doubles_a_name():
+    """规则池的取词有长度上限，会比模型切得短；并进同一行时不能出现两条几乎一样的 chip。"""
+    from app.api.v1.onboard import _merge_pool
+
+    assert _merge_pool(["3D建模与打板服务"], ["打板服务"]) == ["3D建模与打板服务"]
+    assert _merge_pool(["打板服务"], ["3D建模与打板服务"]) == ["3D建模与打板服务"]
+    assert _merge_pool(["琥珀沙发"], ["琥珀沙发", "定制柜"]) == ["琥珀沙发", "定制柜"]
+
+
+def test_finalize_detect_moves_service_names_out_of_products():
+    """模型把服务写进 products 也要挪回来 —— 归类不靠模型自觉。"""
+    from app.api.v1 import onboard
+
+    out = _run(
+        onboard._finalize_detect(
+            {
+                "company": ["笔革家居"],
+                "products": ["琥珀沙发", "设计服务"],
+                "services": [],
+                "industry": None,
+                "keywords": [],
+                "classification_source": "llm",
+            },
+            biz_fallback=[],
+            service_fallback=["3D建模与打板服务"],
+        )
+    )
+    assert out["products"] == ["琥珀沙发"]
+    assert "设计服务" in out["services"]
+    assert "3D建模与打板服务" in out["services"]
+
+
 # ── 2.6 勾选的服务要真的建监测对象 ─────────────────────────
 
 def test_selected_services_get_their_own_monitor_objects(monkeypatch, tenant):

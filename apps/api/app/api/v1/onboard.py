@@ -132,15 +132,54 @@ def _dedup_list(values) -> list[str]:
     return out
 
 
-async def _finalize_detect(result: dict, *, biz_fallback: list[str]) -> dict:
+def _merge_pool(existing: list[str], pool: list[str]) -> list[str]:
+    """把规则池并进已经勾出来的那一行，但不制造「打板服务 / 3D建模与打板服务」这种重复。
+
+    规则池的取词有长度上限，会切短（``3D建模与打板服务`` → ``打板服务``），直接并进去
+    页面上就会出现两条几乎一样的 chip。所以按包含关系收口：池子里更具体的名字替换掉被它
+    包含的短名，短名则是已经有一条更具体的就跳过。
+    """
+    out = list(existing)
+    for raw in pool or []:
+        name = str(raw or "").strip()
+        if not name:
+            continue
+        covered = [x for x in out if x and x != name and x in name]
+        if covered:
+            out = [x for x in out if x not in covered]
+            out.append(name)
+            continue
+        if any(name in x for x in out if x):
+            continue
+        out.append(name)
+    return out
+
+
+async def _finalize_detect(
+    result: dict, *, biz_fallback: list[str], service_fallback: list[str] | None = None
+) -> dict:
     """LLM 挑完之后的收口：去重 / 跨类互斥 / industry + keywords 补全 / 最后兜底。
 
     知识库那一档和内容资产那一档**共用这一段** —— 换的只是候选池从哪来，
     归类口径与兜底顺序不许出现两套。
     """
+    # ⓪ 尾巴定性（Owner 2026-09-22）：以「服务 / 课程」收尾的名字是**服务**，不是货。
+    # 第一版把「服务」也当产品尾巴，「设计服务」就摆进了「产品」那一行 —— 页面上一眼错。
+    # 这里不猜语义，只按尾巴挪行：模型把服务写进 products 也照样挪回去。
+    from services.product_identity import is_service_name
+
+    moved = [str(p) for p in (result.get("products") or []) if is_service_name(str(p))]
+    result["products"] = [p for p in (result.get("products") or []) if not is_service_name(str(p))]
+    # 兜底池也要按同一条尾巴规则分家：知识库那一档的池子（``biz_names``）里混着服务，
+    # 直接当产品兜底就又把它塞回「产品」行了。
+    pool_services = [*(service_fallback or []), *[p for p in biz_fallback if is_service_name(str(p))]]
+    pool_products = [p for p in biz_fallback if not is_service_name(str(p))]
+    result["services"] = _merge_pool(
+        _dedup_list([*(result.get("services") or []), *moved]), pool_services
+    )
     if not result["products"]:
-        # LLM 没给出产品时的兜底：候选池里带产品/服务特征词的先上（池子本身已经筛过）
-        result["products"] = list(biz_fallback)[:10]
+        # LLM 没给出产品时的兜底：候选池里带产品特征词的先上（池子本身已经筛过）
+        result["products"] = pool_products[:10]
 
     prods = _dedup_list(result["products"])
     svcs = _dedup_list(result["services"])
@@ -233,6 +272,7 @@ async def _step_detect_from_materials():
     from services.product_identity import (
         looks_like_style_word,
         product_candidates_from_materials,
+        service_candidates_from_materials,
     )
 
     try:
@@ -260,6 +300,8 @@ async def _step_detect_from_materials():
     # 规则先自己找一遍产品（纯规则，不调模型）—— 这是「能找到产品的算法」的确定性下限，
     # 也是给模型的参考池；模型给不出来的话产品那一行就用它，而不是拿素材标题凑。
     product_pool = product_candidates_from_materials(materials)
+    # 服务同一套规则、同一份证据，只是按尾巴（「服务 / 课程」）归到另一行。
+    service_pool = service_candidates_from_materials(materials)
     corpus = _material_corpus(materials)
     titles = [
         str(m.get("title") or "").strip()
@@ -296,7 +338,15 @@ async def _step_detect_from_materials():
                     if product_pool
                     else ""
                 )
-                + "- services：正文里出现过的服务 / 课程类名\n"
+                + (
+                    "规则挑出的服务候选（供参考，不限于此）："
+                    + "、".join(service_pool[:20])
+                    + "\n"
+                    if service_pool
+                    else ""
+                )
+                + "- services：正文里出现过的服务 / 课程类名（以「服务」「课程」收尾的，"
+                "一律放这一行，不要放进 products）\n"
                 "- industry：所属行业（一句话）\n"
                 "- keywords：普通用户找这类企业会搜的行业词 / 痛点词 6-10 个"
                 "（要来自正文说的业务；不要公司名、不要品牌名、不要材料标题里的词）\n"
@@ -340,7 +390,7 @@ async def _step_detect_from_materials():
                 if key == "products":
                     # 规则池是**产品**的确定性下限：模型没提到的产品也带上（正文里有证据）。
                     # 注意不能并进服务那一行 —— 那会把「琥珀沙发」显示成服务。
-                    vals = vals + [p for p in product_pool if p not in vals]
+                    vals = _merge_pool(vals, product_pool)
                 if vals:
                     result[key] = vals if key != "company" else vals[:5]
                     result["classification_source"] = "llm"
@@ -357,7 +407,9 @@ async def _step_detect_from_materials():
     # 「产品（点击取消不想监测的）」那一行 —— 实测就是 export_1785221955586 /
     # 三品牌战略+奢侈品调研-前31页 / 笔革家居主理人访谈纪要。标题不是产品名：
     # 正文里认不出来就如实留空 + 一句人话提示，让人去补，而不是拿文件名充数。
-    out = await _finalize_detect(result, biz_fallback=product_pool[:10])
+    out = await _finalize_detect(
+        result, biz_fallback=product_pool[:10], service_fallback=service_pool[:8]
+    )
     if out["empty"]:
         # 一条都没认出来（例如只上传了文件名像流水号的材料）：别拿「知识库」顶包，
         # 这里读的是 GEO 自己的内容资产，就直说内容资产。
