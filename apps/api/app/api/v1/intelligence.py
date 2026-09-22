@@ -193,38 +193,16 @@ def _brand_mention_stats():
 
 
 @router.get("/reports/latest/pdf")
-def reports_latest_pdf(company: str | None = None):
-    """最新周期报告 PDF 下载（2026-08-15 新增）。无报告 → 404。"""
-    from fastapi.responses import Response
-    from app.services.report_pdf import render_report_pdf
+async def reports_latest_pdf(company: str | None = None):
+    """导出当前实时认知报告。
 
-    rec = repo.latest_report(company or "unknown")
-    if not rec:
-        return {"ok": False, "error": "暂无报告，请先在报告页生成"}
-    # 补充监测历史/问题池/品牌对比（V3 报告章节 02/03/04 数据源）
-    from app.services.store import get_store
+    保留已经在 Product API 冻结门中的历史路径，但内容改为当前监测、
+    认知、竞品、信源、缺口与计划的实时聚合，不再依赖一份历史 report_json。
+    ``company`` 仅为旧客户端兼容参数；实际企业身份来自已验证的宿主会话。
+    """
+    from app.api.v1.report import export_report
 
-    history = get_store().load("monitor_history")
-    questions = get_store().load("questions")
-    brand_stats = _brand_mention_stats()
-    trend = aggregator.trend_delta()
-    try:
-        pdf_bytes = render_report_pdf(
-            rec.get("report_json") or {}, rec.get("created_at"),
-            history=history, questions=questions, brand_stats=brand_stats, trend=trend,
-        )
-    except Exception as e:  # noqa: BLE001
-        return {"ok": False, "error": f"PDF 生成失败：{e}"}
-    company_name = (rec.get("report_json") or {}).get("company") or company or "企业"
-    from urllib.parse import quote
-
-    fname = f"GEO_{company_name}_AI可见性报告.pdf"
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        # RFC 5987：中文文件名需 filename*（HTTP 头 latin-1 不能直接带中文）
-        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"},
-    )
+    return await export_report()
 
 
 @router.post("/reports/run")

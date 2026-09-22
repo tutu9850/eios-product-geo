@@ -44,7 +44,8 @@ export function GeoReportCard() {
     setError(null)
     try {
       // 实时综合报告：导出时聚合认知健康、画像、覆盖、竞品、来源、缺口和行动计划。
-      const blob = await geoDownload('/report/export')
+      // 复用 Product API 已冻结放行的 PDF 文档路径；后端在导出时实时聚合。
+      const blob = await geoDownload('/intelligence/reports/latest/pdf')
       await saveBlobToDisk(blob, `GEO-AI认知报告-${new Date().toISOString().slice(0, 10)}.pdf`)
     } catch (e) {
       setError(e instanceof Error ? e.message : '导出失败')
