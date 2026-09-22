@@ -39,6 +39,14 @@ def get_run(run_id: str) -> dict | None:
     return _runs.get(run_id)
 
 
+def latest_run() -> dict | None:
+    """最近一次补搜任务的只读快照，供产品进度面板展示。"""
+    if not _runs:
+        return None
+    run = max(_runs.values(), key=lambda item: str(item.get("created_at") or ""))
+    return dict(run)
+
+
 def _url_hash(url: str, title: str) -> str:
     raw = (url or title or "").strip().encode("utf-8")
     return hashlib.sha256(raw).hexdigest()[:16]

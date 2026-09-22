@@ -319,3 +319,13 @@ def stats():
             or 0,
         }
     return ok(counts)
+
+
+@router.get("/progress")
+async def progress():
+    """认知解析与外网补搜的统一进度，不要求用户拿 run_id 拼接口。"""
+    return ok({
+        "parse": await queue.snapshot(),
+        "harvest": harvest.latest_run(),
+        "note": "解析进度来自证据解析队列；补搜进度为本进程最近一次外网补搜任务。",
+    })
