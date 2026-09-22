@@ -250,7 +250,8 @@ export interface GeoPlan {
 export interface GeoMonitorItem {
   monitor_id: string
   type: string
-  config_json: { company?: string; aliases?: string[]; product?: string | string[]; industry?: string; tier?: string }
+  // city：所在地（2026-09-23）——探针按它问「成都本地的家居家具公司有哪些？」
+  config_json: { company?: string; aliases?: string[]; product?: string | string[]; industry?: string; city?: string; tier?: string }
   entity: string
   query_count: number
   status: string

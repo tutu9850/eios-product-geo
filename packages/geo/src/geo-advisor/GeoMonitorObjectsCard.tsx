@@ -261,6 +261,9 @@ export function GeoMonitorObjectsCard() {
         { key: 'aliases', label: '别名（逗号分隔）', list: true },
         { key: 'product', label: '产品（逗号分隔）', list: true },
         { key: 'industry', label: '行业' },
+        // 所在地（Owner 2026-09-23）：探针问「成都本地的家居家具公司有哪些？」要用它；
+        // 不填就退回通用问法（不再写死「国内」）
+        { key: 'city', label: '所在地（城市，用于本地问法）' },
         { key: 'customer', label: '目标客户' },
         { key: 'competitors', label: '竞品（逗号分隔）', list: true },
         { key: 'tier', label: '规模档位' },
@@ -272,6 +275,7 @@ export function GeoMonitorObjectsCard() {
       fields: [
         { key: 'product', label: '产品/服务名' },
         { key: 'company', label: '公司名' },
+        { key: 'city', label: '所在地（城市，用于本地问法）' },
         { key: 'competitors', label: '竞品（逗号分隔）', list: true },
       ],
     },
@@ -283,6 +287,7 @@ export function GeoMonitorObjectsCard() {
         { key: 'aliases', label: '别名（逗号分隔）', list: true },
         { key: 'product', label: '产品（逗号分隔）', list: true },
         { key: 'industry', label: '行业' },
+        { key: 'city', label: '所在地（城市，用于本地问法）' },
         { key: 'competitors', label: '竞品（逗号分隔）', list: true },
         { key: 'competitorAliases', label: '竞品别名（逗号分隔）', list: true },
       ],
@@ -292,6 +297,7 @@ export function GeoMonitorObjectsCard() {
       emoji: '🔍',
       fields: [
         { key: 'keyword', label: '关键词' },
+        { key: 'city', label: '所在地（城市，用于本地问法）' },
         { key: 'extras', label: '补充词（逗号分隔）', list: true },
       ],
     },
@@ -314,13 +320,13 @@ export function GeoMonitorObjectsCard() {
   const buildItemConfig = (type: string, f: Record<string, string>): Record<string, unknown> => {
     const split = (s?: string) => (s || '').split(/[,，\n]/).map((x) => x.trim()).filter(Boolean)
     if (type === 'brand') {
-      return { company: f.company, aliases: split(f.aliases), product: split(f.product), industry: f.industry, customer: f.customer, competitor: split(f.competitors), tier: f.tier || 'standard' }
+      return { company: f.company, aliases: split(f.aliases), product: split(f.product), industry: f.industry, city: f.city?.trim(), customer: f.customer, competitor: split(f.competitors), tier: f.tier || 'standard' }
     }
-    if (type === 'product') return { product: f.product, company: f.company, competitor: split(f.competitors) }
+    if (type === 'product') return { product: f.product, company: f.company, city: f.city?.trim(), competitor: split(f.competitors) }
     if (type === 'competitor') {
-      return { company: f.target, target: f.target, aliases: split(f.aliases), product: split(f.product), industry: f.industry, competitor: split(f.competitors), competitor_aliases: split(f.competitorAliases) }
+      return { company: f.target, target: f.target, aliases: split(f.aliases), product: split(f.product), industry: f.industry, city: f.city?.trim(), competitor: split(f.competitors), competitor_aliases: split(f.competitorAliases) }
     }
-    if (type === 'keyword') return { keyword: f.keyword, extras: split(f.extras) }
+    if (type === 'keyword') return { keyword: f.keyword, city: f.city?.trim(), extras: split(f.extras) }
     if (type === 'review') return { audience: f.audience, scenario: f.scenario, pains: split(f.pains) }
     return { query: f.query }
   }
@@ -427,6 +433,7 @@ export function GeoMonitorObjectsCard() {
                     ) : null}
                   </div>
                   <div className="truncate text-[10px] text-[var(--yayu-faint)]">
+                    {i.config_json?.city ? `${i.config_json.city} · ` : ''}
                     {formatMonitorProductLine(i.config_json?.product, monitorTypeText(i.type))}
                   </div>
                   <div className="mt-0.5 flex items-center gap-1.5 text-[10px]">

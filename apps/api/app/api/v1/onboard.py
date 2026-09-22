@@ -654,14 +654,10 @@ def _is_own(name: str, own_names: list[str]) -> bool:
 
 
 # ── 竞品发现：按所在地 + 行业/产品/服务分问，问部署里能答的每个模型 ─────────
-_CITIES = [
-    "北京", "上海", "广州", "深圳", "成都", "杭州", "重庆", "武汉", "西安", "苏州", "天津", "南京",
-    "郑州", "长沙", "东莞", "青岛", "沈阳", "宁波", "昆明", "大连", "厦门", "合肥", "佛山", "福州",
-    "哈尔滨", "济南", "无锡", "长春", "温州", "石家庄", "南宁", "常州", "泉州", "南昌", "贵阳", "太原",
-    "烟台", "嘉兴", "南通", "金华", "珠海", "惠州", "徐州", "海口", "乌鲁木齐", "绍兴", "中山", "台州",
-    "兰州", "潍坊", "保定", "镇江", "扬州", "桂林", "唐山", "三亚", "湖州", "汕头", "新乡", "廊坊",
-    "呼和浩特", "赣州", "盐城", "泰州", "洛阳", "宜昌", "襄阳", "绵阳", "泸州", "遵义",
-]
+#: 城市表与抠取逻辑抽到 app/services/region.py：监测探针也要按同一个城市问「本地」，
+#: 两处各留一份词表迟早会不一致（2026-09-23 Owner：监测里问的还是「国内」）。
+from app.services.region import clean_city, extract_city as _extract_city  # noqa: E402
+
 
 #: 一次发现问几组问题：行业 1 + 产品 ≤2 + 服务 ≤2（Owner 2026-09-21：
 #: 「问这几个 ai，成都本地的家装都有哪些公司，笔革家居下面的全案定制成都都有哪些公司」）
@@ -671,18 +667,6 @@ _MAX_SERVICE_QUESTIONS = 2
 _DISCOVERY_LIMIT = 10
 #: 并发上限：问题 × 模型最坏 5×6=30 次调用，串行太慢，但要压住对模型入口的冲击
 _DISCOVERY_CONCURRENCY = 4
-
-
-def _extract_city(company: str) -> str:
-    """从公司名提取城市（成都笔革设计公司 → 成都）；提取不到返回空。
-
-    这是**兜底**：入驻页现在有「所在地」输入框，用户填了就用用户填的 ——
-    「笔革家居」这种名字里没城市的，靠抠名字永远抠不出来（实测退化成全国结果）。
-    """
-    for c in _CITIES:
-        if c in (company or ""):
-            return c
-    return ""
 
 
 def _discovery_questions(*, company: str, city: str, industry: str,
@@ -848,7 +832,8 @@ async def _step_discover(products: list[str], own_names: list[str] | None = None
     )
 
     own_names = [o for o in (own_names or []) if o]
-    asked_city = (city or "").strip()
+    # 「成都市」这类带市字的写法归一成「成都」，免得问出「成都市本地的家装……」
+    asked_city = clean_city(city)
     parsed_city = _extract_city(company)
     city = asked_city or parsed_city
     city_source = "user" if asked_city else ("company_name" if parsed_city else "none")
@@ -957,28 +942,38 @@ async def _step_create(cfg: AutoConfigIn):
     aliases = [a for a in (cfg.aliases or []) if a]
     products = [p for p in (cfg.products or []) if p]
     services = [s for s in (cfg.services or []) if s]
+    # 所在地（Owner 2026-09-23）：以前只喂给「发现竞品」，**没写进对象** ——
+    # 于是监测探针不知道企业在哪，行业问句只能写死「国内」。现在写进每个对象的 config，
+    # 探针按「成都本地的家居家具公司有哪些？」问。没填就不写这个键（探针如实退回通用问法）。
+    city = clean_city(cfg.city)
+
+    def _c(config: dict) -> dict:
+        if city:
+            config["city"] = city
+        return config
+
     if cfg.company:
-        _mk("brand", {"company": cfg.company, "aliases": aliases, "product": products, "industry": cfg.industry, "tier": "lite"}, cfg.company)
+        _mk("brand", _c({"company": cfg.company, "aliases": aliases, "product": products, "industry": cfg.industry, "tier": "lite"}), cfg.company)
     for p in products:
-        _mk("product", {"product": p, "company": cfg.company, "competitor": []}, p)
+        _mk("product", _c({"product": p, "company": cfg.company, "competitor": []}), p)
     # 服务也要建对象（2026-09-22 修）：以前这里算了 services 却**从没用过** ——
     # 用户在页面上勾的服务等于没勾，不产生任何监测。用 kind=service 让探针问得像服务，
     # 展示上仍是既有的「产品服务」类型（没有新增类型、没有新增契约）。
     for sv in services:
-        _mk("product", {"product": sv, "kind": "service", "company": cfg.company, "competitor": []}, sv)
+        _mk("product", _c({"product": sv, "kind": "service", "company": cfg.company, "competitor": []}), sv)
     if cfg.industry:
-        _mk("keyword", {"keyword": cfg.industry, "extras": products}, cfg.industry)
+        _mk("keyword", _c({"keyword": cfg.industry, "extras": products}), cfg.industry)
     # 行业搜索词（detect 挖出）→ 每个建 keyword 对象：监测面从「1 个行业词」扩到「N 个用户真实搜索词」
     seen_kw: set[str] = set()
     for kw in (cfg.keywords or []):
         kw = str(kw).strip()
         if kw and kw != cfg.industry and kw not in seen_kw:
             seen_kw.add(kw)
-            _mk("keyword", {"keyword": kw, "extras": products}, kw)
+            _mk("keyword", _c({"keyword": kw, "extras": products}), kw)
     for c in (cfg.competitors or []):
         name = str(c.get("name") or "").strip()
         if name:
-            _mk("competitor", {"company": cfg.company, "target": cfg.company, "competitor": [name], "product": products, "industry": cfg.industry}, f"{cfg.company} vs {name}")
+            _mk("competitor", _c({"company": cfg.company, "target": cfg.company, "competitor": [name], "product": products, "industry": cfg.industry}), f"{cfg.company} vs {name}")
     _save_items(items)
     return {"created": created, "count": len(created)}
 

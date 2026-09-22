@@ -18,6 +18,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict
 
 from app.core.envelope import ok, err
+from app.services.region import clean_city
 
 router = APIRouter(prefix="/api/v1/monitor")
 
@@ -569,6 +570,32 @@ _BRAND_CATEGORY_LABELS = {
     "comparison": "竞品比较", "scenario": "场景需求", "risk": "风险认知",
 }
 
+#: 行业长句截短用的句读（自动配置 detect 出来的行业是**一句话**，见 onboard ③）；
+#: 探针模板里塞整句会问出「国内家居家具行业，主营沙发、软床及定制家具的设计、生产与销售平台有哪些？」
+_SENTENCE_SEPS = ("，", ",", "。", "！", "；", ";", "\n")
+_INDUSTRY_TAILS = ("行业", "领域", "赛道", "产业")
+
+
+def _probe_term(text: str) -> str:
+    """行业/关键词长句 → 探针里能读的短词（「家居家具行业，主营沙发……」→「家居家具」）。
+
+    只做两件事：有句读的长句取第一个分句；再去掉尾部「行业/领域/赛道/产业」。
+    短词（「家装设计」「琥珀沙发」）原样返回 —— 不误伤正常关键词。
+    """
+    t = (text or "").strip()
+    if not t:
+        return ""
+    for sep in _SENTENCE_SEPS:
+        idx = t.find(sep)
+        if idx > 0:
+            t = t[:idx].strip()
+            break
+    for tail in _INDUSTRY_TAILS:
+        if t.endswith(tail) and len(t) > len(tail):
+            t = t[: -len(tail)].strip()
+            break
+    return t
+
 
 def generate_brand_queries(cfg: dict, tier: str = "standard") -> dict:
     """品牌认知探针：6 类维度 × 档位数量（lite 2 / standard 4 / deep 8）
@@ -582,7 +609,10 @@ def generate_brand_queries(cfg: dict, tier: str = "standard") -> dict:
         products = [products]
     products = [p.strip() for p in products if p and p.strip()]
     product = products[0] if products else ""
-    industry = (cfg.get("industry") or "").strip()
+    # 行业长句截短（「家居家具行业，主营……」→「家居家具」）；所在地用于「本地」问法
+    industry = _probe_term(cfg.get("industry"))
+    city = clean_city(cfg.get("city"))
+    local = f"{city}的" if city else ""
     customer = (cfg.get("customer") or "").strip()
     competitors = cfg.get("competitor") or []
     if isinstance(competitors, str):
@@ -613,12 +643,16 @@ def generate_brand_queries(cfg: dict, tier: str = "standard") -> dict:
         t.append(f"{company}有什么成功案例？")
     cats["trust"] = t[:n]
 
-    # 3 推荐意图（间接探针，不问自己）
+    # 3 推荐意图（间接探针，不问自己）——「本地」的答案才有商业价值：
+    #   2026-09-23 Owner：「行业还是国内，不是成都，不是根据自动配置的行业问的，问的时候要加本地」。
+    #   以前这里写死「国内{industry}平台有哪些？」—— 企业所在地明明在自动配置里填过，
+    #   探针却问全国；现在改成「成都本地的家居家具公司有哪些？」。没填所在地就如实退回通用问法，
+    #   不硬写「国内」，也不编一个城市。
     r = []
     if product:
-        r.append(f"{product}推荐哪些公司？")
+        r.append(f"{local}{product}推荐哪些公司？")
     if industry:
-        r.append(f"国内{industry}平台有哪些？")
+        r.append(f"{city}本地的{industry}公司有哪些？" if city else f"{industry}公司有哪些？")
     if customer:
         r.append(f"适合{customer}的AI系统有哪些？")
     if product and customer:
@@ -679,6 +713,8 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
     """
     t = item.get("type")
     cfg = item.get("config_json") or {}
+    city = clean_city(cfg.get("city"))
+    local = f"{city}的" if city else ""  # 本地问法前缀（没填所在地就为空）
     queries: list[str] = []
 
     if t == "brand":
@@ -692,14 +728,14 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
         is_service = str(cfg.get("kind") or "") == "service"
         if product and is_service:
             queries = [
-                f"{product}哪家公司做得好？",
+                f"{local}{product}哪家公司做得好？",
                 f"{product}怎么收费？",
                 f"{product}一般包含哪些内容？",
             ]
         elif product:
             queries = [
                 # 「{product}推荐？」缺宾语（问出来是半句话，模型只能反问「你想推荐什么」）
-                f"{product}推荐哪些公司？",
+                f"{local}{product}推荐哪些公司？",
                 f"{product}价格多少？",
                 f"{product}哪个好？",
             ]
@@ -713,7 +749,7 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
         product = cfg.get("product") or ""
         if isinstance(product, list):
             product = product[0] if product else ""
-        industry = cfg.get("industry") or ""
+        industry = _probe_term(cfg.get("industry"))
         if target and comp:
             # ① 品牌/比较类
             queries.extend(
@@ -736,12 +772,13 @@ def generate_queries(item: dict, context: dict | None = None) -> list[str]:
             if industry:
                 queries.append(f"{industry}领域，{comp}和{target}谁更适合？")
     elif t == "keyword":
-        kw = cfg.get("keyword") or ""
-        industry = cfg.get("industry") or ""
+        # 关键词/行业同样是长句截短：自动配置建的这个对象，keyword 就是那句行业话术
+        kw = _probe_term(cfg.get("keyword"))
+        industry = _probe_term(cfg.get("industry"))
         if kw:
             suffix = f"{industry}（{kw}）" if industry else kw
             queries = [
-                f"{kw}哪个好？",
+                f"{local}{kw}哪个好？",
                 f"{kw}有哪些推荐？",
                 f"怎么选{suffix}？",
             ]
