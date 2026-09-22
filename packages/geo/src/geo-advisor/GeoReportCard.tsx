@@ -43,9 +43,8 @@ export function GeoReportCard() {
     setExporting(true)
     setError(null)
     try {
-      // 真实 PDF 路由是 v1 的 /intelligence/reports/latest/pdf（2026-08-15 新增）；
-      // 走 geoDownload 才既用得上产品门基址，又不会被「200 + JSON 暂无报告」骗成一个假 .pdf。
-      const blob = await geoDownload('/intelligence/reports/latest/pdf')
+      // 实时综合报告：导出时聚合认知健康、画像、覆盖、竞品、来源、缺口和行动计划。
+      const blob = await geoDownload('/report/export')
       await saveBlobToDisk(blob, `GEO-AI认知报告-${new Date().toISOString().slice(0, 10)}.pdf`)
     } catch (e) {
       setError(e instanceof Error ? e.message : '导出失败')

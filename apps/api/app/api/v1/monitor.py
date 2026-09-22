@@ -909,6 +909,43 @@ def _is_mention(answer: str, cands: list[str]) -> bool:
     return False
 
 
+# AI 在回答里复述企业名，不等于它真的认识企业。否认信号只在企业名首次出现的
+# 前后句窗口内判断，避免把其他主体的免责声明误算到企业身上。
+_NON_RECOGNITION_RES = (
+    re.compile(r"(并不|不是|不太)[^。！？\n]{0,16}(广为人知|知名|出名|熟知)"),
+    re.compile(r"知名度(有限|不高|较低|低)"),
+    re.compile(r"公开信息(较少|很少|有限|不多)"),
+    re.compile(r"(打字|拼写|输入法|谐音|错别字|误写|打错)"),
+    re.compile(r"(未|没有|无法|不能|查不到|搜不到|暂无)[^。！？\n]{0,12}(检索到|搜索到|找到|查到|确认|核实|查证)"),
+    re.compile(r"(可能|大概|应该)(是|为)(个)?(打字|拼写|输入|笔误)"),
+)
+
+_NON_RECOGNITION_WORDS = (
+    "未听说过", "没有听说过", "不为人知", "并非广为人知", "不是广为人知",
+    "没有这个品牌", "并无此品牌", "不存在该品牌", "未收录", "无相关公开",
+    "无法确认这家", "无法核实这家", "不能确认这家", "无法查证这家",
+    "可能是个误解", "疑似误写", "推测为误", "建议确认一下具体名称", "建议确认名称",
+    "并非知名品牌", "不是知名品牌", "并非一家知名", "不是一家知名",
+    "小众品牌", "较小众", "区域性品牌", "知名度有限",
+)
+
+
+def _recognition_of(answer: str, cands: list[str]) -> str:
+    """返回 recognised / not_recognised / not_mentioned；否认优先。"""
+    if not answer:
+        return "not_mentioned"
+    sentences = [s for s in re.split(r"[。！？!?\n；;]", answer) if s.strip()]
+    hit_at = next((i for i, sentence in enumerate(sentences) if _is_mention(sentence, cands)), -1)
+    if hit_at < 0:
+        return "not_mentioned"
+    window = "".join(sentences[max(0, hit_at - 1): hit_at + 2])
+    if any(word in window for word in _NON_RECOGNITION_WORDS):
+        return "not_recognised"
+    if any(pattern.search(window) for pattern in _NON_RECOGNITION_RES):
+        return "not_recognised"
+    return "recognised"
+
+
 def _analyze_answer(company_name: str | None, answer: str, aliases: list[str] | None = None) -> dict:
     """解析 AI 回答：企业平均排名（估算）+ 评价倾向（规则）
 
@@ -922,6 +959,7 @@ def _analyze_answer(company_name: str | None, answer: str, aliases: list[str] | 
     """
     rank_est: int | None = None
     mentioned = False
+    recognition = "not_mentioned"
     if company_name and answer:
         cands = _mention_cands(company_name, aliases)
         sentences = re.split(r"[。！？!?\n；;]", answer)
@@ -930,6 +968,10 @@ def _analyze_answer(company_name: str | None, answer: str, aliases: list[str] | 
                 rank_est = i + 1
                 mentioned = True
                 break
+        recognition = _recognition_of(answer, cands) if mentioned else "not_mentioned"
+        if recognition == "not_recognised":
+            mentioned = False
+            rank_est = None
 
     sentiment = None
     if mentioned and answer:
@@ -967,7 +1009,14 @@ def _analyze_answer(company_name: str | None, answer: str, aliases: list[str] | 
         else:
             sentiment = "neutral"
 
-    return {"rank_est": rank_est, "mentioned": mentioned, "sentiment": sentiment, "sentiment_source": "rule"}
+    return {
+        "rank_est": rank_est,
+        "rank_est_kind": "sentence_index",
+        "mentioned": mentioned,
+        "recognition": recognition,
+        "sentiment": sentiment,
+        "sentiment_source": "rule",
+    }
 
 
 async def _run_check(
@@ -1013,8 +1062,8 @@ async def _run_check(
             if competitor_name and answer:
                 cp = _analyze_answer(competitor_name, answer, competitor_aliases)
                 subjects = {
-                    "company": {"mentioned": mentioned, "rank_est": parsed["rank_est"], "sentiment": parsed["sentiment"]},
-                    "competitor": {"mentioned": cp["mentioned"], "rank_est": cp["rank_est"], "sentiment": cp["sentiment"]},
+                    "company": {"mentioned": mentioned, "rank_est": parsed["rank_est"], "sentiment": parsed["sentiment"], "recognition": parsed["recognition"]},
+                    "competitor": {"mentioned": cp["mentioned"], "rank_est": cp["rank_est"], "sentiment": cp["sentiment"], "recognition": cp["recognition"]},
                 }
             snippet = ""
             if mentioned and company_name:
@@ -1031,6 +1080,8 @@ async def _run_check(
                 "configured": True,
                 "mentioned": mentioned,
                 "rank_est": parsed["rank_est"],
+                "rank_est_kind": parsed["rank_est_kind"],
+                "recognition": parsed["recognition"],
                 "sentiment": parsed["sentiment"],
                 "subjects": subjects,
                 "snippet": snippet,

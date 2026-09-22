@@ -510,3 +510,130 @@ def render_report_pdf(
         with open(output_path, "rb") as f:
             return f.read()
     return HTML(string=html_doc).write_pdf(target=None)
+
+
+def render_live_report_html(data: Dict[str, Any]) -> str:
+    """渲染实时聚合报告。
+
+    与旧 ``report_json`` 报告分开：这里直接消费 cognition/distill 的当前结果，
+    避免已更新的数据被一份历史报告快照盖住。
+    """
+    health = data.get("health") or {}
+    portrait = data.get("portrait") or {}
+    coverage = data.get("coverage") or {}
+    reasons = data.get("reasons") or {}
+    competitors = data.get("competitors") or {}
+    sources = data.get("sources") or {}
+    gaps = data.get("gaps") or []
+    plans = data.get("plans") or []
+    sample = health.get("sample") or {}
+    score = health.get("total")
+    score_css = "background:#eef1f5" if score is None else f"background:conic-gradient({'#2f6fed' if score >= 40 else '#dc2626'} 0 {score}%,#eef1f5 {score}% 100%)"
+
+    def rows(items: List[dict], renderer, empty: str, colspan: int) -> str:
+        return "".join(renderer(item) for item in items) or f"<tr><td colspan='{colspan}'>{_esc(empty)}</td></tr>"
+
+    def engine_row(engine: dict) -> str:
+        excluded = '<span class="tag r">未计入</span>' if not engine.get("answered") else ""
+        return (
+            f"<tr><td>{_esc(engine.get('name'))}</td><td>{engine.get('asked', 0)}</td>"
+            f"<td><b>{engine.get('answered', 0)}</b> {excluded}</td>"
+            f"<td>{engine.get('mentioned', 0)}</td></tr>"
+        )
+
+    engine_rows = rows(sample.get("engines") or [], engine_row, "暂无引擎样本", 4)
+    dim_rows = rows(health.get("dims") or [], lambda d: (
+        f"<tr><td>{_esc(d.get('label'))}</td><td><b>{d.get('score') if d.get('score') is not None else '—'}</b></td>"
+        f"<td class='src'>{_esc(d.get('basis'))}</td><td>{'—' if d.get('score') is None else ('认知清晰' if d.get('score') >= 70 else '部分认知' if d.get('score') >= 40 else '认知薄弱')}（规则推断）</td></tr>"
+    ), "暂无认知维度数据", 4)
+    portrait_rows = rows(portrait.get("items") or [], lambda i: (
+        f"<tr><td>{_esc(i.get('label'))}</td><td>{_esc(i.get('profile'))}</td><td class='src'>{_esc(i.get('profile_basis'))}</td>"
+        f"<td>{_esc(i.get('ai_status'))}</td><td>{_esc(i.get('deviation'))}</td></tr>"
+    ), "暂无画像数据", 5)
+    coverage_rows = rows(coverage.get("stages") or [], lambda s: (
+        f"<tr><td>{_esc(s.get('label'))}</td><td>{s.get('question_count', 0)}</td>"
+        f"<td>{'未监测' if s.get('coverage') is None else str(s.get('coverage')) + '%'}</td>"
+        f"<td>{'—' if s.get('coverage') is None else ('高' if s.get('coverage') >= 60 else '中' if s.get('coverage') >= 30 else '低')}</td></tr>"
+    ), "暂无问题覆盖数据", 4)
+    reason_items = "".join(
+        f"<li><b>{_esc(r.get('query'))}</b>（{_esc(r.get('engine'))}）<br><span class='src'>{_esc(str(r.get('snippet') or '')[:180])}</span></li>"
+        for r in (reasons.get("reasons") or [])[:5]
+    ) or "<li>暂无真实提及样本</li>"
+    missing_items = "".join(f"<li>{_esc(x)}</li>" for x in (reasons.get("missing_evidence") or [])) or "<li>暂无缺失证据</li>"
+
+    comp_items = [item for group in (competitors.get("groups") or []) for item in (group.get("items") or [])]
+    comp_rows = rows(comp_items, lambda c: (
+        f"<tr><td><b>{_esc(c.get('short_name') or c.get('name'))}</b></td><td>{_esc(c.get('label'))}</td>"
+        f"<td>{'—' if c.get('competitor_rate') is None else str(c.get('competitor_rate')) + '%'}</td>"
+        f"<td>{'—' if c.get('competitor_positive_rate') is None else str(c.get('competitor_positive_rate')) + '%'}</td>"
+        f"<td>{c.get('competitor_rank_avg') if c.get('competitor_rank_avg') is not None else '—'}</td><td>{c.get('samples', 0)}</td>"
+        f"<td>{_esc(c.get('comparison') or '—')}</td></tr>"
+    ), "暂无竞品对比数据", 7)
+    matrix = competitors.get("matrix") or {}
+    matrix_html = ""
+    if matrix.get("columns"):
+        matrix_html = "<h3>对象对比矩阵（一个对象一列）</h3><table><tr>" + "".join(f"<th>{_esc(x)}</th>" for x in matrix["columns"]) + "</tr>" + "".join(
+            f"<tr><td><b>{_esc(r.get('label'))}</b></td>" + "".join(f"<td>{_esc(v)}</td>" for v in (r.get('values') or [])) + "</tr>"
+            for r in (matrix.get("rows") or [])
+        ) + "</table>"
+    source_items = sources.get("items") or []
+    source_html = "".join(
+        f"<div class='bar'><span class='name'>{_esc(s.get('label'))}</span><div class='track'><div class='fill' style='width:{s.get('share', 0)}%'></div></div><span class='val'>{s.get('count', 0)}处 · {s.get('share', 0)}%</span></div>"
+        for s in source_items
+    ) or "<div class='empty'>暂无可归因的来源数据</div>"
+
+    def priority(value: Any) -> tuple[str, str]:
+        number = int(value or 0)
+        return ("r", "P0") if number >= 85 else (("o", "P1") if number >= 70 else ("b", "P2"))
+
+    def gap_row(g: dict) -> str:
+        tone, label = priority(g.get("priority"))
+        missing = "、".join(g.get("missing_capabilities") or []) or g.get("missing_information") or "—"
+        retrieval = g.get("retrieval_note") or ("企业知识库检索未命中" if not g.get("retrieval_score") else "企业知识库有相关命中")
+        return (
+            f"<tr><td><b>{_esc(g.get('question'))}</b></td><td>{_esc(missing)}</td>"
+            f"<td class='src'>{_esc(retrieval)}</td><td><span class='tag {tone}'>{label}</span></td></tr>"
+        )
+
+    gap_rows = rows(gaps[:10], lambda g: (
+        gap_row(g)
+    ), "暂无知识缺口", 4)
+    plan_rows = rows(plans[:10], lambda p: (
+        f"<tr><td><span class='tag b'>{'P0' if (p.get('priority') or 0) >= 85 else 'P1' if (p.get('priority') or 0) >= 70 else 'P2'}</span></td>"
+        f"<td>{_esc(p.get('topic'))}</td><td>内容</td><td>内容资产</td><td>{_esc(p.get('state') or p.get('status') or '待生产')}</td></tr>"
+    ), "暂无行动计划", 5)
+    chips = ""
+    if sample:
+        silent = sample.get("silent_engines") or []
+        chips = (
+            f"<div class='meta'><span class='tag b'>样本 {sample.get('question_total', 0)} 问 × {sample.get('engine_total', 0)} 家引擎</span>"
+            f"<span class='tag {'g' if sample.get('engine_effective') == sample.get('engine_total') else 'o'}'>有效引擎 {sample.get('engine_effective', 0)}/{sample.get('engine_total', 0)}</span>"
+            + (f"<span class='tag r'>本期未返回：{_esc('、'.join(silent))}（已剔除，不计入分母）</span>" if silent else "") + "</div>"
+        )
+    gap_count = len(gaps)
+    reason_count = len(reasons.get("reasons") or [])
+    score_target = "—" if score is None else f"≥ {min(100, score + 10)}（规则建议）"
+    return f"""<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'><title>GEO · AI 认知报告</title><style>{_CSS}
+    .page{{margin:0 auto;box-shadow:none}} .verdict{{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:10px;font-size:11px;line-height:1.7;margin:8px 0}}
+    h3{{font-size:13px;margin:14px 0 6px}} ul{{padding-left:16px}} li{{margin:5px 0;line-height:1.6}} .piewrap{{display:flex;gap:20px}}</style></head><body>
+    <div class='page'><div class='kicker'>GEO · AI 认知报告</div><h1>AI 认知健康报告</h1>
+    <div class='meta'><span>企业：<b>{_esc(data.get('company') or '—')}</b></span><span>行业：<b>{_esc(data.get('industry') or '—')}</b></span><span>产品：<b>{_esc('、'.join(data.get('products') or []) or '—')}</b></span><span>生成：<b>{_esc(data.get('generated_at'))}</b></span></div>
+    <div class='ai-note'>⚠ 本报告由 AI 自动生成。规则推断与 AI 建议均待验证；所有比例只使用真实返回的监测回答，无数据章节如实标注。</div>{chips}
+    <h2>01 · AI 认知健康</h2><div class='gauge'><div class='score' style='{score_css}'><b>{score if score is not None else '—'}</b><span>/ 100</span></div><div class='note'>{_esc(health.get('note') or '待数据积累')}</div></div>
+    <table><tr><th>认知维度</th><th>得分</th><th>数据依据</th><th>解读</th></tr>{dim_rows}</table>
+    <table><tr><th>本期引擎</th><th>提问数</th><th>有效回答</th><th>判定提及</th></tr>{engine_rows}</table></div>
+    <div class='page'><h2>02 · AI 眼中的企业（认知画像）</h2><p class='verdict'>{_esc(portrait.get('note') or '')}</p><table><tr><th>维度</th><th>资料侧</th><th>判断依据</th><th>AI 侧</th><th>偏差</th></tr>{portrait_rows}</table></div>
+    <div class='page'><h2>03 · 客户问题地图（决策链覆盖）</h2><div class='flow'>{''.join(f"<span class='step'>{x}</span><span class='arrow'>→</span>" for x in ['认知','搜索','比较','选择','决策','信任'])}</div><table><tr><th>客户阶段</th><th>问题数</th><th>我方覆盖</th><th>AI 决策覆盖度</th></tr>{coverage_rows}</table><p class='src'>{_esc(coverage.get('note') or '')}</p>
+    <h2>04 · AI 推荐表现</h2><div class='grid2'><div class='card'><h3>AI 为什么提到你（真实回答样本）</h3><ul>{reason_items}</ul></div><div class='card'><h3>缺失证据（资料有 · AI 没引用）</h3><ul>{missing_items}</ul></div></div></div>
+    <div class='page'><h2>05 · 竞争格局（分类型对标）</h2><table><tr><th>对象</th><th>类型</th><th>被提及率</th><th>正面描述率</th><th>句序位</th><th>样本</th><th>我方 vs 它</th></tr>{comp_rows}</table>{matrix_html}<p class='src'>{_esc(competitors.get('note') or '')}</p>
+    <h2>06 · 信息来源贡献度（AI 从哪里认识你）</h2>{source_html}<p class='src'>{_esc(sources.get('note') or '')}</p></div>
+    <div class='page'><h2>07 · 知识缺口（AI 问题分析）</h2><p class='verdict'>把客户会问的问题检索企业知识库，找不到足够事实时形成缺口。</p><table><tr><th>缺口（客户会问）</th><th>缺什么</th><th>检索结果</th><th>优先级</th></tr>{gap_rows}</table>
+    <h2>08 · 内容 / 知识建设（AI 建议 · 待验证）</h2><table><tr><th>建设项</th><th>阶段</th><th>绑定缺口</th><th>优先级</th></tr>{''.join(f"<tr><td>{_esc(p.get('topic'))}</td><td>内容</td><td>{_esc(p.get('target_question') or '—')}</td><td>P2</td></tr>" for p in plans[:8]) or "<tr><td colspan='4'>暂无建设建议</td></tr>"}</table></div>
+    <div class='page'><h2>09 · 未来 30 天行动计划（AI 建议 · 待验证）</h2><table><tr><th>优先级</th><th>行动</th><th>阶段</th><th>渠道</th><th>状态</th></tr>{plan_rows}</table>
+    <h2>10 · 下一周期（基线 → 建议目标）</h2><table><tr><th>指标</th><th>本次基线</th><th>下周期建议</th></tr><tr><td>AI 认知健康度</td><td>{score if score is not None else '—'}</td><td>{score_target}</td></tr><tr><td>AI 提及样本数</td><td>{reason_count} 条</td><td>持续提升</td></tr><tr><td>知识缺口数</td><td>{gap_count}</td><td>{'—' if not gap_count else '≤ ' + str(max(0, gap_count-2)) + '（规则建议）'}</td></tr></table><div class='foot'><span>GEO AI 认知报告 · EIOS GEO 自动生成</span><span>实时聚合 · 无回答不进分母</span></div></div></body></html>"""
+
+
+def render_live_report_pdf(data: Dict[str, Any]) -> bytes:
+    from weasyprint import HTML
+
+    return HTML(string=render_live_report_html(data)).write_pdf(target=None)

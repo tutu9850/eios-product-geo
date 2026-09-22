@@ -92,6 +92,7 @@ _PRODUCT_ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", r"/intelligence/matrix"),  # read
     ("GET", r"/intelligence/overview"),  # read
     ("GET", r"/intelligence/perception"),  # read
+    ("GET", r"/intelligence/progress"),  # read
     ("GET", r"/intelligence/reports/latest"),  # read
     ("GET", r"/intelligence/reports/latest/pdf"),  # read
     ("GET", r"/intelligence/sov"),  # read
@@ -123,6 +124,7 @@ _PRODUCT_ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", r"/monitor/rank-sentiment"),  # read
     ("GET", r"/monitor/sentiment"),  # read
     ("GET", r"/monitor/sources"),  # read
+    ("GET", r"/report/export"),  # read
     ("GET", r"/monitor/tasks"),  # read
     ("GET", r"/monitor/tasks/[^/]+/overview"),  # read
     ("GET", r"/onboard/run-status"),  # read

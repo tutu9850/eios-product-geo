@@ -32,6 +32,7 @@ from app.api.v1 import (
     meta,
     monitor,
     onboard,
+    report,
     stats,
 )
 from app.api.v2 import product_monitor
@@ -183,6 +184,7 @@ for r in (health.router, meta.router, monitor.router, collect.router,
           analyze.router, keywords.router, content.router, knowledge.router,
           distill.router, links.router, stats.router, battle.router,
           diagnose.router, export.router, market.router, onboard.router,
+          report.router,
           cognition.router,
           intelligence.router, enterprise_profile.router,
           # 内测：从企业知识库初始化「本公司资料」（Owner 2026-09-21）。
