@@ -109,6 +109,15 @@ function AnalysisEmpty({ title, next }: { title: string; next: string }) {
   return <div className="geo-empty analysis-empty"><b>{title}</b><span>{next}</span></div>
 }
 
+/**
+ * API 历史版本、租户缓存或部分失败响应可能暂时缺少列表字段。TypeScript 接口只在
+ * 编译期有效，不能把远端 JSON 当成一定完整；所有分析页统一把缺失列表降级为空态，
+ * 避免一次 `.map()` 把整个嵌入产品卸载成白屏。
+ */
+function rowsOf<T>(value: T[] | null | undefined): T[] {
+  return Array.isArray(value) ? value : []
+}
+
 export function GeoMonitorAnalytics() {
   const [tab, setTab] = useState<Analysis>('public-opinion')
   const [data, setData] = useState<PublicOpinion | Sentiment | FactCheck | Competitor | Industry | Sources | null>(null)
@@ -202,18 +211,18 @@ function PublicOpinionView({ data }: { data: PublicOpinion | null }) {
       />
       {metrics.affected_units ? <p className="geo-note">另有 {metrics.affected_units} 个监测单元被负面回答命中。</p> : null}
       <div className="geo-subhead"><h3>负面占比趋势</h3><small>按监测批次</small></div>
-      <GeoLine points={data.trend.map((row) => ({ label: day(row.ts).slice(5), value: row.neg_pct }))} unit="%" />
-      <p className="geo-note">{data.trend.map((row) => `${day(row.ts)} 负面 ${row.negative}/${row.total}`).join(' · ') || '暂无批次'}</p>
+      <GeoLine points={rowsOf(data.trend).map((row) => ({ label: day(row.ts).slice(5), value: row.neg_pct }))} unit="%" />
+      <p className="geo-note">{rowsOf(data.trend).map((row) => `${day(row.ts)} 负面 ${row.negative}/${row.total}`).join(' · ') || '暂无批次'}</p>
       <div className="geo-subhead"><h3>分平台负面分布</h3><small>规则估算，非模型精判</small></div>
       <GeoBars
-        items={data.platforms.map((row) => ({ label: row.platform, value: row.neg_pct, text: `${row.negative}/${row.total}` }))}
+        items={rowsOf(data.platforms).map((row) => ({ label: row.platform, value: row.neg_pct, text: `${row.negative}/${row.total}` }))}
         empty="还没有平台维度数据"
       />
       <div className="geo-subhead"><h3>高风险问题</h3><small>负面回答最多的问题</small></div>
       <GeoTable
         columns={['客户问题', '负面条数']}
         template="minmax(0,1fr) 80px"
-        rows={data.risk_top.map((row) => [<b>{row.question}</b>, <em>{row.negative}</em>])}
+        rows={rowsOf(data.risk_top).map((row) => [<b>{row.question}</b>, <em>{row.negative}</em>])}
         empty="没有高风险问题"
       />
     </div>
@@ -246,7 +255,7 @@ function SentimentView({ data }: { data: Sentiment | null }) {
       <GeoTable
         columns={['客户问题', '评价', '正 / 负 / 中']}
         template="minmax(0,1fr) 70px 96px"
-        rows={data.questions.map((row) => [
+        rows={rowsOf(data.questions).map((row) => [
           <b>{row.question}</b>,
           <em>{sentimentText(row.sentiment)}</em>,
           <em>
@@ -255,16 +264,16 @@ function SentimentView({ data }: { data: Sentiment | null }) {
         ])}
         empty="还没有逐问题评价"
       />
-      {data.top_words.length ? (
+      {rowsOf(data.top_words).length ? (
         <>
           <div className="geo-subhead"><h3>高频词</h3><small>负面语境里的用词</small></div>
-          <GeoBars items={data.top_words.map((row) => ({ label: row.word, value: row.count }))} />
+          <GeoBars items={rowsOf(data.top_words).map((row) => ({ label: row.word, value: row.count }))} />
         </>
       ) : null}
-      {data.negative_samples.length ? (
+      {rowsOf(data.negative_samples).length ? (
         <>
           <div className="geo-subhead"><h3>负面原话</h3><small>模型原话，未改写</small></div>
-          {data.negative_samples.slice(0, 5).map((row, index) => (
+          {rowsOf(data.negative_samples).slice(0, 5).map((row, index) => (
             <div key={index}>
               <p className="geo-note">
                 {row.question} · {row.platform} · {day(row.ts)}
@@ -313,17 +322,17 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
         <>
           <div className="geo-subhead"><h3>失真平台排行</h3><small>哪个模型最容易说错</small></div>
           <GeoBars
-            items={data.source_rank.map((row) => ({ label: row.source, value: row.count, text: `${row.count} 处` }))}
+            items={rowsOf(data.source_rank).map((row) => ({ label: row.source, value: row.count, text: `${row.count} 处` }))}
             empty="没有失真记录"
           />
           <div className="geo-subhead"><h3>失真问题排行</h3><small>哪类问题最容易说错</small></div>
           <GeoTable
             columns={['客户问题', '失真类型', '次数']}
             template="minmax(0,1fr) 120px 56px"
-            rows={data.question_rank.map((row) => [<b>{row.question}</b>, <em>{row.main_type}</em>, <em>{row.count}</em>])}
+            rows={rowsOf(data.question_rank).map((row) => [<b>{row.question}</b>, <em>{row.main_type}</em>, <em>{row.count}</em>])}
           />
           <div className="geo-subhead"><h3>失真原话</h3><small>共 {data.detail_total} 条</small></div>
-          {data.details.slice(0, 8).map((row, index) => (
+          {rowsOf(data.details).slice(0, 8).map((row, index) => (
             <div key={index}>
               <p className="geo-note">
                 {row.question} · {row.platform} · {row.abnormal_type} · {day(row.ts)}
@@ -344,7 +353,7 @@ function CompetitorView({ data }: { data: Competitor | null }) {
   if (!data?.pairs?.length) return <AnalysisEmpty title="还没有竞品对比数据" next="在“监测工作台”新建竞争关系对象，填写我方与竞品名称，然后至少成功运行一次。" />
   return (
     <div className="analysis-stack">
-      {data.pairs.slice(0, 8).map((pair, index) => (
+      {rowsOf(data.pairs).slice(0, 8).map((pair, index) => (
         <article className="geo-panel" key={index}>
           <div className="geo-subhead">
             <h3>
@@ -384,6 +393,7 @@ function CompetitorView({ data }: { data: Competitor | null }) {
 function IndustryView({ data }: { data: Industry | null }) {
   if (!data) return <AnalysisEmpty title="还没有企业提及数据" next="先运行行业市场监测对象；这里只展示真实回答中识别到的企业名称。" />
   if (data.empty) return <AnalysisEmpty title="还没有行业市场监测对象" next={data.hint ?? '到“监测工作台”新建行业市场对象并运行一次。'} />
+  const players = rowsOf(data.players)
   return (
     <div className="analysis-stack">
       <GeoKpis
@@ -397,10 +407,10 @@ function IndustryView({ data }: { data: Industry | null }) {
       <GeoTable
         columns={['名称', '来源类型', '提及回答', '覆盖问题']}
         template="minmax(0,1fr) 90px 78px 78px"
-        rows={data.players.map((row) => [<b>{row.name}</b>, <em>{row.category === 'self' ? '我方' : row.category === 'competitor' ? '已配置竞品' : '规则识别'}</em>, <em>{row.count}</em>, <em>{row.questions}</em>])}
-        empty="这一轮回答中没有识别到企业名称"
+        rows={players.map((row) => [<b>{row.name}</b>, <em>{row.category === 'self' ? '我方' : row.category === 'competitor' ? '已配置竞品' : '规则识别'}</em>, <em>{row.count}</em>, <em>{row.questions}</em>])}
+        empty="接口未返回企业提及明细；请刷新，仍为空时重新运行行业监测"
       />
-      {data.players.flatMap((row) => (row.evidence ?? []).slice(0, 1).map((sample) => ({ ...sample, name: row.name }))).slice(0, 5).map((sample, index) => <div key={`${sample.name}-${index}`}><p className="geo-note">{sample.name} · {sample.engine} · {sample.question}</p><GeoQuote>{sample.snippet}</GeoQuote></div>)}
+      {players.flatMap((row) => rowsOf(row.evidence).slice(0, 1).map((sample) => ({ ...sample, name: row.name }))).slice(0, 5).map((sample, index) => <div key={`${sample.name}-${index}`}><p className="geo-note">{sample.name} · {sample.engine} · {sample.question}</p><GeoQuote>{sample.snippet}</GeoQuote></div>)}
       {data.note ? <p className="geo-note">{data.note}</p> : null}
     </div>
   )
@@ -413,14 +423,14 @@ function SourcesView({ data }: { data: Sources | null }) {
     <div className="analysis-stack">
       <div className="geo-subhead"><h3>模型提及率</h3><small>谁更容易提到我</small></div>
       <GeoBars
-        items={data.sources.map((row) => ({ label: row.engine, value: row.mention_pct, text: `${row.mention_pct}%` }))}
+        items={rowsOf(data.sources).map((row) => ({ label: row.engine, value: row.mention_pct, text: `${row.mention_pct}%` }))}
         max={100}
       />
       <div className="geo-subhead"><h3>逐信源表现</h3><small>提及与评价分布</small></div>
       <GeoTable
         columns={['信源', '回答数', '提到我', '正面', '负面']}
         template="minmax(0,1fr) 74px 74px 64px 64px"
-        rows={data.sources.map((row) => [
+        rows={rowsOf(data.sources).map((row) => [
           <b>{row.engine}</b>,
           <em>{row.total}</em>,
           <em>{row.mentioned}</em>,

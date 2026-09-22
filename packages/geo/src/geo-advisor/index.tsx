@@ -116,7 +116,7 @@ export function GeoFlowRouter({ kind, onClose }: { kind: GeoFlowKind; onClose?: 
     case 'profile-overview':
       return <GeoProfileWorkspace />
     case 'monitor-analysis':
-      return <GeoMonitorAnalytics />
+      return <GeoCardErrorBoundary label="监测专业分析"><GeoMonitorAnalytics /></GeoCardErrorBoundary>
     case 'faq':
       return <GeoFaqWorkspace />
     case 'cognition-map':
