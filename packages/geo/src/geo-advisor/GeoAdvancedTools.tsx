@@ -16,11 +16,13 @@ const PROFILE_SOURCE_LABEL: Record<string, string> = {
   enterprise_facts: '知识库正式事实（active fact）',
 }
 const profileSourceText = (value: string) => PROFILE_SOURCE_LABEL[value] ?? `其他来源（${value}）`
+const DIAG_LABEL: Record<string,string> = { schema:'结构化数据', meta:'标题与描述', structure:'内容结构', depth:'内容深度', brand:'品牌识别', faq:'FAQ 问答', accessibility:'页面可访问' }
 
 export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
   const [engines,setEngines]=useState<Row[]>([]),[profile,setProfile]=useState<Row|null>(null),[busy,setBusy]=useState(''),[notice,setNotice]=useState('')
   const [progress,setProgress]=useState<Row|null>(null)
   const [company,setCompany]=useState(''),[keywords,setKeywords]=useState(''),[platform,setPlatform]=useState('sogou'),[limit,setLimit]=useState(3)
+  const [website,setWebsite]=useState(''),[diagnosis,setDiagnosis]=useState<Row|null>(null)
   async function load(){
     const [e,c,p]=await Promise.allSettled([geoGet<{engines:Row[]}>('/meta/engines'),geoGet<{company_name?:string}>('/content/company'),geoGet<Row>('/intelligence/progress')])
     if(e.status==='fulfilled')setEngines(e.value.engines??[])
@@ -36,6 +38,7 @@ export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
     if(!(await askGeoConfirm('最后确认：现在就清空 GEO 数据？清空后无法找回。','确认清空')))return
     await act('reset',()=>geoPost('/knowledge/reset?confirm=true',{}),'GEO 数据已重置为出厂状态')
   }
+  async function diagnoseWebsite(){if(!website.trim())return;setBusy('diagnose');setNotice('');try{const d=await geoPost<Row>('/diagnose',{url:website.trim()});setDiagnosis(d);if(!d.fetchable)setNotice(String(d.error??'官网无法访问'))}catch(e){setNotice(e instanceof Error?e.message:'官网诊断失败')}finally{setBusy('')}}
   return <aside className="advanced-drawer"><header><div><span>ADVANCED OPERATIONS</span><h2>高级工具</h2><p>低频、可能消耗模型额度或需要技术判断的能力集中在这里。</p></div><button onClick={onClose} aria-label="关闭高级工具"><X/></button></header>{notice&&<div className="geo-notice">{notice}</div>}
     <section><header><Server/><div><h3>模型引擎</h3><p>显示企业部署登记的国产模型；连通性以实测为准。</p></div></header><div className="engine-list">{engines.map((e,i)=><article key={e.id??e.engine_id??i}><div><b>{String(e.name??e.engine_name??e.id??'模型')}</b><small>{String(e.provider??e.status??'已登记')}</small></div><button disabled={busy===String(e.id??e.engine_id)} onClick={()=>void act(String(e.id??e.engine_id),()=>geoPost(`/meta/engines/${e.id??e.engine_id}/ping`,{}),'连通性检测完成')}>{busy===String(e.id??e.engine_id)?<LoaderCircle className="spin"/>:<CheckCircle2/>}实测</button></article>)}</div></section>
     <section><header><Search/><div><h3>认知分析与外网补搜</h3><p>查看回答解析队列；证据不足时再发起补搜，采集内容与企业正式资料保持分离。</p></div></header><div className="intelligence-progress"><span><b>{Number(progress?.parse?.succeeded??0)}</b>解析完成</span><span><b>{Number(progress?.parse?.running??0)+Number(progress?.parse?.queue_size??0)+Number(progress?.parse?.deferred??0)}</b>处理中/排队</span><span><b>{Number(progress?.parse?.failed??0)}</b>解析失败</span><span><b>{Number(progress?.harvest?.written??0)}</b>最近补搜入库</span></div>{progress?.harvest?<p className="geo-note">最近补搜：{String(progress.harvest.status==='done'?'已完成':progress.harvest.status==='failed'?'失败':progress.harvest.status==='running'?'采集中':'排队中')} · {Array.isArray(progress.harvest.keywords)?progress.harvest.keywords.join('、'):''}{progress.harvest.error?` · ${String(progress.harvest.error)}`:''}</p>:null}<div className="advanced-form"><input value={company} onChange={e=>setCompany(e.target.value)} placeholder="企业名称"/><input value={keywords} onChange={e=>setKeywords(e.target.value)} placeholder="关键词，逗号分隔"/><select value={platform} onChange={e=>setPlatform(e.target.value)}><option value="sogou">搜狗</option><option value="baidu">百度</option><option value="weibo">微博</option></select><button className="geo-btn primary" disabled={busy==='harvest'||!company.trim()||!keywords.trim()} onClick={()=>void act('harvest',()=>geoPost('/intelligence/harvest/search',{company:company.trim(),keywords:keywords.split(/[，,]/).map(x=>x.trim()).filter(Boolean),platform,max_per_keyword:10}),'补搜任务已创建，正在采集')}>{busy==='harvest'?<LoaderCircle className="spin"/>:<Search/>}开始补搜</button></div></section>
@@ -44,7 +47,7 @@ export function GeoAdvancedTools({onClose}:{onClose:()=>void}){
     {/* Owner 2026-09-21：重置接口已在产品门放行，前端补入口（原先只有接口没有按钮）。
         出厂重置是最高危操作，点两次才算数——第一次说明范围，第二次是真正确认，然后才带 confirm=true 调用。 */}
     <section className="disabled-tool"><header><Trash2/><div><h3>重置 GEO 数据</h3><p>恢复出厂状态：清空问题池、知识缺口、内容计划、监测历史、内容资产、关注/采集/链接与素材向量。<b>不可撤销</b>；不动企业自己的知识库与其他产品。</p></div></header><div className="loop-control"><button className="geo-btn secondary" disabled={busy==='reset'} onClick={()=>void resetGeoData()}>{busy==='reset'?<LoaderCircle className="spin"/>:<Trash2/>}重置 GEO 数据</button></div></section>
-    <section className="disabled-tool"><header><Search/><div><h3>官网诊断</h3><p>后端当前仍是 P0 占位接口，尚未产生真实诊断报告，因此不开放运行按钮。</p></div></header></section>
+    <section><header><Search/><div><h3>官网诊断</h3><p>抓取单个官网页面，检查 AI 是否容易识别企业、产品与问答结构；这是页面技术与内容诊断，不代表搜索排名。</p></div></header><div className="advanced-form"><input value={website} onChange={e=>setWebsite(e.target.value)} placeholder="官网 URL，例如 https://example.com"/><button className="geo-btn primary" disabled={busy==='diagnose'||!website.trim()} onClick={()=>void diagnoseWebsite()}>{busy==='diagnose'?<LoaderCircle className="spin"/>:<Search/>}开始诊断</button></div>{diagnosis?<div className="website-diagnosis"><div><strong>{diagnosis.fetchable?`${Number(diagnosis.score??0)} 分`:'无法访问'}</strong><span>{String(diagnosis.url??website)}</span></div>{Array.isArray(diagnosis.checks)&&diagnosis.checks.length?<GeoTable columns={['检查项','得分','诊断说明']} template="92px 64px minmax(0,1fr)" rows={diagnosis.checks.map((row:Row)=>[<b>{DIAG_LABEL[String(row.key)]??String(row.key)}</b>,<em>{String(row.score)}/{String(row.max)}</em>,<em>{String(row.note)}</em>])}/>:null}{Array.isArray(diagnosis.suggestions)&&diagnosis.suggestions.length?<div><b>优先建议</b><ul>{diagnosis.suggestions.map((s:string,i:number)=><li key={i}>{s}</li>)}</ul></div>:null}</div>:null}</section>
   </aside>
 }
 
