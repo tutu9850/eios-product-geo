@@ -40,7 +40,8 @@ def _engine_row(name: str, mentioned, answer: str = ""):
 
 def _batch(question: str, monitor_id: str, answered: bool, mentioned: bool = True):
     """1 个探针 × 6 个引擎；只有一个引擎真作答（现实：只有 DeepSeek 配了 key）。"""
-    rows = [_engine_row("DeepSeek", mentioned if answered else None, "有回答" if answered else "")]
+    answer = ("亚宇臻隆科技 有回答" if mentioned else "回答中未提及该企业") if answered else ""
+    rows = [_engine_row("DeepSeek", mentioned if answered else None, answer)]
     for name in ("Kimi", "豆包", "文心一言", "通义千问", "智谱"):
         rows.append(_engine_row(name, None, ""))
     return {
@@ -60,6 +61,14 @@ def _batch(question: str, monitor_id: str, answered: bool, mentioned: bool = Tru
     }
 
 
+def _batch_many(entries, monitor_id="mi_1"):
+    questions = [
+        _batch(question, monitor_id, answered, mentioned)["questions"][0]
+        for question, answered, mentioned in entries
+    ]
+    return {"batch": True, "created_at": "2026-09-21T01:19:19+00:00", "questions": questions}
+
+
 # ── 1. 认知洞察：分母只算真作答 ────────────────────────────────
 
 
@@ -75,7 +84,10 @@ def _patch_cognition(monkeypatch, history, questions=None):
     from app.api.v1 import cognition
 
     monkeypatch.setattr(cognition, "_load_history", lambda: history)
-    monkeypatch.setattr(cognition, "_load_items", lambda: [])
+    monkeypatch.setattr(cognition, "_load_items", lambda: [{
+        "monitor_id": "mi_1", "type": "brand", "status": "active", "entity": "亚宇臻隆科技",
+        "config_json": {"company": "亚宇臻隆科技"},
+    }])
     monkeypatch.setattr(cognition, "get_store", lambda: _FakeStore({"questions": questions or []}))
     monkeypatch.setattr(cognition, "_cognition_profile_v2", _fake_profile_v2)
 
@@ -84,19 +96,19 @@ async def _fake_profile_v2():
     return {"total": 0, "health": None, "metrics": {}, "matrix": [], "errors": []}
 
 
-def test_cognition_health_ignores_engines_that_never_answered(monkeypatch):
+def test_cognition_health_does_not_use_mention_rate_without_assessment(monkeypatch):
     from app.api.v1 import cognition
 
     _patch_cognition(monkeypatch, [_batch("亚宇臻隆科技是什么？", "mi_1", answered=True)])
     data = _run(cognition.health())["data"]
 
     brand = next(d for d in data["dims"] if d["key"] == "brand")
-    assert brand["score"] == 100, "6 条里只有 1 条真作答且提到了我方 → 100%，不是 1/6≈17%"
-    assert "1" in brand["basis"]
-    # 口径写清楚：分母是「已回答」，不是「探针记录」
+    assert brand["score"] is None, "提及率不是品牌认知评估；没有认知评估时应未判定"
+    assert "提及不等于正确认识" in brand["basis"]
+    # 即使品牌探针有回答，也不能把提及率回填成场景覆盖。
     scene = next(d for d in data["dims"] if d["key"] == "scene")
-    assert scene["score"] == 100
-    assert "1 条" in scene["basis"]
+    assert scene["score"] is None
+    assert "场景" in scene["basis"]
 
 
 def test_cognition_health_says_no_answer_instead_of_zero(monkeypatch):
@@ -107,7 +119,23 @@ def test_cognition_health_says_no_answer_instead_of_zero(monkeypatch):
 
     brand = next(d for d in data["dims"] if d["key"] == "brand")
     assert brand["score"] is None, "一条回答都没有 → 未评估，不是 0 分"
-    assert "暂无已回答" in brand["basis"]
+    assert "暂无有效认知评估" in brand["basis"]
+
+
+def test_cognition_health_requires_one_explicit_primary_subject(monkeypatch):
+    from app.api.v1 import cognition
+
+    _patch_cognition(monkeypatch, [_batch("亚宇臻隆科技是什么？", "mi_1", answered=True)])
+    monkeypatch.setattr(cognition, "_load_items", lambda: [
+        {"monitor_id": "mi_1", "type": "brand", "config_json": {"company": "亚宇臻隆科技"}},
+        {"monitor_id": "mi_2", "type": "brand", "config_json": {"company": "比格家居"}},
+    ])
+
+    data = _run(cognition.health())["data"]
+
+    assert data["subject_status"] == "pending"
+    assert data["total"] is None
+    assert all(row["score"] is None for row in data["dims"])
 
 
 def test_cognition_health_preserves_a_real_zero_score(monkeypatch):
@@ -148,10 +176,10 @@ def test_cognition_portrait_does_not_claim_deleted_material_exists(monkeypatch):
 def test_cognition_coverage_divides_by_answered_not_by_probe_rows(monkeypatch):
     from app.api.v1 import cognition
 
-    history = [
-        _batch("亚宇臻隆科技是什么？", "mi_1", answered=True, mentioned=True),
-        _batch("知识云有哪些产品？", "mi_2", answered=True, mentioned=False),
-    ]
+    history = [_batch_many([
+        ("亚宇臻隆科技是什么？", True, True),
+        ("知识云有哪些产品？", True, False),
+    ])]
     _patch_cognition(monkeypatch, history)
     data = _run(cognition.coverage())["data"]
 
@@ -332,7 +360,9 @@ def test_competitor_total_counts_answers_not_engine_rows(monkeypatch):
     assert pair["unanswered"] == 5, "另外 5 条没作答要如实说出来"
     assert pair["target_mentioned"] == 1
     assert pair["target_pct"] == 100, "1 条作答里提到我方 → 100%，不是 1/6≈17%"
-    assert pair["win"]["none"] == 0, "没作答不能算进「都没选」"
+    assert sum(pair["win"].values()) == pair["total"], "没作答不能进入胜负统计"
+    assert pair["win"]["company"] == 0, "只提到我方不等于明确推荐我方"
+    assert pair["win"]["none"] == 1, "已作答但无法判断偏好归入无结论"
 
 
 def test_competitor_keeps_the_no_answer_case_honest(monkeypatch):

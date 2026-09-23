@@ -118,7 +118,8 @@ def test_a_fabricated_year_is_not_grounded_even_when_evidence_looks_similar(monk
             "亚宇臻隆科技是什么？",
         )
     )
-    assert res["abnormal"] is True
+    assert res["abnormal"] is False
+    assert res["unsupported"] is True
     assert res["main_type"] == "缺少依据"
 
 
@@ -156,7 +157,8 @@ def test_a_price_sentence_is_now_treated_as_a_claim(monkeypatch):
         )
     )
     assert res["reason"] != "无事实断言"
-    assert res["abnormal"] is True
+    assert res["abnormal"] is False
+    assert res["unsupported"] is True
 
 
 def test_without_a_company_name_there_is_nothing_to_check():
@@ -269,8 +271,8 @@ def test_fact_check_kpis_do_not_count_answers_without_claims(monkeypatch):
     monkeypatch.setattr(monitor, "_load_history", lambda: [])
 
     async def fake_check(company_name, snippet, question):  # noqa: ARG001
-        if question == "q1":  # 有断言，但知识库对不上 → 失真
-            return {"checked": True, "abnormal": True, "main_type": "缺少依据", "claims": ["经营范围不明"]}
+        if question == "q1":  # 有断言，但知识库对不上 → 缺少依据，不等于已证伪
+            return {"checked": True, "abnormal": False, "unsupported": True, "main_type": "缺少依据", "claims": ["经营范围不明"]}
         if question == "q2":  # 有回答，但没有任何可核验断言
             return {"checked": True, "abnormal": False, "reason": "无事实断言"}
         return {"checked": False, "abnormal": False, "reason": "无文本"}  # 没跑完检查
@@ -282,7 +284,8 @@ def test_fact_check_kpis_do_not_count_answers_without_claims(monkeypatch):
     assert truth["total_checked"] == 2      # 没跑完检查的不算
     assert truth["no_claim_count"] == 1     # 单独如实报出来
     assert truth["hit_kb"] == 0             # 没断言的回答不算「知识库命中」
-    assert truth["abnormal_count"] == 1
+    assert truth["abnormal_count"] == 0
+    assert truth["unsupported_count"] == 1
 
 
 def test_fact_check_hit_kb_only_counts_grounded_claims(monkeypatch):

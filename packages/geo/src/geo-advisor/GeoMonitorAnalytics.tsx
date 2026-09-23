@@ -3,6 +3,7 @@ import { Download, LoaderCircle, RefreshCw } from 'lucide-react'
 import { geoDownloadFile, geoGet } from './geo-api'
 import { GeoBars, GeoKpis, GeoLine, GeoQuote, GeoRatio, GeoTable, sentimentText, shortDay } from './shared'
 import { saveBlobToDisk } from '../lib/save-to-disk'
+import { MonitorSubjectPicker, useMonitorSubject } from './geo-monitor-subject'
 
 /**
  * 监测专业分析（六个页签共用一页）。
@@ -27,6 +28,8 @@ const TABS: Array<[Analysis, string]> = [
 const day = shortDay
 
 interface PublicOpinion {
+  scope_required?: boolean
+  scope?: { brands?: Array<{ monitor_id: string; name: string }> }
   health: { score: number; label: string; neg_pct: number; total: number }
   metrics: {
     check_records: number
@@ -44,14 +47,20 @@ interface PublicOpinion {
 }
 
 interface Sentiment {
+  scope_required?: boolean
+  scope?: { brands?: Array<{ monitor_id: string; name: string }> }
+  unknown_count?: number
   overview: { total: number; positive: number; negative: number; neutral: number; pos_pct: number; neg_pct: number; neu_pct: number }
   trend: Array<{ ts: string; positive: number; negative: number; neutral: number; total: number }>
   questions: Array<{ question: string; positive: number; negative: number; neutral: number; sentiment: string }>
   top_words: Array<{ word: string; count: number }>
+  top_words_note?: string
   negative_samples: Array<{ question: string; platform: string; snippet: string; ts: string }>
 }
 
 interface FactCheck {
+  scope_required?: boolean
+  scope?: { brands?: Array<{ monitor_id: string; name: string }> }
   company_name: string | null
   truth: {
     available: boolean
@@ -63,6 +72,8 @@ interface FactCheck {
     claim_checked?: number
     /** 本轮拉到的候选回答数（受上限截断），用来解释「已核验」为什么比总回答少 */
     candidate_total?: number
+    sampled_count?: number
+    unsupported_count?: number
     /** 有回答但没有任何可核验断言（不计命中也不计失真） */
     no_claim_count?: number
     knowledge_ok: boolean
@@ -123,12 +134,15 @@ export function GeoMonitorAnalytics() {
   const [data, setData] = useState<PublicOpinion | Sentiment | FactCheck | Competitor | Industry | Sources | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const { query: subjectQuery, loaded: brandsLoaded } = useMonitorSubject()
+  const scopedTab = tab === 'public-opinion' || tab === 'sentiment' || tab === 'fact-check'
 
   async function load() {
     setLoading(true)
     setError('')
     try {
-      setData(await geoGet(`/monitor/${tab}`))
+      const query = scopedTab && subjectQuery ? `?${subjectQuery}` : ''
+      setData(await geoGet(`/monitor/${tab}${query}`))
     } catch (e) {
       setData(null)
       setError(e instanceof Error ? e.message : '分析加载失败')
@@ -137,9 +151,10 @@ export function GeoMonitorAnalytics() {
     }
   }
   useEffect(() => {
+    if (!brandsLoaded) return
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+  }, [tab, brandsLoaded, subjectQuery])
 
   async function exportReport() {
     try {
@@ -174,6 +189,7 @@ export function GeoMonitorAnalytics() {
           </button>
         ))}
       </nav>
+      {scopedTab ? <MonitorSubjectPicker /> : null}
       {error && <div className="geo-inline-error">{error}</div>}
       <section className="analysis-content">
         {loading ? (
@@ -181,14 +197,18 @@ export function GeoMonitorAnalytics() {
             <LoaderCircle className="spin" />正在聚合监测结果…
           </div>
         ) : (
-          <>
-            {tab === 'public-opinion' && <PublicOpinionView data={data as PublicOpinion | null} />}
-            {tab === 'sentiment' && <SentimentView data={data as Sentiment | null} />}
-            {tab === 'fact-check' && <FactCheckView data={data as FactCheck | null} />}
-            {tab === 'competitor' && <CompetitorView data={data as Competitor | null} />}
-            {tab === 'industry' && <IndustryView data={data as Industry | null} />}
-            {tab === 'sources' && <SourcesView data={data as Sources | null} />}
-          </>
+          scopedTab && (data as { scope_required?: boolean } | null)?.scope_required ? (
+            <AnalysisEmpty title="请选择监测主体" next="该分析需要明确统计哪一个企业品牌；请在上方「监测主体」里选一个，或选「全部（全选汇总）」。" />
+          ) : (
+            <>
+              {tab === 'public-opinion' && <PublicOpinionView data={data as PublicOpinion | null} />}
+              {tab === 'sentiment' && <SentimentView data={data as Sentiment | null} />}
+              {tab === 'fact-check' && <FactCheckView data={data as FactCheck | null} />}
+              {tab === 'competitor' && <CompetitorView data={data as Competitor | null} />}
+              {tab === 'industry' && <IndustryView data={data as Industry | null} />}
+              {tab === 'sources' && <SourcesView data={data as Sources | null} />}
+            </>
+          )
         )}
       </section>
     </div>
@@ -244,6 +264,7 @@ function SentimentView({ data }: { data: Sentiment | null }) {
         ]}
       />
       <div className="geo-subhead"><h3>整体评价构成</h3><small>全部监测回答</small></div>
+      <p className="geo-note">正、负、中为规则估算结果；无法确认企业主体或态度的回答单列为未判定，不计入正负中占比。未判定 {data.unknown_count ?? 0} 条。</p>
       <GeoRatio
         segments={[
           { label: '正面', value: overview.positive, color: '#638d24' },
@@ -252,24 +273,26 @@ function SentimentView({ data }: { data: Sentiment | null }) {
         ]}
       />
       <div className="geo-subhead"><h3>逐问题评价</h3><small>点开前先看谁最糟</small></div>
-      <GeoTable
-        columns={['客户问题', '评价', '正 / 负 / 中']}
-        template="minmax(0,1fr) 70px 96px"
-        rows={rowsOf(data.questions).map((row) => [
-          <b>{row.question}</b>,
-          <em>{sentimentText(row.sentiment)}</em>,
-          <em>
-            {row.positive} / {row.negative} / {row.neutral}
-          </em>,
-        ])}
-        empty="还没有逐问题评价"
-      />
+      {(['positive', 'neutral', 'negative', 'unknown'] as const).map((kind) => {
+        const labels = { positive: '正面', neutral: '中性', negative: '负面', unknown: '待判定' }
+        const rows = rowsOf(data.questions).filter((row) => {
+          const value = row.sentiment.toLowerCase()
+          if (kind === 'unknown') return !['positive', 'negative', 'neutral', '正面', '负面', '中性'].includes(value)
+          return value === kind || value === labels[kind]
+        })
+        return rows.length ? <details key={kind} className="rounded-md border border-[var(--yayu-border)] px-2 py-1" open={kind === 'negative'}>
+          <summary className="cursor-pointer text-[11px] font-medium text-[var(--yayu-foreground)]">{labels[kind]} · {rows.length} 个问题</summary>
+          <div className="pt-1"><GeoTable columns={['客户问题', '评价', '正 / 负 / 中']} template="minmax(0,1fr) 70px 96px" rows={rows.map((row) => [<b>{row.question}</b>, <em>{sentimentText(row.sentiment)}</em>, <em>{row.positive} / {row.negative} / {row.neutral}</em>])} /></div>
+        </details> : null
+      })}
+      {!rowsOf(data.questions).length ? <p className="geo-note">还没有逐问题评价</p> : null}
       {rowsOf(data.top_words).length ? (
         <>
-          <div className="geo-subhead"><h3>高频词</h3><small>负面语境里的用词</small></div>
+          <div className="geo-subhead"><h3>高频词</h3><small>负面语境里重复出现的用词（最长优先、不重叠切词）</small></div>
           <GeoBars items={rowsOf(data.top_words).map((row) => ({ label: row.word, value: row.count }))} />
+          {data.top_words_note ? <p className="geo-note">{data.top_words_note}</p> : null}
         </>
-      ) : null}
+      ) : <p className="geo-note">没有重复出现的负面用词：负面样本太少，或每处用词都不重复。</p>}
       {rowsOf(data.negative_samples).length ? (
         <>
           <div className="geo-subhead"><h3>负面原话</h3><small>模型原话，未改写</small></div>
@@ -302,36 +325,38 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
           // 拿它当「已核验回答」会读成「10 条都验过了」。真正的核验数改成 claim_checked，
           // 跑完检查的总数挪到小字里。
           {
-            label: '已核验回答',
-            value: `${truth.claim_checked ?? truth.total_checked}`,
-            detail: `有企业断言并比对过（共 ${truth.total_checked} 条跑完检查，拉到 ${truth.candidate_total ?? truth.total_checked} 条）`,
+            label: '完成检查',
+            value: `${truth.total_checked}`,
+            detail: `抽检 ${truth.sampled_count ?? truth.total_checked} 条 / 候选 ${truth.candidate_total ?? truth.total_checked} 条`,
           },
-          { label: '知识库命中', value: `${truth.hit_kb}`, detail: '断言能在企业知识库对上', tone: truth.knowledge_ok ? 'good' : 'bad' },
-          { label: '疑似失真', value: `${truth.abnormal_count}`, detail: `影响 ${truth.affected_questions} 个问题 / ${truth.affected_sources} 个平台`, tone: truth.abnormal_count ? 'warn' : 'good' },
+          { label: '知识库有依据', value: truth.knowledge_ok ? `${truth.hit_kb}` : '—', detail: truth.knowledge_ok ? '有可匹配依据的断言' : '知识库不可用，暂不统计', tone: truth.knowledge_ok ? 'good' : 'warn' },
+          { label: '需要复核', value: `${truth.abnormal_count}`, detail: `涉及 ${truth.affected_questions} 个问题 / ${truth.affected_sources} 个平台`, tone: truth.abnormal_count ? 'warn' : 'good' },
         ]}
       />
-      {truth.candidate_total != null && (truth.candidate_total - truth.total_checked > 0 || (truth.no_claim_count ?? 0) > 0) ? (
+      {truth.candidate_total != null && (truth.candidate_total - (truth.sampled_count ?? truth.total_checked) > 0 || (truth.no_claim_count ?? 0) > 0 || (truth.unsupported_count ?? 0) > 0) ? (
         <p className="geo-note">
-          {truth.candidate_total - truth.total_checked > 0 ? `另有 ${truth.candidate_total - truth.total_checked} 条没跑完检查（超时或没有正文）。` : ''}
+          {truth.candidate_total - (truth.sampled_count ?? truth.total_checked) > 0 ? `本次抽检 ${truth.sampled_count ?? truth.total_checked}/${truth.candidate_total} 条候选回答。` : ''}
+          {truth.unsupported_count ? `其中 ${truth.unsupported_count} 条缺少依据，无法据此判断对错。` : ''}
           {truth.no_claim_count ? `另有 ${truth.no_claim_count} 条回答里没有可核验的企业断言（既不算命中，也不算失真）。` : ''}
         </p>
       ) : null}
       {!truth.available ? <div className="geo-empty">这一轮没有可用于对照的企业知识，结论先不下。</div> : null}
       {truth.knowledge_ok ? null : <p className="geo-note">知识库这次读不到，命中/失真两个数不完整。</p>}
+      {truth.candidate_total != null ? <p className="geo-note">抽检完成率：{truth.total_checked}/{truth.sampled_count ?? truth.total_checked} 条抽检回答完成检查；其中 {truth.claim_checked ?? truth.total_checked} 条含可比对断言。需要复核不等于已证实错误，请查看每条类型。</p> : null}
       {truth.abnormal_count ? (
         <>
-          <div className="geo-subhead"><h3>失真平台排行</h3><small>哪个模型最容易说错</small></div>
+          <div className="geo-subhead"><h3>待复核平台</h3><small>按需要复核的记录数排序</small></div>
           <GeoBars
             items={rowsOf(data.source_rank).map((row) => ({ label: row.source, value: row.count, text: `${row.count} 处` }))}
-            empty="没有失真记录"
+            empty="本次抽检没有待复核记录"
           />
-          <div className="geo-subhead"><h3>失真问题排行</h3><small>哪类问题最容易说错</small></div>
+          <div className="geo-subhead"><h3>待复核问题</h3><small>按需要复核的记录数排序</small></div>
           <GeoTable
-            columns={['客户问题', '失真类型', '次数']}
+            columns={['客户问题', '复核类型', '次数']}
             template="minmax(0,1fr) 120px 56px"
             rows={rowsOf(data.question_rank).map((row) => [<b>{row.question}</b>, <em>{row.main_type}</em>, <em>{row.count}</em>])}
           />
-          <div className="geo-subhead"><h3>失真原话</h3><small>共 {data.detail_total} 条</small></div>
+          <div className="geo-subhead"><h3>需复核回答</h3><small>共 {data.detail_total} 条</small></div>
           {rowsOf(data.details).slice(0, 8).map((row, index) => (
             <div key={index}>
               <p className="geo-note">
@@ -342,7 +367,7 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
           ))}
         </>
       ) : (
-        <div className="geo-empty">本轮没有发现与知识库冲突的回答。</div>
+        <div className="geo-empty">本次抽检未发现需要复核的回答；这不代表所有回答都已核验。</div>
       )}
     </div>
   )
@@ -350,29 +375,46 @@ function FactCheckView({ data }: { data: FactCheck | null }) {
 
 /** 竞品分析：我方 vs 竞品提及率对照 + 同题对比原话 */
 function CompetitorView({ data }: { data: Competitor | null }) {
+  const [visible, setVisible] = useState(8)
   if (!data?.pairs?.length) return <AnalysisEmpty title="还没有竞品对比数据" next="在“监测工作台”新建竞争关系对象，填写我方与竞品名称，然后至少成功运行一次。" />
+  const pairs = rowsOf(data.pairs)
+  // Owner 2026-09-23：本公司要先单独列出来，再按 1/2/3 列其他公司，
+  // 不能每组卡片各印一次「我方 vs 谁」，让人分不清哪张是本公司。
+  const selfNames = Array.from(new Set(pairs.map((pair) => pair.target).filter(Boolean)))
+  const selfName = selfNames[0] ?? null
+  const rivals = pairs.filter((pair) => pair.competitor !== selfName)
   return (
     <div className="analysis-stack">
-      {rowsOf(data.pairs).slice(0, 8).map((pair, index) => (
+      <p className="geo-note">比例表示各自回答中出现名称的回答占比（提及回答数 / 有回答数），不代表推荐率或胜负。每组问题和样本可能不同，百分比不能直接横向排名。</p>
+      <div className="geo-panel">
+        <div className="geo-subhead"><h3>本公司 / 其他公司</h3><small>编号 1 是本企业，后面按监测对象列出对标公司{selfNames.length > 1 ? `（这些探针里出现了 ${selfNames.length} 个不同的我方名称：${selfNames.join('、')}，请核对监测对象配置）` : ''}</small></div>
+        <ul className="geo-lines">
+          <li><b>1. {selfName ?? '（未识别我方名称）'}</b><span className="geo-muted"> · 本公司（判定提及用的名字）</span></li>
+          {rivals.slice(0, visible).map((pair, index) => (
+            <li key={`${pair.competitor}-${index}`}><b>{index + 2}. {pair.competitor}</b><span className="geo-muted"> · 对标 {selfName ?? '我方'} · 有回答 {pair.total} 条</span></li>
+          ))}
+        </ul>
+      </div>
+      {rivals.slice(0, visible).map((pair, index) => (
         <article className="geo-panel" key={index}>
           <div className="geo-subhead">
             <h3>
-              {pair.target} vs {pair.competitor}
+              {index + 2}. {pair.competitor}
             </h3>
             <small>
-              共 {pair.total} 条回答
+              对标 {selfName ?? '我方'} · 有回答 {pair.total} 条
               {pair.unanswered ? `（另 ${pair.unanswered} 条没作答，不计入百分比）` : ''}
             </small>
           </div>
           <GeoBars
             items={[
-              { label: `${pair.target}（我方）`, value: pair.target_pct, text: `${pair.target_pct}%` },
-              { label: pair.competitor, value: pair.comp_pct, text: `${pair.comp_pct}%` },
+              { label: `${pair.target} 提及回答占比`, value: pair.target_pct, text: `${pair.target_mentioned}/${pair.total}（${pair.target_pct}%）` },
+              { label: `${pair.competitor} 提及回答占比`, value: pair.comp_pct, text: `${pair.comp_mentioned}/${pair.total}（${pair.comp_pct}%）` },
             ]}
             max={100}
           />
           <p className="geo-note">
-            我方被提及 {pair.target_mentioned} 次，对方 {pair.comp_mentioned} 次
+            名称出现在回答中：{pair.target} {pair.target_mentioned}/{pair.total}，{pair.competitor} {pair.comp_mentioned}/{pair.total}
             {pair.same_entity_pct ? `；另有 ${pair.same_entity_pct}% 的回答把两者当成同一实体` : ''}。
           </p>
           {pair.samples?.length ? (
@@ -384,6 +426,7 @@ function CompetitorView({ data }: { data: Competitor | null }) {
           ) : null}
         </article>
       ))}
+      {visible < rivals.length ? <button className="geo-btn secondary" onClick={() => setVisible((count) => count + 8)}>显示更多（已显示 {visible}/{rivals.length} 组）</button> : rivals.length > 8 ? <p className="geo-note">已显示全部 {rivals.length} 组</p> : null}
       {data.note ? <p className="geo-note">{data.note}</p> : null}
     </div>
   )

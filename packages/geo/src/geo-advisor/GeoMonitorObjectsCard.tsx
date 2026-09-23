@@ -102,19 +102,18 @@ export function GeoMonitorObjectsCard() {
   }, [])
 
   const toggleSelect = (mid: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(mid)) next.delete(mid)
-      else next.add(mid)
-      return next
-    })
+    const next = new Set(selected)
+    if (next.has(mid)) next.delete(mid)
+    else next.add(mid)
+    setSelected(next)
+    window.dispatchEvent(new CustomEvent('geo-monitor-selection', { detail: { monitorIds: [...next] } }))
   }
 
   const toggleSelectAll = () => {
-    setSelected((prev) => {
-      const ids = (items ?? []).map((i) => i.monitor_id)
-      return prev.size === ids.length && ids.length > 0 ? new Set<string>() : new Set(ids)
-    })
+    const ids = (items ?? []).map((i) => i.monitor_id)
+    const next = selected.size === ids.length && ids.length > 0 ? new Set<string>() : new Set(ids)
+    setSelected(next)
+    window.dispatchEvent(new CustomEvent('geo-monitor-selection', { detail: { monitorIds: [...next] } }))
   }
 
   const runSelected = async () => {
@@ -134,6 +133,7 @@ export function GeoMonitorObjectsCard() {
       }
       setMsg(`已触发 ${ok}/${mids.length} 个监测对象运行，结果稍后入库`)
       setSelected(new Set())
+      window.dispatchEvent(new CustomEvent('geo-monitor-selection', { detail: { monitorIds: [] } }))
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : '运行失败')
@@ -399,6 +399,7 @@ export function GeoMonitorObjectsCard() {
       </div>
       {items && items.length > 0 ? (
         <div className="space-y-1.5">
+          <p className="text-[10px] text-[var(--yayu-faint)]">勾选对象会同步筛选右侧监测报告；批量监测只会启动所选对象。</p>
           <div className="flex items-center justify-between">
             <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--yayu-muted)]">
               <input

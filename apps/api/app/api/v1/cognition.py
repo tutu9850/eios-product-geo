@@ -65,42 +65,122 @@ def _stage_with_intent(q: str, intent: str | None, customer_stage: str | None) -
 
 
 def _brand_name_and_aliases() -> tuple[str | None, list[str]]:
-    """监测对象里的 brand 项 = 本企业（判定提及用的名字 + 别名）。"""
+    """只接受明确且唯一的企业配置；多个品牌对象不能靠列表顺序猜主体。"""
+    configured: dict[str, set[str]] = {}
     for it in _load_items():
-        if str(it.get("type")) == "brand":
-            return str(it.get("entity") or "") or None, list(it.get("aliases") or [])
-    return None, []
+        if str(it.get("type")) != "brand" or it.get("status") in {"deleted", "inactive", "paused", "archived"}:
+            continue
+        cfg = it.get("config_json") or {}
+        name = str(cfg.get("company") or "").strip()
+        if not name:
+            continue
+        aliases = {str(a).strip() for a in (cfg.get("aliases") or []) if str(a).strip()}
+        configured.setdefault(name, set()).update(aliases)
+    if len(configured) != 1:
+        return None, []
+    name, aliases = next(iter(configured.items()))
+    return name, sorted(aliases)
 
 
-def _sample_basis() -> dict:
+def _brand_entries() -> list[dict]:
+    """启用中的企业品牌监测对象（各自的公司名与别名）。"""
+    out: list[dict] = []
+    for it in _load_items():
+        if str(it.get("type")) != "brand" or it.get("status") in {"deleted", "inactive", "paused", "archived"}:
+            continue
+        cfg = it.get("config_json") or {}
+        name = str(cfg.get("company") or it.get("entity") or "").strip()
+        mid = str(it.get("monitor_id") or "")
+        if not name or not mid:
+            continue
+        out.append({
+            "monitor_id": mid,
+            "name": name,
+            "aliases": sorted({str(a).strip() for a in (cfg.get("aliases") or []) if str(a).strip()}),
+        })
+    return out
+
+
+def _brand_options() -> list[dict]:
+    return [{"monitor_id": e["monitor_id"], "name": e["name"]} for e in _brand_entries()]
+
+
+def _subject_scope(monitor_id: str | None) -> dict:
+    """前端「监测主体」选择 → 统计范围（与 monitor.overview 同一口径）。
+
+    - 具体 monitor_id：只统计这个品牌对象；同账号里还有别的公司也不互相污染。
+    - ``all``：全选，统计全部启用中的品牌对象。
+    - 空：只有唯一公司配置时才认；否则要求先选，不猜第一个。
+    """
+    entries = _brand_entries()
+    picked = str(monitor_id or "").strip()
+    if picked and picked.lower() == "all":
+        chosen, mode = entries, "all"
+    elif picked:
+        chosen, mode = [e for e in entries if e["monitor_id"] == picked], "selected"
+        if not chosen:
+            return {"mode": "invalid", "monitor_ids": set(), "names": [], "aliases": [],
+                    "error": "选中的监测主体不在这件账号名下"}
+    else:
+        if len({e["name"] for e in entries}) != 1:
+            return {"mode": "pending", "monitor_ids": set(), "names": [], "aliases": [],
+                    "error": "主体待确认：缺少唯一明确的公司配置"}
+        chosen, mode = entries, "single"
+    return {
+        "mode": mode,
+        "monitor_ids": {e["monitor_id"] for e in chosen},
+        "names": sorted({e["name"] for e in chosen}),
+        "aliases": sorted({a for e in chosen for a in e["aliases"]}),
+        "error": None,
+    }
+
+
+def _primary_brand_answers(batches: int | None = 1, scope: dict | None = None) -> list[dict]:
+    """同一口径的品牌探针样本；主体不明确时不产出可判定样本。"""
+    sc = scope if scope is not None else _subject_scope(None)
+    if sc.get("error"):
+        return []
+    brand_mids = sc["monitor_ids"]
+    return [a for a in _flat_answers(100000, batches=batches)
+            if a.get("item_type") == "brand" and str(a.get("monitor_id") or "") in brand_mids]
+
+
+def _sample_basis(scope: dict | None = None) -> dict:
     """本报告期的样本口径（诚实标注用）：多少问 × 多少家引擎、几家真有回答。
 
     2026-09-18 Owner 修复单：报告写「6 大引擎」，但 Kimi（余额欠费）与通义千问
     （账户被拒）本期 62/62 未返回任何回答；旧口径只对 mentioned 非空者算比例，
     等于把"没答的引擎"移出分母却不说明 —— 报告因此显得比事实更可信。
     """
+    sc = scope if scope is not None else _subject_scope(None)
+    if sc.get("error"):
+        return {"subject_status": "pending", "subject": None, "note": f"{sc['error']}，当前不统计样本。"}
+    brand_mids = sc["monitor_ids"]
     hist = _load_history()
     if not hist:
         return {}
     h = hist[-1]
     engines: dict[str, dict] = {}
-    question_total = len(h.get("questions") or [])
-    for q in h.get("questions") or []:
-        for ed in q.get("engine_detail") or []:
-            name = str(ed.get("engine_name") or "—")
-            e = engines.setdefault(name, {"name": name, "asked": 0, "answered": 0, "mentioned": 0, "error": None})
-            e["asked"] += 1
-            if ed.get("answer") or ed.get("snippet"):
-                e["answered"] += 1
-                if ed.get("mentioned"):
-                    e["mentioned"] += 1
-            if ed.get("error") and not e["error"]:
-                e["error"] = str(ed["error"])[:100]
+    brand_questions = [q for q in (h.get("questions") or []) if str(q.get("monitor_id") or "") in brand_mids]
+    question_total = len(brand_questions)
+    latest_answers = _primary_brand_answers(batches=1, scope=sc)
+    for row in latest_answers:
+        name = str(row.get("engine") or "—")
+        e = engines.setdefault(name, {"name": name, "asked": 0, "answered": 0, "mentioned": 0, "error": None})
+        e["asked"] += 1
+        if row.get("answered"):
+            e["answered"] += 1
+            if row.get("mentioned"):
+                e["mentioned"] += 1
+        if row.get("error") and not e["error"]:
+            e["error"] = str(row["error"])[:100]
     rows = sorted(engines.values(), key=lambda x: (-x["answered"], x["name"]))
     effective = [e["name"] for e in rows if e["answered"] > 0]
     silent = [e["name"] for e in rows if e["answered"] == 0]
     return {
         "batch_at": h.get("created_at") or "",
+        "subject_status": "confirmed",
+        "subject": "、".join(sc["names"]),
         "question_total": question_total,
         "engine_total": len(rows),
         "engine_effective": len(effective),
@@ -125,7 +205,6 @@ def _flat_answers(limit: int = 100, batches: int | None = None) -> list[dict]:
     """
     hist = _load_history()
     items = _load_items()
-    company, aliases = _brand_name_and_aliases()
     out: list[dict] = []
     seen_batches = 0
     for h in reversed(hist):
@@ -141,13 +220,17 @@ def _flat_answers(limit: int = 100, batches: int | None = None) -> list[dict]:
                 continue
             meta = next((x for x in items if x.get("monitor_id") == mid), None)
             itype = (meta or {}).get("type") or "question"
+            # 每一行用**它自己那个监测对象**的公司名复算：同账号里多个品牌不再互相污染
+            cfg = (meta or {}).get("config_json") or {}
+            item_company = str(cfg.get("company") or (meta or {}).get("entity") or "").strip() or None
+            item_aliases = list(cfg.get("aliases") or [])
             for ed in q.get("engine_detail") or []:
                 answer = ed.get("answer") or ""
                 mentioned = ed.get("mentioned")
                 recognition = ed.get("recognition")
                 sentiment = ed.get("sentiment")
-                if answer and company:
-                    parsed = _analyze_answer(company, answer, aliases)
+                if answer and item_company:
+                    parsed = _analyze_answer(item_company, answer, item_aliases)
                     mentioned = parsed["mentioned"]
                     recognition = parsed["recognition"]
                     sentiment = parsed["sentiment"]
@@ -185,7 +268,7 @@ def _flat_answers(limit: int = 100, batches: int | None = None) -> list[dict]:
 async def coverage():
     store = get_store()
     questions = store.load("questions")
-    answers_list = _flat_answers(100000)
+    answers_list = _primary_brand_answers()
     q_count: dict[str, int] = {}
     q_other: list[str] = []
     for q in questions:
@@ -251,6 +334,12 @@ def _split_pair(entity: str) -> str:
     return n
 
 
+def _pair_brand(entity: str) -> str:
+    n = str(entity or "").strip()
+    parts = re.split(r"\s*vs\s*", n, maxsplit=1, flags=re.I)
+    return parts[0].strip() if len(parts) > 1 else ""
+
+
 def _pct(part: int, whole: int) -> int | None:
     return round(part / whole * 100) if whole > 0 else None
 
@@ -260,8 +349,11 @@ def _avg(vals: list[float]) -> float | None:
 
 
 @router.get("/competitors")
-async def competitors():
+async def competitors(monitor_id: str | None = None):
     items = get_store().load("monitor_items")
+    scope = _subject_scope(monitor_id)
+    own_names = set(scope["names"])
+    subject_label = "、".join(scope["names"])
 
     def classify(name: str) -> dict:
         n = str(name or "")
@@ -279,7 +371,6 @@ async def competitors():
     # 不是把名字念一遍。2026-09-18 Owner 修复单：旧实现「对象」列把 5 个竞品
     # join('、') 塞进一格、差距列恒为「待数据」，而库里 2754 条 subjects 没人用。
     rows = _flat_answers(6000)
-    brand_name, _ = _brand_name_and_aliases()
 
     comps = []
     for c in items:
@@ -290,7 +381,10 @@ async def competitors():
         mid = str(c.get("monitor_id") or "")
         mine = [
             r for r in rows
-            if r.get("monitor_id") == mid and (r.get("subjects") or {}).get("company") is not None
+            if own_names
+            and _pair_brand(name) in own_names
+            and r.get("monitor_id") == mid
+            and (r.get("subjects") or {}).get("company") is not None
         ]
         brand_hit = [r for r in mine if (r["subjects"]["company"] or {}).get("mentioned")]
         comp_hit = [r for r in mine if (r["subjects"].get("competitor") or {}).get("mentioned")]
@@ -312,14 +406,8 @@ async def competitors():
         b_pos_rate = _pct(brand_sent["positive"], len(mine))
         c_pos_rate = _pct(comp_sent["positive"], len(mine))
         gap = (b_rate - c_rate) if (b_rate is not None and c_rate is not None) else None
-        if gap is None:
-            verdict = "样本不足，待积累"
-        elif gap < 0:
-            verdict = f"落后 {abs(gap)} 个百分点"
-        elif gap > 0:
-            verdict = f"领先 {gap} 个百分点"
-        else:
-            verdict = "持平"
+        # 提及覆盖率不能推导胜负或推荐结论。
+        verdict = "不可判胜负；仅显示提及覆盖率"
         evidence = [
             {
                 "query": r.get("query", ""),
@@ -338,14 +426,16 @@ async def competitors():
             "brand_mentioned": len(brand_hit),
             "brand_rate": b_rate,
             "brand_rank_avg": brand_rank,
+            "brand_rank_n": sum(1 for r in brand_hit if (r["subjects"]["company"] or {}).get("rank_est") is not None),
             "competitor_mentioned": len(comp_hit),
             "competitor_rate": c_rate,
             "competitor_rank_avg": comp_rank,
+            "competitor_rank_n": sum(1 for r in comp_hit if (r["subjects"].get("competitor") or {}).get("rank_est") is not None),
             "competitor_sentiment": comp_sent,
             "brand_sentiment": brand_sent,
             "brand_positive_rate": b_pos_rate,
             "competitor_positive_rate": c_pos_rate,
-            "gap": gap,
+            "gap": None,
             "verdict": verdict,
             "evidence": evidence,
         })
@@ -366,34 +456,31 @@ async def competitors():
             return "—" if v is None else f"{v}{suffix}"
 
         matrix = {
-            "columns": [f"我（{brand_name or '本企业'}）"] + [c["short_name"] for c in cols],
+            "columns": [f"我（{subject_label or '本企业'}）"] + [c["short_name"] for c in cols],
             "rows": [
                 {"label": "被提及率", "values": ["—"] + [cell(c["competitor_rate"], "%") for c in cols]},
                 {"label": "正面描述率", "values": ["—"] + [cell(c["competitor_positive_rate"], "%") for c in cols]},
-                {"label": "平均句序位（越小越靠前）", "values": ["—"] + [cell(c["competitor_rank_avg"]) for c in cols]},
+                {"label": "平均句序位（仅文本位置，不代表推荐顺序）", "values": ["—"] + [cell(c["competitor_rank_avg"]) + (f"（n={c['competitor_rank_n']}）" if c["competitor_rank_n"] else "") for c in cols]},
                 {"label": "正面提及次数", "values": ["—"] + [str(c["competitor_sentiment"]["positive"]) for c in cols]},
                 {"label": "被判定样本数", "values": ["—"] + [str(c["samples"]) for c in cols]},
                 {"label": "我方 vs 它", "values": ["—"] + [c["verdict"] for c in cols]},
             ],
         }
-        # 我方列用**同一批竞品探针问题**回填（同题对比才有意义）
-        brand_mentioned_total = sum(c["brand_mentioned"] for c in cols)
-        samples_total = sum(c["samples"] for c in cols)
-        ranks = [c["brand_rank_avg"] for c in cols if c["brand_rank_avg"] is not None]
-        matrix["rows"][0]["values"][0] = cell(_pct(brand_mentioned_total, samples_total), "%")
-        matrix["rows"][1]["values"][0] = cell(_pct(sum(c["brand_sentiment"]["positive"] for c in cols), samples_total), "%")
-        matrix["rows"][2]["values"][0] = cell(_avg(ranks))
-        matrix["rows"][3]["values"][0] = str(sum(c["brand_sentiment"]["positive"] for c in cols))
-        matrix["rows"][4]["values"][0] = str(samples_total)
+        # 每个竞品对使用不同探针池，左侧我方汇总会跨问题、对象重复计数，故不合并。
 
     return ok({
+        "subject": {
+            "name": subject_label or None,
+            "status": "pending" if scope["error"] else "confirmed",
+            "error": scope["error"],
+        },
+        "subjects": _brand_options(),
         "groups": groups,
         "matrix": matrix,
         "note": (
-            "口径：每个对象一行；指标来自**同一批竞品探针问题**下 AI 回答的双主体判定（我方 vs 该对象，同题对比）。"
-            "注意：探针问题本身会同时点名双方（如「笔革家居和岚亭装饰哪个好？」），所以双方「被提及率」天然接近 100%，"
-            "区分度主要看「正面描述率」和「句序位」。"
-            "「平均句序位」= 名字首次出现的句序号（规则可算的近似，不是 AI 给的推荐名次）；分类为名称关键词启发式。"
+            (f"主体：{subject_label}。" if subject_label else "主体待确认：缺少唯一明确的公司配置，竞品指标不可判定。")
+            + "每个竞品对按各自探针池单独计算，不跨竞品汇总我方数据；不同探针池不可直接横向比较。"
+            "「平均句序位」是回答文本中名称出现位置的均值，只对有位置记录的回答计算并标明 n，不代表推荐顺序；分类为名称关键词启发式。"
         ),
     })
 
@@ -490,7 +577,14 @@ async def portrait():
             if len(evidence) >= 3:
                 break
         provided = bool(evidence)
-        profile = "资料已提供" if provided else "暂无可核验内容资产"
+        # 2026-09-23 Owner 修复单：「资料已提供」是二值断言——命中一个宽词（"产品""客户"）
+        # 就写成"这份资料提供过"，看起来比事实饱满。改成只报可核对的事实：命中几篇 + 命中词，
+        # 明细（标题 / 命中词）仍随 evidence 一起返回。
+        if not provided:
+            profile = "暂无可核验内容资产"
+        else:
+            hit_words = "、".join(sorted({w for e in evidence for w in e["matched"]})[:3])
+            profile = f"命中 {len(evidence)} 篇（{hit_words}）"
         ai = ai_by_key.get(d["key"])
         claims = int(ai.get("claims", 0) or 0) if ai else 0
         grounded = int(ai.get("grounded", 0) or 0) if ai else 0
@@ -536,7 +630,8 @@ async def portrait():
         "note": (
             "数据口径：资料侧**只认企业上传/人工录入的正式正文**"
             f"（当前真实资料 {len(real)} 篇、系统自动生成文章 {len(generated)} 篇不计入）；"
-            "「资料已提供」必须给出命中证据（命中词 + 来源资料标题）；"
+            "「命中 N 篇」= 下面这些词出现在企业上传正文里（见每格的命中词与标题），"
+            "只是命中，不代表该维度的资料齐全；"
             "AI 侧来自 AI 认知评估（监测回答语义分析）；资料与 AI 都没数据 = 「无数据」，不写成「一致」。"
             "监测结果和系统生成内容不代表企业知识库正式资料。"
         ),
@@ -545,12 +640,16 @@ async def portrait():
 
 # ── 认知健康 8 维度（报告 01）──
 @router.get("/health")
-async def health():
+async def health(monitor_id: str | None = None):
+    scope = _subject_scope(monitor_id)
+    confirmed = scope["error"] is None
     profile_v2 = await _cognition_profile_v2()
     matrix = profile_v2.get("matrix") or []
     by_key = {str(r.get("key")): r for r in matrix}
 
     def grounded_pct(key: str) -> int | None:
+        if int(profile_v2.get("total", 0) or 0) <= 0:
+            return None
         m = by_key.get(key)
         if not m:
             return None
@@ -558,7 +657,7 @@ async def health():
         return round(int(m.get("grounded", 0) or 0) / claims * 100) if claims > 0 else None
 
     metrics = profile_v2.get("metrics") or {}
-    answers_list = _flat_answers(100000)
+    answers_list = _primary_brand_answers(scope=scope) if confirmed else []
     answered_list = [a for a in answers_list if a.get("answered")]
     mentioned_count = sum(1 for a in answered_list if a.get("mentioned"))
     mention_rate = round(mentioned_count / len(answered_list) * 100) if answered_list else None
@@ -566,41 +665,52 @@ async def health():
     trust_g, sec_g = grounded_pct("organization"), grounded_pct("security")
     trust = round((trust_g + sec_g) / 2) if trust_g is not None and sec_g is not None else trust_g or sec_g or None
     dims = [
-        {"key": "brand", "label": "品牌认知", "score": metrics.get("awareness") if metrics.get("awareness") is not None else mention_rate,
-         "basis": f"AI 认识程度 {metrics.get('awareness')}%（主动提到企业占比）" if metrics.get("awareness") is not None else (f"已回答 {len(answered_list)} 条中 {mentioned_count} 条提到我方（{mention_rate}%）" if mention_rate is not None else "暂无已回答的监测回答")},
+        {"key": "brand", "label": "品牌认知", "score": metrics.get("awareness") if int(profile_v2.get("total", 0) or 0) > 0 else None,
+         "basis": f"AI 认知评估：{metrics.get('awareness')}%" if metrics.get("awareness") is not None and int(profile_v2.get("total", 0) or 0) > 0 else "暂无有效认知评估；提及不等于正确认识"},
         {"key": "product", "label": "产品认知", "score": grounded_pct("product"), "basis": "产品能力 claim 已理解占比（AI 评估）"},
-        {"key": "scene", "label": "场景覆盖", "score": mention_rate,
-         "basis": f"已回答 {len(answered_list)} 条中被提及占比（{mentioned_count}/{len(answered_list)} 条）" if answered_list else "暂无监测回答"},
+        {"key": "scene", "label": "场景覆盖", "score": None,
+         "basis": "尚无按决策场景判定的有效样本；品牌提及率不能代表场景覆盖"},
         {"key": "trust", "label": "信任证据", "score": trust, "basis": "组织/安全合规 claim 已理解占比均值"},
         {"key": "case", "label": "案例覆盖", "score": grounded_pct("customer"), "basis": "客户案例 claim 已理解占比（AI 评估）"},
         {"key": "price", "label": "价格透明度", "score": grounded_pct("finance"), "basis": "价格信息 claim 已理解占比（AI 评估）"},
-        {"key": "diff", "label": "差异化认知", "score": metrics.get("recommendation"),
+        {"key": "diff", "label": "差异化认知", "score": metrics.get("recommendation") if int(profile_v2.get("total", 0) or 0) > 0 else None,
          "basis": f"AI 推荐倾向 {metrics.get('recommendation')}%（正面推荐占比）" if metrics.get("recommendation") is not None else "暂无评估"},
-        {"key": "defense", "label": "竞品防御力", "score": metrics.get("understanding"),
+        {"key": "defense", "label": "竞品防御力", "score": metrics.get("understanding") if int(profile_v2.get("total", 0) or 0) > 0 else None,
          "basis": f"AI 理解程度 {metrics.get('understanding')}%（回答与事实一致率）" if metrics.get("understanding") is not None else "暂无评估"},
     ]
+    if not confirmed:
+        for d in dims:
+            d["score"] = None
+            d["basis"] = f"{scope['error']}；请先在下方选择监测主体，再判定这 8 个维度"
     scored = [d for d in dims if d["score"] is not None]
     total = round(sum(d["score"] for d in scored) / len(scored)) if scored else None
-    sample = _sample_basis()
+    sample = _sample_basis(scope)
     return ok({
         "total": total,
         "dims": dims,
         "sample": sample,
-        "sample_size": profile_v2.get("total", 0),
+        "sample_size": profile_v2.get("total", 0) if confirmed else 0,
+        "subject_status": "confirmed" if confirmed else "pending",
+        "subject_name": "、".join(scope["names"]) if confirmed else None,
+        "subject_error": scope["error"],
+        "scope_mode": scope["mode"],
+        "subjects": _brand_options(),
+        "evaluation_scope": "语义评估为历史聚合；现有评估记录不含监测对象 ID，不能与最近品牌批次逐条对齐。",
         "evaluated_at": profile_v2.get("evaluated_at"),
-        "note": f"数据口径：全部基于已上传资料与 AI 监测回答计算（不搜外部）；每维可溯源到评估 claim 或监测回答。总分为 {len(scored)}/8 个有数据维度的均值，无数据维度不计入（不编 0 分）。",
+        "note": (
+            "数据口径：主体由「监测主体」选择决定（可全选汇总），不再靠列表顺序猜；"
+            "品牌认知与场景覆盖不用提及率代替。"
+            f"总分为 {len(scored)}/8 个有数据维度的均值，无数据维度不计入。"
+        ),
     })
 
 
 # ── 推荐理由/证据链（报告 04）──
 @router.get("/reasons")
 async def reasons():
-    answers_list = _flat_answers(100000)
-    reasons_out = [
-        {"query": a.get("query", ""), "engine": a.get("engine", ""), "snippet": a.get("snippet", ""), "rank": a.get("rank_est")}
-        for a in answers_list
-        if a.get("mentioned") and a.get("snippet") and a.get("recognition") != "not_recognised"
-    ][:5]
+    # 名称子串识别不能证明回答说的是同一实体；现有数据没有可靠的实体消歧标注。
+    # 因此不将同名或幻觉回答包装成「AI 为什么提到你」样本。
+    reasons_out: list[dict] = []
     src_list: list[dict] = []
     try:
         from app.api.v1.monitor import sources as monitor_sources
@@ -623,7 +733,7 @@ async def reasons():
         "sources": src_list[:6],
         "missing_evidence": missing,
         "note": (
-            "推荐理由 = 监测回答中**判定为真实提及**的企业样本（已排除「AI 明确表示不认识该企业」的回答）；"
+            "名称匹配不能确认回答指向当前企业，实体消歧标注补齐前不展示「AI 为什么提到你」样本；"
             "缺失证据 = 资料有但 AI 未认知的维度。"
         ),
     })

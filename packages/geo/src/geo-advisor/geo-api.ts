@@ -181,6 +181,7 @@ export interface GeoDistillOverview {
 }
 
 export interface GeoMonitorOverview {
+  scope?: { monitor_id?: string | null; scope_required?: boolean; citations_attribution_available?: boolean }
   recommend: { value: number | null; delta: number | null }
   rank: { value: number | null; delta: number | null }
   citations_count: number

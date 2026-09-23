@@ -96,6 +96,52 @@ def _load_items() -> list[dict]:
     return get_store().load("monitor_items")
 
 
+def _brand_scope_options() -> list[dict]:
+    """Active brand selectors for analytics endpoints that require entity attribution."""
+    return [
+        {
+            "monitor_id": i.get("monitor_id"),
+            "name": (i.get("config_json") or {}).get("company") or i.get("entity") or "未命名品牌",
+        }
+        for i in _load_items()
+        if i.get("type") == "brand" and i.get("status") != "archived" and i.get("monitor_id")
+    ]
+
+
+ALL_SUBJECTS = "all"
+
+
+def _active_brands() -> list[dict]:
+    return [i for i in _load_items() if i.get("type") == "brand" and i.get("status") != "archived"]
+
+
+def _resolve_subject_scope(monitor_id: str | None) -> tuple[str | None, bool]:
+    """把前端传来的「监测主体」选择解成 (monitor_id, scope_required)。
+
+    - 具体 monitor_id：已登记的品牌对象 → 就用它；查无此 id → 未选择。
+    - ``all``：全选，汇总全部品牌对象（monitor_id=None 且不要求先选）。
+    - 空：账号里只有一个品牌时自动用它；多个品牌必须由人选择，不猜第一个。
+    """
+    brands = _active_brands()
+    if monitor_id and str(monitor_id).strip().lower() == ALL_SUBJECTS:
+        return None, False
+    if monitor_id:
+        selected = any(i.get("monitor_id") == monitor_id for i in brands)
+        return (monitor_id, False) if selected else (None, True)
+    if len(brands) == 1:
+        return brands[0].get("monitor_id"), False
+    if not brands:
+        return None, False  # 一个企业品牌对象都没有：没什么可选，也没得统计
+    return None, True
+
+
+def _inclusive_end_boundary(value: str | None) -> str | None:
+    """Treat a date-only end filter as inclusive through the whole local-day string range."""
+    if value and len(value) == 10:
+        return value + "T23:59:59.999999"
+    return value
+
+
 def _save_items(items: list[dict]) -> None:
     from app.services.store import get_store
 
@@ -905,7 +951,7 @@ _POSITIVE_WORDS = (
 _NEGATIVE_WORDS = (
     "不推荐", "不值得", "不放心", "不满意", "不可靠", "不认可", "差评", "投诉",
     "虚假", "夸大", "失望", "不好", "不行", "质疑", "翻车", "骗", "坑",
-    "质量问题", "不靠谱", "避雷", "后悔",
+    "质量问题", "质量差", "售后差", "服务差", "不靠谱", "避雷", "后悔",
 )
 
 
@@ -966,6 +1012,23 @@ _NON_RECOGNITION_WORDS = (
     "小众品牌", "较小众", "区域性品牌", "知名度有限",
 )
 
+# Uncertainty about the entity or about whether the answer can make a judgment
+# should not become a negative review. Specific praise/criticism still wins.
+_UNCERTAIN_ENTITY_RES = (
+    re.compile(r"(?:可能|或许|也许)(?:只是|是|为|属于)?[^。！？\n]{0,24}(?:线上品牌|区域性(?:的)?(?:品牌|实体店)|实体店|网店|店铺名称|店铺名|平台店铺)"),
+    re.compile(r"无法给出[^。！？\n]{0,12}(?:绝对|明确)?[^。！？\n]{0,4}(?:是或否|结论)"),
+    re.compile(r"(?:无法|难以|不能)判断(?:是否|它|其|该品牌)?[^。！？\n]{0,12}(?:靠谱|可靠|口碑|放心|值得|推荐)"),
+    re.compile(r"(?:仅凭|单凭)[^。！？\n]{0,12}(?:无法|难以|不能)(?:判断|确认|核实|断定)"),
+    re.compile(r"(?:很难说|不好说|无法确定|难以确定)[^。！？\n]{0,12}(?:靠谱|可靠|推荐|值得)(?:或|还是|与)(?:不靠谱|不可靠|不推荐|不值得)"),
+    re.compile(r"无法给出[^。！？\n]{0,40}(?:是|否)[^。！？\n]{0,12}结论"),
+)
+
+_CLEAR_EVALUATION_RES = (
+    re.compile(r"不靠谱|不可靠|不推荐|不值得|不满意|质量(?:问题|差)|售后差|服务差|口碑差|骗人|骗钱|坑人|虚假|夸大|翻车|失望"),
+    re.compile(r"(?:差评|投诉|纠纷|退款)(?:较多|不少|频繁|多次|严重)|(?:受到|遭到|出现|存在|发生)[^。！？\n]{0,6}(?:投诉|纠纷|质量问题)"),
+    re.compile(r"强烈推荐|值得信赖|优质(?:品牌|服务|产品)|口碑好|性价比高|非常可靠|十分可靠|广受好评"),
+)
+
 
 def _recognition_of(answer: str, cands: list[str]) -> str:
     """返回 recognised / not_recognised / not_mentioned；否认优先。"""
@@ -976,9 +1039,35 @@ def _recognition_of(answer: str, cands: list[str]) -> str:
     if hit_at < 0:
         return "not_mentioned"
     window = "".join(sentences[max(0, hit_at - 1): hit_at + 2])
-    if any(word in window for word in _NON_RECOGNITION_WORDS):
+    # Strip uncertainty questions/alternatives before looking for concrete review claims.
+    # Otherwise phrases like “很难说靠谱或不靠谱” look like an actual negative review.
+    evaluation_text = answer
+    evaluation_text = re.sub(
+        r"(?:是否|能否|可否)[^。！？\n，,；;]{0,12}(?:靠谱|可靠|推荐|值得)",
+        "", evaluation_text,
+    )
+    evaluation_text = re.sub(
+        r"(?:靠谱|可靠|推荐|值得)(?:或|还是|与)(?:不靠谱|不可靠|不推荐|不值得)",
+        "", evaluation_text,
+    )
+    evaluation_text = re.sub(
+        r"(?:无法|不能|难以|不敢)(?:明确)?(?:判断|评价|确认|说|断定)[^。！？\n，,；;]{0,12}(?:靠谱|可靠|推荐|值得|不靠谱|不可靠|不推荐|不值得)",
+        "", evaluation_text,
+    )
+    has_clear_evaluation = any(pattern.search(evaluation_text) for pattern in _CLEAR_EVALUATION_RES)
+    # A long generic due-diligence checklist often contains words like 投诉/避雷
+    # after explicitly declining to judge the named brand. Those words are not a
+    # concrete review of that brand. Only a concrete claim in the opening context
+    # can override this explicit uncertainty signal.
+    opening = re.split(r"[。！？!\n]", answer, maxsplit=1)[0][:220]
+    explicit_opening_uncertainty = any(pattern.search(opening) for pattern in _UNCERTAIN_ENTITY_RES)
+    if explicit_opening_uncertainty and not any(pattern.search(opening) for pattern in _CLEAR_EVALUATION_RES):
         return "not_recognised"
-    if any(pattern.search(window) for pattern in _NON_RECOGNITION_RES):
+    if not has_clear_evaluation and (
+        any(word in window for word in _NON_RECOGNITION_WORDS)
+        or any(pattern.search(window) for pattern in _NON_RECOGNITION_RES)
+        or any(pattern.search(answer) for pattern in _UNCERTAIN_ENTITY_RES)
+    ):
         return "not_recognised"
     return "recognised"
 
@@ -1052,7 +1141,38 @@ def _analyze_answer(company_name: str | None, answer: str, aliases: list[str] | 
         "mentioned": mentioned,
         "recognition": recognition,
         "sentiment": sentiment,
+        "sentiment_status": "unknown" if recognition == "not_recognised" else ("not_applicable" if recognition == "not_mentioned" else "classified"),
         "sentiment_source": "rule",
+    }
+
+
+def _reassess_history_engine(monitor_id: str | None, engine: dict, brand_items: dict[str, dict]) -> dict:
+    """Re-run current entity/sentiment rules for stored full answers without mutating history."""
+    brand = brand_items.get(monitor_id or "")
+    answer = engine.get("answer") or ""
+    if brand and answer:
+        cfg = brand.get("config_json") or {}
+        name = cfg.get("company") or brand.get("entity")
+        aliases = cfg.get("aliases") or cfg.get("alias") or []
+        return _analyze_answer(name, answer, aliases if isinstance(aliases, list) else [aliases])
+
+    recognition = engine.get("recognition")
+    if recognition not in {"recognised", "not_recognised", "not_mentioned"}:
+        recognition = "recognised" if engine.get("mentioned") else "not_mentioned"
+    sentiment = engine.get("sentiment")
+    if recognition == "not_recognised":
+        sentiment = None
+    status = "unknown" if recognition == "not_recognised" else (
+        "classified" if recognition == "recognised" and sentiment is not None else "not_applicable"
+    )
+    return {
+        "recognition": recognition,
+        "mentioned": (None if engine.get("mentioned") is None and not (engine.get("answer") or engine.get("snippet"))
+                      else bool(engine.get("mentioned")) and recognition != "not_recognised"),
+        "rank_est": None if recognition == "not_recognised" else engine.get("rank_est"),
+        "sentiment": sentiment,
+        "sentiment_status": status,
+        "sentiment_source": engine.get("sentiment_source") or "stored",
     }
 
 
@@ -1335,25 +1455,9 @@ async def competitor():
                 if _same_entity_hit(a, target, comp):
                     win["same_entity"] += 1
                     kind = "same_entity"
-                elif mc and cc:
-                    rc = r["r_company"] if r["r_company"] is not None else (a.find(target) + 1 if target in a else 99)
-                    rp = r["r_comp"] if r["r_comp"] is not None else (a.find(comp) + 1 if comp in a else 99)
-                    if rc < rp:
-                        win["company"] += 1
-                        kind = "company"
-                    elif rp < rc:
-                        win["competitor"] += 1
-                        kind = "competitor"
-                    else:
-                        win["none"] += 1
-                        kind = "none"
-                elif mc:
-                    win["company"] += 1
-                    kind = "company"
-                elif cc:
-                    win["competitor"] += 1
-                    kind = "competitor"
                 else:
+                    # Mention and sentence order do not express recommendation preference.
+                    # Until answers have an explicit preference judgment, do not infer a winner.
                     win["none"] += 1
                     kind = "none"
                 if kind == "competitor":
@@ -1523,7 +1627,7 @@ async def competitor():
     return ok(
         {
             "pairs": rows,
-            "note": "规则词频估算（回答文本中公司名出现次数 + 情感词计数），非因果判断，不代表 AI 真实观点",
+            "note": "提及与首次出现顺序不代表推荐偏好；缺少明确偏好判断时不判胜负。其余为回答文本词频估算，不代表 AI 真实观点",
         }
     )
 
@@ -1574,7 +1678,8 @@ async def sources():
 
 
 @router.get("/answers")
-async def answers(limit: int = 100, item_type: str | None = None):
+async def answers(limit: int = 100, item_type: str | None = None, page: int = 1, page_size: int | None = None,
+                  monitor_id: str | None = None, monitor_ids: str | None = None):
     """0.2+：监测报告数据源——把 history 拍平成逐探针 × 逐引擎的回答列表
 
     每条 = {ts, monitor_id, item_type, query(探针问题), engine, mentioned,
@@ -1582,41 +1687,72 @@ async def answers(limit: int = 100, item_type: str | None = None):
     旧记录无 monitor_id/engine_detail → 跳过（诚实，不伪造归属）。
     """
     hist = _load_history()
-    out: list[dict] = []
     all_items = _load_items()
-    for h in reversed(hist):
+    brand_items = {i.get("monitor_id"): i for i in all_items
+                    if i.get("type") == "brand" and i.get("monitor_id")}
+    # Paginate by observation group (monitor + batch + probe), never by engine row:
+    # the six platform answers for one question must travel together.
+    size = max(1, min(page_size if page_size is not None else limit, 100))
+    page = max(1, page)
+    selected_ids = {x.strip() for x in (monitor_ids or "").split(",") if x.strip()}
+    if monitor_id:
+        selected_ids.add(monitor_id)
+    grouped: dict[str, dict] = {}
+    for history_index, h in enumerate(reversed(hist)):
         ts = h.get("created_at") or h.get("ts") or ""
+        batch_id = str(h.get("id") or h.get("batch_id") or f"legacy-{history_index}-{ts}")
         qs = h.get("questions")
         if qs:  # batch：逐问题 × 逐引擎
             for q in qs:
                 mid = q.get("monitor_id")
-                if not mid:
+                if not mid or (selected_ids and mid not in selected_ids):
                     continue
                 # 取 item 类型（从 items 表反查；查不到标 unknown）
                 meta = next((x for x in all_items if x.get("monitor_id") == mid), None)
                 itype = (meta or {}).get("type") or "question"
                 if item_type and itype != item_type:
                     continue
+                query = q.get("query") or q.get("question") or ""
+                group_id = hashlib.sha256(f"{mid}\0{batch_id}\0{query}".encode()).hexdigest()[:20]
+                group = grouped.setdefault(group_id, {
+                    "group_id": group_id, "batch_id": batch_id, "monitor_id": mid,
+                    "item_type": itype, "ts": ts, "query": query, "answers": [],
+                })
                 for ed in q.get("engine_detail") or []:
-                    out.append(
-                        {
+                    assessed = _reassess_history_engine(mid, ed, brand_items)
+                    row = {
+                            "group_id": group_id,
+                            "batch_id": batch_id,
                             "ts": ts,
                             "monitor_id": mid,
                             "item_type": itype,
-                            "query": q.get("query") or q.get("question") or "",
+                            "query": query,
                             "engine": ed.get("engine_name") or "",
-                            "mentioned": ed.get("mentioned"),
-                            "rank_est": ed.get("rank_est"),
-                            "sentiment": ed.get("sentiment"),
+                            "mentioned": assessed.get("mentioned"),
+                            "recognition": assessed.get("recognition"),
+                            "rank_est": assessed.get("rank_est"),
+                            "sentiment": assessed.get("sentiment"),
+                            "sentiment_status": assessed.get("sentiment_status"),
                             "snippet": ed.get("snippet") or "",
                             "answer": ed.get("answer") or "",
-                        }
-                    )
+                    }
+                    group["answers"].append(row)
         else:  # 单条 check：问题带 company 但无 item 归属 → 跳过（由监测对象体系产生）
             continue
-        if len(out) >= limit:
-            break
-    return ok({"answers": out[:limit], "total": len(out[:limit])})
+    ordered = sorted(grouped.values(), key=lambda g: (g["ts"], g["group_id"]), reverse=True)
+    group_total = len(ordered)
+    start = (page - 1) * size
+    selected = ordered[start:start + size]
+    flat = [row for group in selected for row in group["answers"]]
+    return ok({
+        "answers": flat,
+        "groups": selected,
+        "total": sum(len(g["answers"]) for g in ordered),
+        "group_total": group_total,
+        "page": page,
+        "page_size": size,
+        "pages": (group_total + size - 1) // size,
+    })
 
 
 @router.post("/check")
@@ -2317,7 +2453,8 @@ async def rank_sentiment():
     return ok(_aggregate_rank_sentiment(_load_history()))
 
 
-def _aggregate_overview(items: list[dict]) -> dict:
+def _aggregate_overview(items: list[dict], monitor_id: str | None = None,
+                        scope_required: bool = False) -> dict:
     """数据总览四指标 + 分平台趋势（驾驶舱）
 
     指标口径（冻结，见产品目标 V2 第四节；语义 08-08 拍板=提及率）：
@@ -2328,6 +2465,82 @@ def _aggregate_overview(items: list[dict]) -> dict:
     分平台趋势：batch 条目的 questions[].engine_detail 按平台聚合推荐度
     （每批一个点：该平台 mentioned/configured 合计）。
     """
+    if scope_required:
+        return {
+            "recommend": {"value": None, "delta": None},
+            "rank": {"value": None, "delta": None},
+            "citations_count": None, "cite_rate": None,
+            "published_count": 0, "cited_count": None,
+            "latest_batch_at": None, "platforms": {}, "questions": [],
+            "scope": {"monitor_id": None, "scope_required": True, "brands": _brand_scope_options(),
+                      "citations_attribution_available": False},
+        }
+
+    if monitor_id:
+        brand_items = {i.get("monitor_id"): i for i in _load_items()
+                       if i.get("type") == "brand" and i.get("monitor_id")}
+        scoped_history: list[dict] = []
+        scoped_citations = 0
+        for h in items:
+            if not h.get("batch"):
+                continue
+            selected_questions = [q for q in (h.get("questions") or []) if q.get("monitor_id") == monitor_id]
+            if not selected_questions:
+                continue
+            scoped_qs = []
+            all_ranks: list[float] = []
+            batch_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
+            for q in selected_questions:
+                q2 = dict(q)
+                engines = []
+                answered = mentioned = 0
+                q_ranks: list[float] = []
+                q_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
+                for er in q.get("engine_detail") or []:
+                    assessed = _reassess_history_engine(monitor_id, er, brand_items)
+                    er2 = {**er, **assessed}
+                    engines.append(er2)
+                    has_answer = bool(er.get("answer") or er.get("snippet") or er.get("mentioned") is not None)
+                    if not has_answer:
+                        continue
+                    answered += 1
+                    if assessed.get("recognition") == "not_recognised":
+                        continue  # Answer exists, but entity attribution is unknown; never count as a brand mention.
+                    if assessed.get("mentioned"):
+                        mentioned += 1
+                        if assessed.get("rank_est") is not None:
+                            q_ranks.append(float(assessed["rank_est"]))
+                    sentiment = assessed.get("sentiment")
+                    if sentiment in q_sentiment:
+                        q_sentiment[sentiment] += 1
+                q2["engine_detail"] = engines
+                q2["answered_count"] = answered
+                q2["mentioned_count"] = mentioned
+                q2["rank_avg"] = round(sum(q_ranks) / len(q_ranks), 1) if q_ranks else None
+                q2["sentiment_summary"] = q_sentiment
+                scoped_citations += int(q.get("citations") or 0)
+                for key in batch_sentiment:
+                    batch_sentiment[key] += q_sentiment[key]
+                all_ranks.extend(q_ranks)
+                scoped_qs.append(q2)
+            answered_questions = sum(1 for q in scoped_qs if q.get("answered_count", 0) > 0)
+            mentioned_questions = sum(1 for q in scoped_qs if q.get("mentioned_count", 0) > 0)
+            summary = {
+                "coverage_pct": round(mentioned_questions / answered_questions * 100) if answered_questions else None,
+                "rank_avg": round(sum(all_ranks) / len(all_ranks), 1) if all_ranks else None,
+                "answered_questions": answered_questions,
+                "mentioned_questions": mentioned_questions,
+                "sentiment_summary": batch_sentiment,
+            }
+            scoped_history.append({**h, "questions": scoped_qs, "summary": summary, "citations": []})
+        result = _aggregate_overview(scoped_history)
+        result["citations_count"] = scoped_citations
+        result["cite_rate"] = None  # citation asset IDs are not stored per monitor question.
+        result["cited_count"] = None
+        result["scope"] = {"monitor_id": monitor_id, "scope_required": False,
+                           "brands": _brand_scope_options(), "citations_attribution_available": False}
+        return result
+
     batches = [h for h in items if h.get("batch")]
 
     # 四指标（用最新 batch 与上期对比；无上期 → 持平）
@@ -2414,16 +2627,19 @@ def _aggregate_overview(items: list[dict]) -> dict:
             }
             for q in ((latest or {}).get("questions") or [])
         ],
+        "scope": {"monitor_id": None, "scope_required": False, "brands": _brand_scope_options()},
     }
 
 
 @router.get("/overview")
-async def overview():
+async def overview(monitor_id: str | None = None):
     """P0：数据总览驾驶舱四指标 + 分平台趋势"""
-    return ok(_aggregate_overview(_load_history()))
+    resolved, scope_required = _resolve_subject_scope(monitor_id)
+    return ok(_aggregate_overview(_load_history(), resolved, scope_required))
 
 
-def _aggregate_public_opinion(items: list[dict]) -> dict:
+def _aggregate_public_opinion(items: list[dict], monitor_id: str | None = None, start_at: str | None = None,
+                             end_at: str | None = None, scope_required: bool = False) -> dict:
     """舆情分析页（对齐竞品 7 区块）：健康分 + 四指标 + 趋势 + 平台分布 + 高风险 top3 + 明细
 
     数据源：history 的 engine_detail（单次 check + batch questions 明细都算），
@@ -2438,35 +2654,7 @@ def _aggregate_public_opinion(items: list[dict]) -> dict:
     - 高风险 top3 = 负面回答最多的问题
     - 明细 = 逐条（question/platform/sentiment/ts），按时间倒序
     """
-    # 收集所有已判定回答（sentiment 非 None）
-    records: list[dict] = []
-    for h in items:
-        ts = h.get("created_at", "")
-        batch = bool(h.get("batch"))
-        if batch:
-            for qi in h.get("questions") or []:
-                q = qi.get("question")
-                for er in qi.get("engine_detail") or []:
-                    s = er.get("sentiment")
-                    if s is not None:
-                        records.append({
-                            "question": q,
-                            "platform": er.get("engine_name"),
-                            "sentiment": s,
-                            "ts": ts,
-                        })
-        else:
-            q = h.get("question")
-            for er in h.get("engine_detail") or []:
-                s = er.get("sentiment")
-                if s is not None:
-                    records.append({
-                        "question": q,
-                        "platform": er.get("engine_name"),
-                        "sentiment": s,
-                        "ts": ts,
-                    })
-
+    records, unknown_count = ([], 0) if scope_required else _collect_sentiment_data(items, monitor_id, start_at, end_at)
     total = len(records)
     neg = sum(1 for r in records if r["sentiment"] == "negative")
     pos = sum(1 for r in records if r["sentiment"] == "positive")
@@ -2487,14 +2675,25 @@ def _aggregate_public_opinion(items: list[dict]) -> dict:
 
     # 趋势：逐 batch 负面占比（有负面或总数>0 的批次才画点）
     trend: list[dict] = []
+    brands = {i.get("monitor_id"): i for i in _load_items()
+              if i.get("type") == "brand" and i.get("monitor_id")}
     for h in items:
         if not h.get("batch"):
             continue
-        ts = h.get("created_at", "")
-        batch_records = [r for r in records if r["ts"] == ts]
+        ts = h.get("created_at") or h.get("ts", "")
+        if start_at and ts < start_at or end_at and ts > end_at:
+            continue
+        batch_records = [] if scope_required else [
+            assessment
+            for qi in (h.get("questions") or [])
+            if not monitor_id or qi.get("monitor_id") == monitor_id
+            for er in (qi.get("engine_detail") or [])
+            for assessment in [_reassess_history_engine(qi.get("monitor_id"), er, brands)]
+            if assessment.get("sentiment_status") != "unknown" and assessment.get("sentiment") is not None
+        ]
         if not batch_records:
             continue
-        b_neg = sum(1 for r in batch_records if r["sentiment"] == "negative")
+        b_neg = sum(1 for r in batch_records if r.get("sentiment") == "negative")
         trend.append({
             "ts": ts,
             "neg_pct": round(b_neg / len(batch_records) * 100) if batch_records else 0,
@@ -2540,13 +2739,18 @@ def _aggregate_public_opinion(items: list[dict]) -> dict:
         "risk_top": risk_top,
         "details": details[:100],
         "detail_total": len(details),
+        "scope": {"monitor_id": monitor_id, "start_at": start_at, "end_at": end_at,
+                  "scope_required": scope_required, "brands": _brand_scope_options()},
+        "unknown_count": unknown_count,
     }
 
 
 @router.get("/public-opinion")
-async def public_opinion():
+async def public_opinion(monitor_id: str | None = None, start_at: str | None = None, end_at: str | None = None):
     """P1：舆情分析页（健康分 + 四指标 + 趋势 + 平台分布 + 高风险 top3 + 明细）"""
-    return ok(_aggregate_public_opinion(_load_history()))
+    monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+    end_at = _inclusive_end_boundary(end_at)
+    return ok(_aggregate_public_opinion(_load_history(), monitor_id, start_at, end_at, scope_required))
 
 
 # ── P1-6：行业分析（2026-08-08 新增） ─────────────────────
@@ -2635,49 +2839,138 @@ async def industry():
     })
 
 
-def _collect_sentiment_records(items: list[dict]) -> list[dict]:
-    """收集所有已判定回答（sentiment 非 None）——评价分析/舆情分析共用"""
+def _collect_sentiment_data(items: list[dict], monitor_id: str | None = None,
+                            start_at: str | None = None, end_at: str | None = None) -> tuple[list[dict], int]:
+    """Reassess full brand answers and return classifiable records plus unknown count."""
     records: list[dict] = []
+    unknowns: list[dict] = []
+    brands = {
+        i.get("monitor_id"): i for i in _load_items()
+        if i.get("type") == "brand" and i.get("monitor_id")
+    }
+
+    def add(mid: str | None, question: str | None, engine: dict, ts: str) -> None:
+        assessment = _reassess_history_engine(mid, engine, brands)
+        record = {
+            "monitor_id": mid, "question": question,
+            "platform": engine.get("engine_name"), "sentiment": assessment.get("sentiment"),
+            "recognition": assessment.get("recognition"),
+            "sentiment_status": assessment.get("sentiment_status"),
+            "snippet": engine.get("snippet") or (engine.get("answer") or "")[:240], "ts": ts,
+        }
+        if assessment.get("sentiment_status") == "unknown":
+            unknowns.append(record)
+        elif assessment.get("sentiment") is not None:
+            records.append(record)
+
     for h in items:
-        ts = h.get("created_at", "")
+        ts = h.get("created_at") or h.get("ts") or ""
         if h.get("batch"):
             for qi in h.get("questions") or []:
-                q = qi.get("question")
+                mid = qi.get("monitor_id")
+                if monitor_id and mid != monitor_id:
+                    continue
                 for er in qi.get("engine_detail") or []:
-                    s = er.get("sentiment")
-                    if s is not None:
-                        records.append({
-                            "question": q,
-                            "platform": er.get("engine_name"),
-                            "sentiment": s,
-                            "snippet": er.get("snippet") or "",
-                            "ts": ts,
-                        })
+                    add(mid, qi.get("question") or qi.get("query"), er, ts)
         else:
-            q = h.get("question")
+            if monitor_id:
+                continue  # Standalone checks have no monitor_id and cannot be attributed safely.
             for er in h.get("engine_detail") or []:
-                s = er.get("sentiment")
-                if s is not None:
-                    records.append({
-                        "question": q,
-                        "platform": er.get("engine_name"),
-                        "sentiment": s,
-                        "snippet": er.get("snippet") or "",
-                        "ts": ts,
-                    })
-    return records
+                add(None, h.get("question"), er, ts)
+
+    in_range = lambda r: (not start_at or r.get("ts", "") >= start_at) and (not end_at or r.get("ts", "") <= end_at)
+    return [r for r in records if in_range(r)], sum(1 for r in unknowns if in_range(r))
 
 
-def _aggregate_sentiment(items: list[dict]) -> dict:
+def _collect_sentiment_records(items: list[dict], monitor_id: str | None = None,
+                               start_at: str | None = None, end_at: str | None = None) -> list[dict]:
+    """Classifiable sentiment rows only; unknown entity answers are excluded."""
+    return _collect_sentiment_data(items, monitor_id, start_at, end_at)[0]
+
+
+def _negative_top_words(records: list[dict], monitor_id: str | None = None) -> list[dict]:
+    """负面回答片段里重复出现的 2-4 字词（确定性的：最长优先、切过的不重叠）。
+
+    2026-09-23 Owner 修复单：旧口径把每个 2/3/4 字窗口都单独计数，于是「消费者」被同时算成
+    「消费」「费者」，「负面评价」被算成「的负/面评/评价」——列表整屏是碎片。
+    现在先统计 n-gram，再用最长优先、不重叠切一遍，只保留重复出现（≥2 次）的词。
+    """
+    # 2026-08-09 修复：markdown 符号进分隔符（消灭 ** 碎词）、过滤含符号/品牌名/公司后缀词
+    from collections import Counter
+
+    stop = set("的了是在有和就不都一个也这那与及或很我们你们他们我的你的他的它的进行哪个哪些什么怎么为什么因为所以但是可以需要应该不会没有相关为了通过同时能够使用以及或者如果是否自己这个那个帮你帮")
+    # 品牌候选名（公司/别名/简称）——负面词里出现公司名无信息量
+    brand_cands: list[str] = []
+    for it in _load_items():
+        if monitor_id and it.get("monitor_id") != monitor_id:
+            continue
+        cfg = it.get("config_json") or {}
+        c = cfg.get("company") or cfg.get("target")
+        if c:
+            brand_cands.extend(_mention_cands(c, cfg.get("aliases") or []))
+    # 全选汇总时要把**每个**主体的名字都排掉，否则另一个品牌名会当成高频词上榜
+    brand_cands = list(dict.fromkeys(brand_cands))
+    def _wordish(w: str) -> bool:
+        if len(w) < 2:
+            return False
+        if all(c in stop for c in w):
+            return False  # 全虚词窗口无信息量
+        if any(not ("\u4e00" <= c <= "\u9fa5") for c in w):
+            return False  # 含 markdown/符号残留
+        if any(bc and (w in bc or bc in w) for bc in brand_cands):
+            return False  # 品牌名及其子串无信息量（"云启智能科技"切出的"云启/智能/科技"全是品牌名碎片）
+        return True
+
+    # 按标点/空白/markdown 符号切分成段
+    segments: list[str] = []
+    for r in records:
+        if r["sentiment"] != "negative":
+            continue
+        segments.extend(re.split(r"[\s，。！？、；：,.!?;:（）()「」\"'\'《》【】\n*#_~`>|/\\-]", r.get("snippet") or ""))
+
+    # 第一遍：n-gram 出现次数（只把重复出现过的 n-gram 当候选词，单次出现的当噪音）
+    gram_counts: Counter = Counter()
+    for p in segments:
+        p = p.strip()
+        for n in (2, 3, 4):
+            for i in range(len(p) - n + 1):
+                w = p[i : i + n]
+                if _wordish(w):
+                    gram_counts[w] += 1
+    lexicon = {w for w, c in gram_counts.items() if c >= 2}
+
+    # 第二遍：最长优先、不重叠地切分，再计数
+    counter: Counter = Counter()
+    for p in segments:
+        p = p.strip()
+        i = 0
+        while i < len(p):
+            picked = ""
+            for n in (4, 3, 2):
+                w = p[i : i + n]
+                if len(w) == n and w in lexicon:
+                    picked = w
+                    break
+            if picked:
+                counter[picked] += 1
+                i += len(picked)
+            else:
+                i += 1
+    top_words = [{"word": w, "count": c} for w, c in counter.most_common(12)]
+    return top_words
+
+
+def _aggregate_sentiment(items: list[dict], monitor_id: str | None = None, start_at: str | None = None,
+                         end_at: str | None = None, scope_required: bool = False) -> dict:
     """评价分析页（对齐竞品）：占比 + 趋势 + 用户意图维度 + 负面高频词
 
     数据源：history engine_detail（sentiment 非 None = AI 提到企业）。
     - 占比：正面/负面/中立计数 + 百分比
     - 趋势：逐批次正/负/中计数
     - 用户意图维度：每问题 正/负/中 计数 + 倾向
-    - 负面高频词：负面回答 snippet 的 2-4 字词频 top10（规则，诚实标注"基于回答片段"）
+    - 负面高频词：负面回答 snippet 里重复出现的 2-4 字词（最长优先、不重叠；只列出现过 ≥2 次的）
     """
-    records = _collect_sentiment_records(items)
+    records, unknown_count = ([], 0) if scope_required else _collect_sentiment_data(items, monitor_id, start_at, end_at)
 
     pos = sum(1 for r in records if r["sentiment"] == "positive")
     neg = sum(1 for r in records if r["sentiment"] == "negative")
@@ -2689,9 +2982,20 @@ def _aggregate_sentiment(items: list[dict]) -> dict:
 
     # 趋势：逐批次
     trend: list[dict] = []
+    brands = {i.get("monitor_id"): i for i in _load_items()
+              if i.get("type") == "brand" and i.get("monitor_id")}
     for h in items:
-        ts = h.get("created_at", "")
-        batch_records = [r for r in records if r["ts"] == ts]
+        ts = h.get("created_at") or h.get("ts", "")
+        if start_at and ts < start_at or end_at and ts > end_at:
+            continue
+        batch_records = [] if scope_required else [
+            assessment
+            for qi in (h.get("questions") or [])
+            if not monitor_id or qi.get("monitor_id") == monitor_id
+            for er in (qi.get("engine_detail") or [])
+            for assessment in [_reassess_history_engine(qi.get("monitor_id"), er, brands)]
+            if assessment.get("sentiment_status") != "unknown" and assessment.get("sentiment") is not None
+        ]
         if not batch_records:
             continue
         trend.append({
@@ -2718,44 +3022,7 @@ def _aggregate_sentiment(items: list[dict]) -> dict:
         questions.append({**q, "sentiment": sentiment})
     questions.sort(key=lambda x: -(x["negative"] * 10 + x["positive"]))
 
-    # 负面高频词：负面 snippet 2-4 字词频（stop 只停虚词，不停"质量/投诉"等领域词）
-    from collections import Counter
-
-    # 负面高频词：负面 snippet 2-4 字词频（stop 只停虚词，不停"质量/投诉"等领域词）
-    # 2026-08-09 修复：markdown 符号进分隔符（消灭 ** 碎词）、过滤含符号/品牌名/公司后缀词
-    from collections import Counter
-
-    stop = set("的了是在有和就不都一个也这那与及或很我们你们他们我的你的他的它的进行哪个哪些什么怎么为什么因为所以但是可以需要应该不会没有相关为了通过同时能够使用以及或者如果是否自己这个那个帮你帮")
-    # 品牌候选名（公司/别名/简称）——负面词里出现公司名无信息量
-    brand_cands: list[str] = []
-    for it in _load_items():
-        cfg = it.get("config_json") or {}
-        c = cfg.get("company") or cfg.get("target")
-        if c:
-            brand_cands = _mention_cands(c, cfg.get("aliases") or [])
-            break
-    counter: Counter = Counter()
-    for r in records:
-        if r["sentiment"] != "negative":
-            continue
-        text = r.get("snippet") or ""
-        # 按标点/空白/markdown 符号切分 → 每段做 2-4 字滑动窗口
-        parts = re.split(r"[\s，。！？、；：,.!?;:（）()「」\"'\'《》【】\n*#_~`>|/\\-]", text)
-        for p in parts:
-            p = p.strip()
-            if len(p) < 2:
-                continue
-            for n in (2, 3, 4):
-                for i in range(len(p) - n + 1):
-                    w = p[i : i + n]
-                    if all(c in stop for c in w):
-                        continue  # 全虚词窗口无信息量
-                    if any(not ("\u4e00" <= c <= "\u9fa5") for c in w):
-                        continue  # 含 markdown/符号残留
-                    if any(bc and (w in bc or bc in w) for bc in brand_cands):
-                        continue  # 品牌名及其子串无信息量（"云启智能科技"切出的"云启/智能/科技"全是品牌名碎片）
-                    counter[w] += 1
-    top_words = [{"word": w, "count": c} for w, c in counter.most_common(12)]
+    top_words = _negative_top_words(records, monitor_id)
     negative_samples = [
     # 负面明细（2026-08-08：用户要求"怎么个负面法"——具体回答片段，可下钻）
         {
@@ -2781,14 +3048,23 @@ def _aggregate_sentiment(items: list[dict]) -> dict:
         "trend": trend,
         "questions": questions,
         "top_words": top_words,
+        "top_words_note": (
+            "只统计负面回答片段；只列重复出现（≥2 次）的 2-4 字词，同一处文字只归一个词"
+            "（最长优先、不重叠），因此不再是「消费/费者」这类滑窗碎片。规则分词，不是语义理解。"
+        ),
         "negative_samples": negative_samples,  # 负面回答明细（问题+引擎+片段）
+        "unknown_count": unknown_count,
+        "scope": {"monitor_id": monitor_id, "start_at": start_at, "end_at": end_at,
+                  "scope_required": scope_required, "brands": _brand_scope_options()},
     }
 
 
 @router.get("/sentiment")
-async def sentiment():
+async def sentiment(monitor_id: str | None = None, start_at: str | None = None, end_at: str | None = None):
     """P1：评价分析页（占比 + 趋势 + 用户意图维度 + 负面高频词）"""
-    return ok(_aggregate_sentiment(_load_history()))
+    monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+    end_at = _inclusive_end_boundary(end_at)
+    return ok(_aggregate_sentiment(_load_history(), monitor_id, start_at, end_at, scope_required))
 
 
 # ── P1-5：事实分析（监测侧失真检测，对齐竞品"基于知识库识别 AI 回复失真"） ──
@@ -2869,7 +3145,8 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
         if ungrounded:
             return {
                 "checked": True,
-                "abnormal": True,
+                "abnormal": False,
+                "unsupported": True,
                 "main_type": "缺少依据",
                 "claims": ungrounded,
                 "knowledge_ok": True,
@@ -2877,7 +3154,7 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
             }
         return {"checked": True, "abnormal": False, "reason": "断言均有知识库依据", "knowledge_ok": True}
     except Exception:  # noqa: BLE001
-        return {"checked": True, "abnormal": False, "reason": "知识库不可用", "knowledge_ok": False}
+        return {"checked": False, "abnormal": False, "reason": "知识库不可用", "knowledge_ok": False}
 
 
 def _aggregate_fact_check(items: list[dict], company_name: str | None = None) -> dict:
@@ -2887,64 +3164,66 @@ def _aggregate_fact_check(items: list[dict], company_name: str | None = None) ->
     取 snippet 做断言检测）。公司名取最近批次 company_name。
     检测是异步 企业知识库检索——聚合函数返回待检测记录，由路由层并发执行。
     """
-    # 确定企业名（最近 batch 的 company_name，兜底从 brand 监测对象取——2026-08-08 修复）
-    if not company_name:
-        for h in reversed(items):
-            if h.get("company_name"):
-                company_name = h["company_name"]
-                break
-    if not company_name:
-        try:
-            from app.services.store import get_store
-
-            for it in get_store().load("monitor_items"):
-                if it.get("type") == "brand":
-                    company_name = (it.get("config_json") or {}).get("company") or it.get("entity") or ""
-                    if company_name:
-                        break
-        except Exception:  # noqa: BLE001
-            pass
+    try:
+        brand_items = {i.get("monitor_id"): i for i in _load_items()
+                       if i.get("type") == "brand" and i.get("status") != "archived"}
+    except Exception:  # noqa: BLE001
+        brand_items = {}
 
     records: list[dict] = []
     for h in items:
         ts = h.get("created_at", "")
         if h.get("batch"):
             for qi in h.get("questions") or []:
+                mid = qi.get("monitor_id")
+                brand = brand_items.get(mid)
+                if not brand:
+                    continue
+                entity = (brand.get("config_json") or {}).get("company") or brand.get("entity")
                 for er in qi.get("engine_detail") or []:
                     if er.get("mentioned") and er.get("sentiment") is not None:
                         records.append({
+                            "monitor_id": mid,
+                            "company_name": entity,
                             "question": qi.get("question"),
                             "platform": er.get("engine_name"),
                             "snippet": er.get("snippet") or "",
                             "ts": ts,
                         })
-        else:
-            for er in h.get("engine_detail") or []:
-                if er.get("mentioned") and er.get("sentiment") is not None:
-                    records.append({
-                        "question": h.get("question"),
-                        "platform": er.get("engine_name"),
-                        "snippet": er.get("snippet") or "",
-                        "ts": ts,
-                    })
-    return {"company_name": company_name, "records": records}
+        # Legacy standalone checks have no monitor_id, so they cannot be safely paired to a brand.
+    companies = {r.get("company_name") for r in records if r.get("company_name")}
+    return {"company_name": company_name or (next(iter(companies)) if len(companies) == 1 else None), "records": records}
 
 
 @router.get("/fact-check")
-async def fact_check():
+async def fact_check(monitor_id: str | None = None):
     """P1-5：事实分析页（基于知识库识别 AI 回复失真：命中/异常/排行/明细）"""
     items = _load_history()
     base = _aggregate_fact_check(items)
 
+    # Never pick the first brand and apply it to every history row. A missing selector is
+    # resolved only when there is exactly one active brand; ambiguous accounts return no sample.
+    monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+    brand_items = [i for i in _load_items() if i.get("type") == "brand" and i.get("status") != "archived"]
+    selected_brand = next((i for i in brand_items if i.get("monitor_id") == monitor_id), None) if monitor_id else None
+    if monitor_id:
+        entity = ((selected_brand or {}).get("config_json") or {}).get("company") or (selected_brand or {}).get("entity")
+        base["records"] = [r for r in base["records"] if r.get("monitor_id") == monitor_id]
+        base["company_name"] = entity
+    elif scope_required:
+        base["records"] = []
+        base["company_name"] = None
+
     # 并发检测每条回答（企业知识库检索）——限前 10 条 + 并发 2（Ollama embedding ~4s/次，12s/检索）
-    records = base["records"][:10]
+    candidates = sorted(base["records"], key=lambda r: r.get("ts", ""), reverse=True)
+    records = candidates[:10]
     sem = asyncio.Semaphore(2)
 
     async def _checked(rec):
         async with sem:
             try:
                 return await asyncio.wait_for(
-                    _check_answer_facts(base.get("company_name") or "", rec["snippet"], rec["question"]),
+                    _check_answer_facts(rec.get("company_name") or base.get("company_name") or "", rec["snippet"], rec["question"]),
                     timeout=15,
                 )
             except asyncio.TimeoutError:
@@ -2953,15 +3232,21 @@ async def fact_check():
     checked = await asyncio.gather(*[_checked(r) for r in records])
     results = [{**rec, **ck} for rec, ck in zip(records, checked)]
 
-    abnormal = [r for r in results if r.get("abnormal")]
+    # Older persisted rule results called every unsupported claim "abnormal".
+    # Keep that legacy label out of the distortion count; lack of matching evidence
+    # does not prove that a claim is false.
+    abnormal = [r for r in results if r.get("abnormal") and r.get("main_type") != "缺少依据"]
     # 2026-09-21 口径修正（Owner：「输出正常但不正确」）：
     # `hit` 原来是「跑过检查且没判异常」——可「无事实断言」的回答（模型压根没说企业的事实，
     # 比如只答「请查工商信息」）也满足这个条件，于是它被算进「知识库命中」。
     # 「已核验回答」同理：原来算的是**送检条数**，超时/无文本（checked=False）也算「已核验」。
-    checked_ok = [r for r in results if r.get("checked")]
+    checked_ok = [r for r in results if r.get("checked") and r.get("knowledge_ok", True)]
     no_claim = [r for r in checked_ok if r.get("reason") == "无事实断言"]
     claim_checked = [r for r in checked_ok if r.get("reason") != "无事实断言"]
-    hit = [r for r in claim_checked if not r.get("abnormal")]
+    hit = [r for r in claim_checked if not r.get("abnormal") and not r.get("unsupported")
+           and r.get("main_type") != "缺少依据"]
+    unsupported_count = sum(1 for r in results if r.get("unsupported") or r.get("reason") == "缺少依据"
+                            or r.get("main_type") == "缺少依据")
 
     # 四指标
     hit_kb = len(hit)
@@ -3022,7 +3307,11 @@ async def fact_check():
             "affected_sources": affected_sources,
             "total_checked": len(checked_ok),       # 真的跑完检查的回答数（不含超时/无文本）
             "claim_checked": len(claim_checked),    # 其中**真的有企业断言**、比对过知识库的条数
-            "candidate_total": len(base["records"]),  # 本轮拉到多少条候选回答（受上限截断）
+            "candidate_total": len(base["records"]),  # 全部候选数；具体仅抽检 sample_limit 条
+            "sampled_count": len(records),
+            "sample_limit": 10,
+            "sample_method": "按回答时间倒序取最近 10 条；样本结果不代表全部候选回答",
+            "unsupported_count": unsupported_count,
             "no_claim_count": len(no_claim),        # 有回答但没有任何可核验断言（不计命中也不计失真）
             "knowledge_ok": all(r.get("knowledge_ok", True) for r in results) if results else True,
         },
@@ -3030,6 +3319,10 @@ async def fact_check():
         "question_rank": question_rank,
         "details": details[:100],
         "detail_total": len(details),
+        "monitor_id": monitor_id,
+        "scope_required": scope_required,
+        "scope": {"monitor_id": monitor_id, "scope_required": scope_required,
+                  "brands": _brand_scope_options()},
     })
 
 
