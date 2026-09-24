@@ -177,6 +177,7 @@ def test_the_opened_surface_is_the_legacy_v1_surface_minus_the_advisor_handoff()
         ("GET", "/api/v1/geo/consumer/snapshots"),
         ("GET", "/api/v1/geo/consumer/summary"),
         ("GET", "/api/v1/health"),
+        ("POST", "/api/v1/knowledge/reset"),
     }
     assert allowlisted - _legacy_inventory() == set()
 

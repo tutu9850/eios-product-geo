@@ -5,6 +5,7 @@
 P3 阶段可把素材经 Evidence → Fact → Knowledge Object 写入 企业知识库。
 """
 import json
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +18,7 @@ from app.core.envelope import ok, err
 from services.chunking import chunk_material
 
 router = APIRouter(prefix="/api/v1/knowledge")
+_audit_log = logging.getLogger("eios.geo.audit")
 
 DATA_DIR = Path(__file__).resolve().parents[4] / "data"
 DATA_DIR.mkdir(exist_ok=True)
@@ -66,13 +68,29 @@ async def reset_geo_data(request: Request, confirm: bool = False):
     # Reset is destructive and is never available through the legacy header
     # shim.  It requires the verified product session installed by the outer
     # auth middleware; callers also need an explicit confirmation flag.
-    if getattr(request.state, "product_session", None) is None:
+    session = getattr(request.state, "product_session", None)
+    if session is None:
         return JSONResponse(status_code=401, content=err("AUTH_CONTEXT_REQUIRED", "数据重置需要已验证的产品会话"))
+    if "geo.admin" not in getattr(session, "scopes", ()):
+        _audit_log.warning(
+            "geo_reset_denied principal=%s enterprise=%s trace=%s",
+            getattr(session, "principal_id", ""),
+            getattr(session, "enterprise_id", ""),
+            getattr(session, "trace_ref", ""),
+        )
+        return JSONResponse(status_code=403, content=err("GEO_ADMIN_SCOPE_REQUIRED", "数据重置需要 geo.admin 权限"))
     if not confirm:
         return ok({"error": "危险操作：请确认（confirm=true）后再重置", "deleted": {}})
     from app.services.store import reset_all
 
     stats = reset_all()
+    _audit_log.warning(
+        "geo_reset_performed principal=%s enterprise=%s trace=%s deleted=%s",
+        getattr(session, "principal_id", ""),
+        getattr(session, "enterprise_id", ""),
+        getattr(session, "trace_ref", ""),
+        stats,
+    )
     # 媒体文件目录清空
     media_dir = Path(_config.GEO_MEDIA_DIR)
     removed_files = 0

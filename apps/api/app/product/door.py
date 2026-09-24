@@ -169,7 +169,6 @@ _PRODUCT_ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", r"/knowledge/materials/upload"),  # manage
     ("POST", r"/knowledge/materials/vectorize"),  # run
     ("POST", r"/knowledge/media/upload"),  # manage
-    ("POST", r"/knowledge/reset"),  # manage
     ("POST", r"/links"),  # manage
     ("POST", r"/links/check"),  # manage
     ("POST", r"/links/check-all"),  # manage

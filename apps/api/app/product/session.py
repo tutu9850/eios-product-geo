@@ -22,6 +22,7 @@ class ProductSession:
     actor_type: str
     service_id: str
     trace_ref: str | None = None
+    scopes: tuple[str, ...] = ()
 
 
 class VerifiedAuthContext(Protocol):
@@ -31,6 +32,7 @@ class VerifiedAuthContext(Protocol):
     enterprise_id: str
     subject: str
     service_id: str
+    scopes: tuple[str, ...]
 
 
 def product_session_from_verified_auth_context(
@@ -58,6 +60,7 @@ def product_session_from_verified_auth_context(
         actor_type=actor_type,
         service_id=service_id,
         trace_ref=trace_ref,
+        scopes=tuple(str(scope) for scope in (getattr(context, "scopes", ()) or ())),
     )
 
 

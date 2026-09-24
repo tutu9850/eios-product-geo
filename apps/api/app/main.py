@@ -44,6 +44,7 @@ from app.product.http_auth import (
     auth_context_mode_enabled,
     default_auth_context_verifier,
     resolve_http_product_session,
+    legacy_client_allowed,
 )
 from app.product.session import bind_product_session, cabinet_for_session
 
@@ -77,6 +78,9 @@ async def _tenant_context(request, call_next):
     - 后台任务（scheduler/监测 run）无请求上下文：asyncio.create_task 快照发起时 context，
       从请求发起的任务自动继承租户；独立线程任务需显式传 tenant_id（见各调用点注释）
     """
+    legacy_local_compat = os.environ.get("EIOS_ENVIRONMENT", "development").strip().lower() != "production"
+    if _product_identity_required(request) and not auth_context_mode_enabled() and not (legacy_local_compat or legacy_client_allowed(request)):
+        return JSONResponse(status_code=401, content=err("AUTH_CONTEXT_REQUIRED", "生产请求必须使用已验证的 AuthContext"))
     if auth_context_mode_enabled() and _product_identity_required(request):
         try:
             session = await resolve_http_product_session(request)

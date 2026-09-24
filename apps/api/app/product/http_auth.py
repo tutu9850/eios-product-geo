@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import inspect
+import ipaddress
 import os
 import uuid
 from dataclasses import dataclass
@@ -38,7 +39,26 @@ def auth_mode() -> str:
     # Keep the legacy default for local compatibility. Production deployments
     # must set GEO_AUTH_MODE=auth_context; destructive operations are guarded
     # independently and never accept the legacy header shim.
-    return os.environ.get("GEO_AUTH_MODE", "legacy").strip().lower() or "legacy"
+    # AuthContext is the safe production default. Legacy is retained only as
+    # an explicitly selected local compatibility mode; the HTTP middleware
+    # further restricts it to loopback clients.
+    configured = os.environ.get("GEO_AUTH_MODE")
+    if configured is None:
+        # Production is fail-closed by default; local development keeps the
+        # legacy shim available only through the loopback guard.
+        configured = AUTH_CONTEXT_MODE if os.environ.get("EIOS_ENVIRONMENT", "development").strip().lower() == "production" else "legacy"
+    return configured.strip().lower() or AUTH_CONTEXT_MODE
+
+
+def legacy_client_allowed(request: Request) -> bool:
+    """Legacy header authentication is available only from loopback clients."""
+    host = getattr(getattr(request, "client", None), "host", None)
+    if not host:
+        return False
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 #: 宿主（product-api）签给 GEO 的票的 audience。product-api 的 ``_probe_geo_available``
