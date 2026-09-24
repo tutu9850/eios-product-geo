@@ -13,14 +13,15 @@
 import hashlib
 import json
 import math
+import os
 import re
 import time
 from pathlib import Path
 
 import httpx
 
-OLLAMA_URL = "http://127.0.0.1:11434"
-EMBED_MODEL = "nomic-embed-text"
+OLLAMA_URL = os.environ.get("GEO_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+EMBED_MODEL = os.environ.get("GEO_EMBED_MODEL", "nomic-embed-text")
 EMBED_DIM = 768
 
 DATA_DIR = Path(__file__).resolve().parents[2] / "apps" / "data"
@@ -32,7 +33,7 @@ _STOP = set("的了是和我你有他这那在也都不就与及或而于被把�
 _mem_index: dict[str, dict] = {}
 _mem_loaded = False
 
-_QDRANT_URL = "http://127.0.0.1:6333"
+_QDRANT_URL = os.environ.get("GEO_QDRANT_URL", "http://127.0.0.1:6333").rstrip("/")
 _QDRANT_COLL = "geo_materials"
 
 
