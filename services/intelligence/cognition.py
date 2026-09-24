@@ -18,7 +18,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from services.intelligence import aggregator, repo
-from services._db import current_tenant_or_default
+from services.repository import current_tenant_or_default
 
 logger = logging.getLogger("eios.intelligence.cognition")
 

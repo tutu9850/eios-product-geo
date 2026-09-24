@@ -21,13 +21,13 @@ _UA = (
 
 
 def _load_raw() -> list[dict]:
-    from services._db import load_table
+    from services.repository import load_table
 
     return load_table("geo_collect_raw")
 
 
 def _save_raw(items: list[dict]) -> None:
-    from services._db import save_table
+    from services.repository import save_table
 
     save_table("geo_collect_raw", items)
 
@@ -46,6 +46,7 @@ async def fetch_page(url: str) -> dict:
         current = validate_public_url(url)
         async with httpx.AsyncClient(
             timeout=12, follow_redirects=False,
+            trust_env=False,
             headers={"User-Agent": _UA, "Accept-Language": "zh-CN,zh;q=0.9"},
         ) as client:
             for _ in range(4):

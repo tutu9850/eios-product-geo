@@ -28,7 +28,7 @@ from app.models.geo_models import (
     init_db,
 )
 
-from services._db import current_tenant_or_default
+from services.repository import current_tenant_or_default
 
 DEFAULT_TENANT = "tenant_corp_01"
 
@@ -156,6 +156,7 @@ def insert_extraction(rec: dict) -> dict:
             question=rec.get("question"),
             engine=rec.get("engine"),
             monitor_id=rec.get("monitor_id"),
+            tenant_id=_resolve_tenant(rec.get("tenant_id")),
             created_at=rec.get("created_at") or now,
             updated_at=now,
         )
@@ -165,30 +166,30 @@ def insert_extraction(rec: dict) -> dict:
         return _row_to_dict(row)
 
 
-def latest_extraction(evidence_id: str) -> dict | None:
+def latest_extraction(evidence_id: str, tenant_id: str | None = None) -> dict | None:
     """查最新版本（ORDER BY version DESC LIMIT 1，评审钉死）。"""
     with SessionLocal() as db:
         row = (
             db.query(GeoExtraction)
-            .filter(GeoExtraction.evidence_id == evidence_id)
+            .filter(GeoExtraction.evidence_id == evidence_id, GeoExtraction.tenant_id == _resolve_tenant(tenant_id))
             .order_by(GeoExtraction.version.desc())
             .first()
         )
         return _row_to_dict(row) if row else None
 
 
-def next_version(evidence_id: str) -> int:
+def next_version(evidence_id: str, tenant_id: str | None = None) -> int:
     with SessionLocal() as db:
         row = (
             db.query(GeoExtraction)
-            .filter(GeoExtraction.evidence_id == evidence_id)
+            .filter(GeoExtraction.evidence_id == evidence_id, GeoExtraction.tenant_id == _resolve_tenant(tenant_id))
             .order_by(GeoExtraction.version.desc())
             .first()
         )
         return (row.version + 1) if row else 1
 
 
-def update_extraction(row_id: str, **fields: Any) -> dict | None:
+def update_extraction(row_id: str, tenant_id: str | None = None, **fields: Any) -> dict | None:
     """按 id 更新一行（同一次解析内 running → succeeded/failed 走 update，不占新 version）。"""
     init_tables()
     allowed = {"status", "model", "analysis_json", "error", "updated_at"}
@@ -196,7 +197,7 @@ def update_extraction(row_id: str, **fields: Any) -> dict | None:
     if "analysis_json" in updates and updates["analysis_json"] is not None and not isinstance(updates["analysis_json"], str):
         updates["analysis_json"] = json.dumps(updates["analysis_json"], ensure_ascii=False)
     with SessionLocal() as db:
-        row = db.query(GeoExtraction).filter(GeoExtraction.id == row_id).first()
+        row = db.query(GeoExtraction).filter(GeoExtraction.id == row_id, GeoExtraction.tenant_id == _resolve_tenant(tenant_id)).first()
         if not row:
             return None
         for k, v in updates.items():
@@ -222,10 +223,12 @@ def insert_mentions(mentions: list[dict]) -> int:
     n = 0
     now = _now()
     analysis_id = (mentions[0].get("analysis_id") or mentions[0].get("evidence_id") or "")
+    tenant_id = _resolve_tenant(mentions[0].get("tenant_id"))
     with SessionLocal() as db:
         if analysis_id:
             db.query(BrandMention).filter(
-                BrandMention.analysis_id == analysis_id
+                BrandMention.analysis_id == analysis_id,
+                BrandMention.tenant_id == tenant_id
             ).delete(synchronize_session=False)
         for m in mentions:
             quote = (m.get("evidence_quote") or "").strip()
@@ -242,6 +245,7 @@ def insert_mentions(mentions: list[dict]) -> int:
                     factor=factor,
                     evidence_quote=quote[:500],
                     confidence=m.get("confidence"),
+                    tenant_id=tenant_id,
                     created_at=now,
                 )
             )
@@ -253,7 +257,7 @@ def insert_mentions(mentions: list[dict]) -> int:
 def list_mentions(evidence_id: str | None = None, brand_name: str | None = None, tenant_id: str | None = None) -> list[dict]:
     tenant_id = _resolve_tenant(tenant_id)
     with SessionLocal() as db:
-        q = db.query(BrandMention)
+        q = db.query(BrandMention).filter(BrandMention.tenant_id == tenant_id)
         if evidence_id:
             q = q.filter(BrandMention.evidence_id == evidence_id)
         if brand_name:

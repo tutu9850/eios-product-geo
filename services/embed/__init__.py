@@ -87,7 +87,7 @@ def _cos(a: list[float], b: list[float]) -> float:
 
 
 def _load_materials() -> list[dict]:
-    from services._db import load_table
+    from services.repository import load_table
 
     return load_table("geo_kb")
 
@@ -181,7 +181,7 @@ async def ensure_vectors(materials: list[dict] | None = None) -> dict:
                 json={"points": pts},
             )
         if indexed:
-            from services._db import save_table
+            from services.repository import save_table
 
             save_table("geo_kb", materials)
     else:
@@ -202,7 +202,7 @@ async def ensure_vectors(materials: list[dict] | None = None) -> dict:
             m["status"] = "vectorized"
             indexed += 1
         if indexed:
-            from services._db import save_table
+            from services.repository import save_table
 
             save_table("geo_kb", materials)
         _save_mem_index()

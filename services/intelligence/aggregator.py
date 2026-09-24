@@ -28,7 +28,7 @@ from app.models.geo_models import (
 )
 
 from services.intelligence import repo
-from services._db import current_tenant_or_default
+from services.repository import current_tenant_or_default
 
 logger = logging.getLogger("eios.intelligence.aggregator")
 

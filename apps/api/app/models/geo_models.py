@@ -179,6 +179,7 @@ class GeoExtraction(Base):
     question = Column(String(512), nullable=True)  # 冗余便于查
     engine = Column(String(64), nullable=True)
     monitor_id = Column(String(128), nullable=True)
+    tenant_id = Column(String(64), nullable=False, default="tenant_corp_01", index=True)
     created_at = Column(DateTime, nullable=False, default=now_utc)
     updated_at = Column(DateTime, nullable=False, default=now_utc)
 
@@ -200,10 +201,12 @@ class BrandMention(Base):
     factor = Column(String(128), nullable=False)  # 维度词（LLM 原文；missing 时固定 __missing__；合并只在聚合层）
     evidence_quote = Column(Text, nullable=False)  # 原句 ≤500 字，必填
     confidence = Column(Float, nullable=True)  # 可选 0–1
+    tenant_id = Column(String(64), nullable=False, default="tenant_corp_01", index=True)
     created_at = Column(DateTime, nullable=False, default=now_utc)
 
     __table_args__ = (
         Index("ix_brand_mention_brand", "brand_name", "factor"),
+        Index("ix_brand_mention_tenant_evidence", "tenant_id", "evidence_id"),
     )
 
 
@@ -340,6 +343,28 @@ TABLES = {
 def init_db() -> None:
     Base.metadata.create_all(engine)
     _migrate_hot_columns()
+    _migrate_intelligence_tenant_columns()
+
+
+def _migrate_intelligence_tenant_columns() -> None:
+    """Add tenant isolation to intelligence child tables and backfill history.
+
+    SQLite create_all does not alter existing tables, so this migration is
+    intentionally idempotent and infers child tenancy from geo_evidence.
+    """
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            for table in ("geo_extraction", "brand_mention"):
+                cols = {row[1] for row in conn.execute(text(f"PRAGMA table_info({table})"))}
+                if "tenant_id" not in cols:
+                    conn.execute(text(f"ALTER TABLE {table} ADD COLUMN tenant_id VARCHAR(64)"))
+            conn.execute(text("UPDATE geo_extraction SET tenant_id = COALESCE((SELECT tenant_id FROM geo_evidence e WHERE e.id = geo_extraction.evidence_id), 'tenant_corp_01') WHERE tenant_id IS NULL OR tenant_id = ''"))
+            conn.execute(text("UPDATE brand_mention SET tenant_id = COALESCE((SELECT tenant_id FROM geo_evidence e WHERE e.id = brand_mention.evidence_id), 'tenant_corp_01') WHERE tenant_id IS NULL OR tenant_id = ''"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_geo_extraction_tenant_evidence ON geo_extraction (tenant_id, evidence_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_brand_mention_tenant_evidence ON brand_mention (tenant_id, evidence_id)"))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[geo_models] intelligence tenant migration skipped ({exc})")
 
 
 def _migrate_hot_columns() -> None:

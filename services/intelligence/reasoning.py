@@ -19,7 +19,7 @@ from adapters.llm import LLMNotConfiguredError, chat
 from services.intelligence import aggregator, repo
 from services.intelligence.extractor import _parse_json
 from services.intelligence.prompts import PROMPT_VERSION, REASONING_PROMPT, REASONING_SYSTEM
-from services._db import current_tenant_or_default
+from services.repository import current_tenant_or_default
 
 logger = logging.getLogger("eios.intelligence.reasoning")
 
