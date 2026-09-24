@@ -360,7 +360,7 @@ def reset_all(tenant_id: str | None = None) -> dict[str, int]:
         ).delete(synchronize_session=False)
         stats["brand_mention"] = n
         # 2b. geo_extraction：条级解析
-        n = db.query(GeoExtraction).filter(GeoExtraction.source_type == "ai_answer").delete(synchronize_session=False)
+        n = db.query(GeoExtraction).filter(GeoExtraction.source_type == "ai_answer", GeoExtraction.tenant_id == tenant_id).delete(synchronize_session=False)
         stats["geo_extraction"] = n
         # 2c. geo_evidence：统一原文层（GEO 来源）
         n = db.query(GeoEvidence).filter(
