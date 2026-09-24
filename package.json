@@ -7,6 +7,8 @@
   ],
   "scripts": {
     "build:ui": "npm run build --workspace @eios-product/geo",
-    "typecheck:ui": "npm run typecheck --workspace @eios-product/geo"
+    "typecheck:ui": "npm run typecheck --workspace @eios-product/geo",
+    "test:api": "python -m pytest",
+    "check:ui": "npm run typecheck:ui && npm run build:ui"
   }
 }

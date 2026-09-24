@@ -111,6 +111,12 @@ class Store:
 
     def __init__(self, db: Session):
         self.db = db
+        # Last snapshot read by this Store instance.  ``save`` historically
+        # replaced the whole tenant table, so two requests loading the same
+        # list could silently clobber one another.  Keeping the snapshot lets
+        # save perform a small three-way merge and preserve rows changed by a
+        # concurrent request.
+        self._snapshots: dict[tuple[str, str], dict[str, dict]] = {}
 
     def load(self, table: str, tenant_id: str | None = None) -> list[dict]:
         tenant_id = tenant_id or current_tenant()
@@ -131,6 +137,7 @@ class Store:
                 d = {}
             d.setdefault("id", r.id)
             out.append(d)
+        self._snapshots[(table, tenant_id)] = {str(d["id"]): dict(d) for d in out}
         return out
 
     def save(self, table: str, items: list[dict], tenant_id: str | None = None) -> None:
@@ -146,23 +153,68 @@ class Store:
         model = TABLES.get(table)
         if model is None:
             return
+        # Expire SQLAlchemy's identity map before taking the current side of
+        # the merge; another Session may have committed while this one was
+        # alive.
+        self.db.expire_all()
         now = datetime.now(timezone.utc)
+        current_rows = self.db.query(model).filter(model.tenant_id == tenant_id).all()
+        current: dict[str, dict] = {}
         keep_created: dict[str, tuple[object, object]] = {}
-        for r in (
-            self.db.query(model.id, model.data_json, model.created_at)
-            .filter(model.tenant_id == tenant_id)
-            .all()
-        ):
+        for r in current_rows:
             try:
                 d = json.loads(r.data_json or "{}")
             except Exception:
                 d = {}
-            keep_created[r.id] = (d.get("created_at"), r.created_at)
-        self.db.query(model).filter(model.tenant_id == tenant_id).delete(
-            synchronize_session=False
-        )
+            d.setdefault("id", r.id)
+            current[str(r.id)] = d
+            keep_created[str(r.id)] = (d.get("created_at"), r.created_at)
+
+        supplied: dict[str, dict] = {}
         for it in items:
             row_id = it.get("id") or _new_id(table)
+            payload = dict(it)
+            payload["id"] = row_id
+            payload.pop("id", None)
+            # payload is rebuilt below; this assignment only ensures generated
+            # ids are carried in the map.
+            supplied[str(row_id)] = dict(it, id=row_id)
+
+        baseline = self._snapshots.get((table, tenant_id))
+        if baseline is None:
+            # Internal callers that did not load first retain the documented
+            # full-replacement behavior.
+            merged = supplied
+        else:
+            merged = dict(current)
+            # Apply caller changes over the current database state.  A field
+            # changed concurrently is preserved unless this caller also
+            # changed that field relative to its snapshot.
+            for row_id, sent in supplied.items():
+                if row_id not in baseline or row_id not in current:
+                    merged[row_id] = sent
+                    continue
+                before = baseline[row_id]
+                live = current[row_id]
+                if sent == before:
+                    continue
+                patch = {k: v for k, v in sent.items() if before.get(k) != v}
+                updated = dict(live)
+                updated.update(patch)
+                updated["id"] = row_id
+                merged[row_id] = updated
+            # A deletion is only applied when the live row is still equal to
+            # what this request originally read.  Concurrent edits survive.
+            for row_id, before in baseline.items():
+                if row_id not in supplied and row_id in current and current[row_id] == before:
+                    merged.pop(row_id, None)
+
+        # Upsert each row and remove only rows selected by the merged result.
+        merged_ids = set(merged)
+        for row in current_rows:
+            if str(row.id) not in merged_ids:
+                self.db.delete(row)
+        for row_id, it in merged.items():
             payload = dict(it)
             payload.pop("id", None)
             # The write scope is selected by the trusted call context (or an
@@ -170,19 +222,19 @@ class Store:
             # HTTP payload. Retain no tenant field inside the JSON body either:
             # it is legacy authority metadata, not product data.
             payload.pop("tenant_id", None)
-            prev_json_created, prev_col_created = keep_created.get(row_id, (None, None))
+            prev_json_created, prev_col_created = keep_created.get(str(row_id), (None, None))
             if prev_json_created and not payload.get("created_at"):
                 payload["created_at"] = prev_json_created
-            row = model(
-                id=row_id,
-                data_json=json.dumps(payload, ensure_ascii=False),
-                tenant_id=tenant_id,
-                created_at=prev_col_created or now,
-            )
+            row = next((r for r in current_rows if str(r.id) == str(row_id)), None)
+            if row is None:
+                row = model(id=row_id, tenant_id=tenant_id, created_at=prev_col_created or now)
+                self.db.add(row)
+            row.data_json = json.dumps(payload, ensure_ascii=False)
+            row.created_at = prev_col_created or row.created_at or now
             for col, v in _hot_kwargs(table, payload).items():
                 setattr(row, col, v)
-            self.db.add(row)
         self.db.commit()
+        self._snapshots[(table, tenant_id)] = {k: dict(v) for k, v in merged.items()}
 
     def insert(self, table: str, item: dict, tenant_id: str | None = None) -> dict:
         """追加单条（不整表替换）。"""

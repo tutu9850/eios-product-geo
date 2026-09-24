@@ -38,9 +38,17 @@ npm install && npm run build:ui
 # 后端（dev 栈用 foundation venv；等价于 eios-dev/lib/wrappers/geo.sh）
 cd apps/api && GEO_PRODUCT_DOOR=on GEO_DB_PATH=<db> "$EIOS_PRODUCT_PY" -m uvicorn app.main:app --port 8091
 
-# 后端测试
-cd apps/api && "$EIOS_PRODUCT_PY" -m pytest tests -q
+# 后端测试（仓库根目录，统一导入 app/services/adapters）
+python -m pip install -r apps/api/requirements-dev.txt
+python -m pytest
+
+# 前端类型检查和生产构建
+npm run check:ui
 ```
+
+根目录的 `pyproject.toml` 为 pytest 配置 `apps/api` 和仓库根目录两个
+导入路径，并将后端测试目录统一纳入收集。测试夹具会使用临时数据库，
+如果 `GEO_DB_PATH` 指向仓库开发库则会拒绝启动，避免测试误删开发数据。
 
 ---
 

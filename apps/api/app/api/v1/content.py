@@ -41,9 +41,11 @@ router = APIRouter(prefix="/api/v1/content")
 
 
 def _cabinet(explicit: str | None) -> str:
-    """这次请求该读哪个柜：显式给的一律照用，否则用当前请求的柜（账号分柜）。"""
-    if explicit:
-        return explicit
+    """Resolve the cabinet exclusively from verified request context.
+
+    ``explicit`` remains in the model for wire compatibility, but is ignored
+    so a caller cannot select another tenant by crafting a body field.
+    """
     from app.services.store import current_tenant
 
     return current_tenant() or "tenant_corp_01"

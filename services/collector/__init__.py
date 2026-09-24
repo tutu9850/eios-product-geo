@@ -10,6 +10,7 @@ from pathlib import Path
 
 import httpx
 from bs4 import BeautifulSoup
+from app.security.url import UnsafeURL, redirect_url, validate_public_url
 
 RAW_FILE = Path(__file__).resolve().parents[2] / "apps" / "data" / "geo_collect_raw.json"
 
@@ -42,11 +43,21 @@ def _extract_text(soup: BeautifulSoup, max_len: int = 4000) -> str:
 async def fetch_page(url: str) -> dict:
     """抓取单页 → {title, text, url, error}；失败返回 error 不抛（诚实：受限/失败如实说）"""
     try:
+        current = validate_public_url(url)
         async with httpx.AsyncClient(
-            timeout=12, follow_redirects=True,
+            timeout=12, follow_redirects=False,
             headers={"User-Agent": _UA, "Accept-Language": "zh-CN,zh;q=0.9"},
         ) as client:
-            resp = await client.get(url)
+            for _ in range(4):
+                resp = await client.get(current)
+                if resp.status_code not in {301, 302, 303, 307, 308}:
+                    break
+                location = resp.headers.get("location")
+                if not location:
+                    return {"url": url, "title": "", "text": "", "error": "重定向缺少目标地址"}
+                current = redirect_url(current, location)
+            else:
+                return {"url": url, "title": "", "text": "", "error": "重定向次数过多"}
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
             title = soup.title.get_text(strip=True) if soup.title else ""
@@ -54,6 +65,8 @@ async def fetch_page(url: str) -> dict:
                 h1 = soup.find("h1")
                 title = h1.get_text(strip=True)[:80] if h1 else url
             return {"url": url, "title": title[:120], "text": _extract_text(soup)}
+    except UnsafeURL as exc:
+        return {"url": url, "title": "", "text": "", "error": f"UnsafeURL: {str(exc)[:120]}"}
     except Exception as exc:  # noqa: BLE001
         return {"url": url, "title": "", "text": "", "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
 

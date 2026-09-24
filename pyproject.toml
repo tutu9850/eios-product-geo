@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+# Keep one test command usable from the repository root and from CI. The API
+# package lives below apps/api while shared adapters/services are rooted here.
+pythonpath = ["apps/api", "."]
+testpaths = ["apps/api/tests", "tests"]
+addopts = "-ra"
+python_files = ["test_*.py", "*_test.py"]

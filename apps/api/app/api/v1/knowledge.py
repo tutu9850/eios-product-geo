@@ -9,10 +9,11 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Request, UploadFile
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.core.envelope import ok
+from app.core.envelope import ok, err
 from services.chunking import chunk_material
 
 router = APIRouter(prefix="/api/v1/knowledge")
@@ -56,12 +57,17 @@ def _save(items: list[dict]) -> None:
 
 
 @router.post("/reset")
-async def reset_geo_data(confirm: bool = False):
+async def reset_geo_data(request: Request, confirm: bool = False):
     """重置 GEO 数据（出厂状态）：清空全部业务表 + 媒体文件 + Qdrant 素材向量。
 
     危险操作：confirm 必须为 true，否则拒绝。删除范围 = GEO 自己的数据库
     （geo.db 9 表 + storage/media + geo_materials 向量）；不动 企业知识库/Builder。
     """
+    # Reset is destructive and is never available through the legacy header
+    # shim.  It requires the verified product session installed by the outer
+    # auth middleware; callers also need an explicit confirmation flag.
+    if getattr(request.state, "product_session", None) is None:
+        return JSONResponse(status_code=401, content=err("AUTH_CONTEXT_REQUIRED", "数据重置需要已验证的产品会话"))
     if not confirm:
         return ok({"error": "危险操作：请确认（confirm=true）后再重置", "deleted": {}})
     from app.services.store import reset_all
@@ -96,13 +102,17 @@ async def reset_geo_data(confirm: bool = False):
 
 
 @router.get("/profile")
-async def get_company_profile(company_name: str = "", tenant_id: str = "tenant_corp_01"):
+async def get_company_profile(company_name: str = "", tenant_id: str | None = None):
     """企业画像组装（认知编译器第 1 层）：企业知识库事实+关系 → 画像卡片。"""
     from app.services.company_profile import build_company_profile
 
     if not company_name.strip():
         return ok({"error": "company_name 必填"})
-    profile = await build_company_profile(company_name.strip(), tenant_id=tenant_id)
+    # tenant_id is intentionally ignored.  The cabinet is derived from the
+    # verified request context, never selected by a query parameter.
+    from app.services.store import current_tenant
+
+    profile = await build_company_profile(company_name.strip(), tenant_id=current_tenant() or "tenant_corp_01")
     return ok(profile)
 
 

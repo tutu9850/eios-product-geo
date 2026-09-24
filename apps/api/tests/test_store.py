@@ -84,6 +84,28 @@ def test_insert_delete(store):
     assert len(store.load("gaps")) == 0
 
 
+def test_concurrent_store_saves_merge_disjoint_changes(store):
+    """Two stale Store snapshots must not clobber each other's rows."""
+    from app.models.geo_models import SessionLocal
+    from app.services.store import Store
+
+    store.save("questions", [{"id": "q_a", "question": "A"}, {"id": "q_b", "question": "B"}])
+    left = Store(SessionLocal())
+    right = Store(SessionLocal())
+    try:
+        left_rows = left.load("questions")
+        right_rows = right.load("questions")
+        left_rows[0]["question"] = "A-left"
+        right_rows[1]["question"] = "B-right"
+        left.save("questions", left_rows)
+        right.save("questions", right_rows)
+    finally:
+        left.db.close()
+        right.db.close()
+    got = {r["id"]: r["question"] for r in store.load("questions")}
+    assert got == {"q_a": "A-left", "q_b": "B-right"}
+
+
 def test_tenant_isolation(store):
     store.save("questions", [{"question": "租户A数据"}], tenant_id="tenant_a")
     store.save("questions", [{"question": "租户B数据"}], tenant_id="tenant_b")

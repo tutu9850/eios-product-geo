@@ -14,6 +14,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.core.envelope import ok, err
+from app.security.url import UnsafeURL, redirect_url, validate_public_url
 
 router = APIRouter(prefix="/api/v1/diagnose")
 
@@ -178,15 +179,27 @@ def _diag_faq(soup: BeautifulSoup, types: list[str]) -> tuple[int, str]:
 async def _fetch(url: str) -> tuple[str | None, str]:
     """抓取页面 HTML。返回 (html, 错误信息)"""
     try:
+        current = validate_public_url(url)
         async with httpx.AsyncClient(
-            timeout=12, follow_redirects=True, trust_env=False, headers={"User-Agent": _UA, "Accept-Language": "zh-CN,zh;q=0.9"}
+            timeout=12, follow_redirects=False, trust_env=False, headers={"User-Agent": _UA, "Accept-Language": "zh-CN,zh;q=0.9"}
         ) as client:
-            r = await client.get(url)
+            for _ in range(4):
+                r = await client.get(current)
+                if r.status_code not in {301, 302, 303, 307, 308}:
+                    break
+                location = r.headers.get("location")
+                if not location:
+                    return None, "页面重定向缺少目标地址"
+                current = redirect_url(current, location)
+            else:
+                return None, "页面重定向次数过多"
             if r.status_code != 200:
                 return None, f"页面返回 HTTP {r.status_code}（可能被反爬或不存在）"
             if len(r.text) < 200:
                 return None, "页面内容过少（可能是验证码页或空页）"
             return r.text, ""
+    except UnsafeURL as e:
+        return None, f"URL 不安全：{e}"
     except Exception as e:  # noqa: BLE001
         return None, f"抓取失败：{e}"
 

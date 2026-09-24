@@ -35,6 +35,9 @@ class AuthContextVerifierUnavailable(RuntimeError):
 
 
 def auth_mode() -> str:
+    # Keep the legacy default for local compatibility. Production deployments
+    # must set GEO_AUTH_MODE=auth_context; destructive operations are guarded
+    # independently and never accept the legacy header shim.
     return os.environ.get("GEO_AUTH_MODE", "legacy").strip().lower() or "legacy"
 
 
