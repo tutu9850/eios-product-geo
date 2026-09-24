@@ -13,6 +13,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.models.geo_models import (
     SessionLocal,
@@ -153,6 +154,11 @@ class Store:
         model = TABLES.get(table)
         if model is None:
             return
+        # Serialize read/merge/write so two full-list callers cannot both read
+        # the same version and overwrite one another. SQLite WAL still permits
+        # concurrent readers, while BEGIN IMMEDIATE reserves the writer slot.
+        self.db.rollback()
+        self.db.execute(text("BEGIN IMMEDIATE"))
         # Expire SQLAlchemy's identity map before taking the current side of
         # the merge; another Session may have committed while this one was
         # alive.
@@ -246,6 +252,8 @@ class Store:
         payload = dict(item)
         payload.pop("id", None)
         payload.pop("tenant_id", None)
+        self.db.rollback()
+        self.db.execute(text("BEGIN IMMEDIATE"))
         row = model(
             id=row_id,
             data_json=json.dumps(payload, ensure_ascii=False),
@@ -270,6 +278,8 @@ class Store:
         model = TABLES.get(table)
         if model is None:
             return None
+        self.db.rollback()
+        self.db.execute(text("BEGIN IMMEDIATE"))
         row = (
             self.db.query(model)
             .filter(model.id == item_id, model.tenant_id == tenant_id)
@@ -296,6 +306,8 @@ class Store:
         model = TABLES.get(table)
         if model is None:
             return False
+        self.db.rollback()
+        self.db.execute(text("BEGIN IMMEDIATE"))
         n = (
             self.db.query(model)
             .filter(model.id == item_id, model.tenant_id == tenant_id)
