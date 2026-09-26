@@ -6,7 +6,7 @@ import { GeoEnterpriseOverview } from '@geo-advisor/GeoEnterpriseOverview'
 import { GeoMarketWorkspace } from '@geo-advisor/GeoMarketWorkspace'
 import { GeoAdvancedTools } from '@geo-advisor/GeoAdvancedTools'
 import { configureGeoProductTransport } from '@geo-advisor/geo-api'
-import { GeoConfirmHost, GeoNavContext, GeoNavParamsContext, type GeoNavParams } from '@geo-advisor/shared'
+import { GeoCardErrorBoundary, GeoConfirmHost, GeoNavContext, GeoNavParamsContext, type GeoNavParams } from '@geo-advisor/shared'
 import './index.css'
 
 const PRODUCT_HOST_CONTRACT = 'eios.product_host/v1'
@@ -50,6 +50,15 @@ const SUBNAV: Partial<Record<Workspace, Array<{ id: GeoFlowKind; label: string }
 }
 const DEFAULTS: Partial<Record<Workspace, GeoFlowKind>> = { monitor: 'monitor', insight: 'insight-overview', profile: 'profile-overview', growth: 'plans' }
 
+// 默认页只把已经存在的卡片排成一条业务路径；单点页仍由下方页签保留。
+// 这里不创建新的业务组件，也不改变任何卡片的数据或接口。
+const WORKSPACE_BUNDLES: Partial<Record<Workspace, GeoFlowKind[]>> = {
+  monitor: ['monitor', 'monitor-analysis'],
+  insight: ['insight-overview', 'cognition-map'],
+  profile: ['profile-overview', 'kb-init', 'assets'],
+  growth: ['questions', 'gaps', 'plans'],
+}
+
 const FLOW_WORKSPACE: Record<GeoFlowKind, Workspace> = {
   'kb-init': 'profile', 'auto-config': 'profile', monitor: 'monitor', assets: 'profile', questions: 'growth', gaps: 'growth', cognition: 'insight', content: 'growth', battle: 'monitor', report: 'insight', plans: 'growth', 'action-plan': 'growth', 'insight-overview': 'insight', 'profile-overview': 'profile', 'monitor-analysis': 'monitor', faq: 'growth', 'cognition-map': 'insight',
 }
@@ -78,12 +87,28 @@ function GeoProduct() {
     setFlows((current) => ({ ...current, [target]: kind as GeoFlowKind }))
     setNavParams((current) => ({ focus: options?.focus ?? null, seed: options?.seed ?? null, nonce: current.nonce + 1 }))
   }
+  function renderFlow(kind: GeoFlowKind) {
+    const labels: Record<GeoFlowKind, string> = {
+      'kb-init': '知识库同步', 'auto-config': '自动配置', monitor: '监测工作台', assets: '内容资产', questions: '客户问题池', gaps: '知识缺口', cognition: '认知健康', content: '内容生成', battle: 'AI 对战', report: '阶段报告', plans: '内容计划', 'action-plan': '行动计划', 'insight-overview': '差距诊断', 'profile-overview': '资料总揽', 'monitor-analysis': '专业分析', faq: 'FAQ 生产', 'cognition-map': '客户认知地图',
+    }
+    return <GeoCardErrorBoundary label={labels[kind]}><GeoFlowRouter kind={kind} /></GeoCardErrorBoundary>
+  }
   return <GeoNavContext.Provider value={go}><GeoNavParamsContext.Provider value={navParams}><main className="geo-product-shell">
     <header className="geo-product-nav"><nav aria-label="GEO 功能">{NAV.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-current={active === id ? 'page' : undefined} onClick={() => setActive(id)}><Icon /><span>{label}</span></button>)}</nav><div className="product-utilities"><button className="advanced-trigger" onClick={()=>setAdvanced(true)}><Wrench/><span>高级工具</span></button><div className="geo-rail-status"><CircleDot /><span>{connected ? '已连接' : '等待会话'}</span></div></div></header>
     <section className="geo-workspace">
       {active !== 'overview' && active !== 'market' && active !== 'insight' && active !== 'profile' && <WorkspaceHeader workspace={active} />}
       {SUBNAV[active] && <nav className="geo-subnav" aria-label="页内功能">{SUBNAV[active]?.map((item) => <button key={item.id} className={flow === item.id ? 'active' : ''} onClick={() => setFlows((current) => ({ ...current, [active]: item.id }))}>{item.label}</button>)}</nav>}
-      {connected || window.parent === window ? <>{active === 'overview' && <GeoEnterpriseOverview onNavigate={navigate} />}{active === 'market' && <GeoMarketWorkspace />}{active !== 'overview' && active !== 'market' && flow && <div className="geo-legacy-surface"><GeoFlowRouter kind={flow} /></div>}</> : <div className="geo-session-wait"><Sparkles /><h1>正在连接企业工作区</h1><p>等待 EIOS Product Host 建立安全会话。</p></div>}
+      {connected || window.parent === window ? <>
+        {active === 'overview' && <GeoEnterpriseOverview onNavigate={navigate} />}
+        {active === 'market' && <GeoMarketWorkspace />}
+        {active !== 'overview' && active !== 'market' && flow ? (
+          <div className={WORKSPACE_BUNDLES[active]?.includes(flow) && WORKSPACE_BUNDLES[active]?.[0] === flow ? `geo-legacy-surface geo-flow-bundle geo-flow-bundle-${active}` : 'geo-legacy-surface'}>
+            {WORKSPACE_BUNDLES[active]?.includes(flow) && WORKSPACE_BUNDLES[active]?.[0] === flow
+              ? WORKSPACE_BUNDLES[active]?.map((kind) => <section className="geo-flow-bundle-item" key={kind}>{renderFlow(kind)}</section>)
+              : renderFlow(flow)}
+          </div>
+        ) : null}
+      </> : <div className="geo-session-wait"><Sparkles /><h1>正在连接企业工作区</h1><p>等待 EIOS Product Host 建立安全会话。</p></div>}
     </section>
     {advanced&&<GeoAdvancedTools onClose={()=>setAdvanced(false)}/>} 
     <GeoConfirmHost />

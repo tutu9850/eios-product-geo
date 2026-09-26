@@ -220,10 +220,28 @@
   .geo-report-workbench .geo-data-row { min-height: 92px; padding: 15px; border-top: 0; border-left: 1px solid #eceee9; }
   .geo-report-workbench .geo-data-row:first-child { border-left: 0; }
   .geo-profile-workbench > div[class*="grid"] { align-items: start; }
+
+  /* 默认工作台只重新编排已有卡片：先给出主结论，再给出能继续操作的旧卡片。 */
+  .geo-flow-bundle { display: grid; gap: 18px; }
+  .geo-flow-bundle-item { min-width: 0; }
+  .geo-flow-bundle-item + .geo-flow-bundle-item { padding-top: 16px; border-top: 1px solid #e2e5df; }
+  .geo-flow-bundle-growth { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .geo-flow-bundle-growth .geo-flow-bundle-item:nth-child(3) { grid-column: 1 / -1; }
+  .geo-flow-bundle-profile { grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); align-items: start; }
+  .geo-flow-bundle-profile .geo-flow-bundle-item:first-child { grid-column: 1 / -1; }
+  .geo-flow-bundle-profile .geo-flow-bundle-item + .geo-flow-bundle-item { padding-top: 0; border-top: 0; }
+  .geo-flow-bundle-profile .geo-flow-bundle-item:nth-child(3) { grid-column: 2; }
+  .geo-flow-bundle-monitor .geo-flow-bundle-item + .geo-flow-bundle-item,
+  .geo-flow-bundle-insight .geo-flow-bundle-item + .geo-flow-bundle-item { margin-top: 2px; }
 }
 
 @media (max-width: 1080px) {
   .geo-monitor-workspace { grid-template-columns: 1fr; }
+  .geo-flow-bundle-growth, .geo-flow-bundle-profile { grid-template-columns: 1fr; }
+  .geo-flow-bundle-growth .geo-flow-bundle-item:nth-child(3),
+  .geo-flow-bundle-profile .geo-flow-bundle-item:first-child,
+  .geo-flow-bundle-profile .geo-flow-bundle-item:nth-child(3) { grid-column: auto; }
+  .geo-flow-bundle-profile .geo-flow-bundle-item + .geo-flow-bundle-item { padding-top: 16px; border-top: 1px solid #e2e5df; }
   .geo-report-workbench .geo-data-list { grid-template-columns: repeat(2,1fr); }
   .geo-report-workbench .geo-data-row:nth-child(3) { border-left: 0; border-top: 1px solid #eceee9; }
   .geo-report-workbench .geo-data-row:nth-child(4) { border-top: 1px solid #eceee9; }
