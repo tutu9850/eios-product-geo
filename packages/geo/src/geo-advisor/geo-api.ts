@@ -35,11 +35,73 @@ function geoHeaders(): Record<string, string> {
 
 const NEST_GENERIC = /^(Bad Request|Internal Server Error|Unauthorized|Forbidden|Not Found)$/i
 
+/** 页面可以据此决定展示重试、去配置还是联系管理员。保持 Error 兼容，旧卡片无需改造即可使用。 */
+export type GeoErrorCode = 'empty' | 'not-configured' | 'forbidden' | 'not-found' | 'upstream' | 'contract'
+
+export class GeoApiError extends Error {
+  readonly name = 'GeoApiError'
+  readonly code: GeoErrorCode
+  readonly status: number
+  readonly jobId?: string
+  readonly jobStatus?: string
+
+  constructor(message: string, options: { code: GeoErrorCode; status: number; jobId?: string; jobStatus?: string }) {
+    super(message)
+    this.code = options.code
+    this.status = options.status
+    this.jobId = options.jobId
+    this.jobStatus = options.jobStatus
+  }
+}
+
+export type GeoErrorBody = { error?: unknown; detail?: unknown; message?: unknown; statusCode?: unknown; code?: unknown; error_code?: unknown; job_id?: unknown; jobId?: unknown; status?: unknown }
+
+function bodyCode(j: GeoErrorBody | null): string {
+  const candidates = [j?.code, j?.error_code, j?.error, j?.message]
+  for (const value of candidates) {
+    if (typeof value === 'string' && value.trim()) return value.trim().toLowerCase()
+    if (value && typeof value === 'object') {
+      const nested = value as { code?: unknown; message?: unknown; error?: unknown }
+      if (typeof nested.code === 'string') return nested.code.toLowerCase()
+      if (typeof nested.message === 'string') return nested.message.toLowerCase()
+      if (typeof nested.error === 'string') return nested.error.toLowerCase()
+    }
+  }
+  return ''
+}
+
+function classifyGeoError(status: number, j: GeoErrorBody | null): GeoErrorCode {
+  const code = bodyCode(j)
+  if (/(empty|no[_-]?data|no[_-]?result|暂无|没有.*数据)/i.test(code)) return 'empty'
+  if (/(not[_-]?configured|config_required|setup_required|未配置|需要配置)/i.test(code)) {
+    return 'not-configured'
+  }
+  if (status === 401 || status === 403 || /forbidden|unauthori[sz]ed|permission|access_denied/i.test(code)) return 'forbidden'
+  if (status === 404 || /not[_-]?found|missing/i.test(code)) return 'not-found'
+  if (status >= 500 || /upstream|timeout|gateway|service[_-]?unavailable/i.test(code)) return 'upstream'
+  return 'contract'
+}
+
+/** 将 HTTP 状态和后端错误体映射为稳定的产品错误分类，供卡片按分类决定动作。 */
+export const geoErrorCode = classifyGeoError
+
 /** 从 BFF / Nest / :3002 错误体抽出可读文案（避免把 HTTP 状态短语当原因） */
 export function geoErrorMessage(
   status: number,
-  j: { error?: unknown; detail?: unknown; message?: unknown; statusCode?: unknown } | null,
+  j: GeoErrorBody | null,
 ): string {
+  const code = classifyGeoError(status, j)
+  // 已知分类使用稳定的人话，避免把 no_configured_data 等机器值直接展示给用户。
+  if (code !== 'contract' || (!j?.message && !j?.error && !j?.detail)) {
+    return {
+      empty: '暂无可用数据，请先完成配置或运行一次监测。',
+      'not-configured': '还没有完成 GEO 配置，请先去配置。',
+      forbidden: '当前账号没有权限执行此操作。',
+      'not-found': '找不到请求的 GEO 资源，可能已被删除。',
+      upstream: 'GEO 服务暂时不可用，请稍后重试。',
+      contract: 'GEO 服务返回的数据格式不完整，请重试；若持续出现请联系管理员。',
+    }[code]
+  }
   const nestMsg = j?.message
   if (nestMsg && typeof nestMsg === 'object' && typeof (nestMsg as { error?: unknown }).error === 'string') {
     return (nestMsg as { error: string }).error
@@ -55,12 +117,40 @@ export function geoErrorMessage(
     return err
   }
   if (typeof j?.detail === 'string' && j.detail) return j.detail
-  return `GEO 请求失败（${status}）`
+  return {
+    empty: '暂无可用数据，请先完成配置或运行一次监测。',
+    'not-configured': '还没有完成 GEO 配置，请先去配置。',
+    forbidden: '当前账号没有权限执行此操作。',
+    'not-found': '找不到请求的 GEO 资源，可能已被删除。',
+    upstream: 'GEO 服务暂时不可用，请稍后重试。',
+    contract: 'GEO 服务返回的数据格式不完整，请重试；若持续出现请联系管理员。',
+  }[code]
 }
 
-function geoFail(status: number, j: { error?: unknown; detail?: unknown; message?: unknown; statusCode?: unknown } | null): never {
+function geoFail(status: number, j: GeoErrorBody | null): never {
   if (status === 401) onProductSessionExpired?.()
-  throw new Error(geoErrorMessage(status, j))
+  const data = j && typeof j === 'object' ? j : null
+  const code = classifyGeoError(status, data)
+  const jobId = typeof data?.job_id === 'string' ? data.job_id : typeof data?.jobId === 'string' ? data.jobId : undefined
+  const jobStatus = typeof data?.status === 'string' ? data.status : undefined
+  throw new GeoApiError(geoErrorMessage(status, data), { code, status, jobId, jobStatus })
+}
+
+/** 长任务响应的最小公共形状。调用方可继续轮询既有 status 接口，不会丢掉任务标识。 */
+export interface GeoJobResult {
+  job_id?: string
+  status?: string
+  message?: string
+  progress?: number
+}
+
+export function geoJobInfo(value: unknown): Pick<GeoJobResult, 'job_id' | 'status' | 'progress'> | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Record<string, unknown>
+  const job_id = typeof row.job_id === 'string' ? row.job_id : typeof row.jobId === 'string' ? row.jobId : undefined
+  const status = typeof row.status === 'string' ? row.status : undefined
+  const progress = typeof row.progress === 'number' ? row.progress : typeof row.overall_pct === 'number' ? row.overall_pct : undefined
+  return job_id || status || progress !== undefined ? { job_id, status, progress } : null
 }
 
 export async function geoGet<T>(path: string): Promise<T> {

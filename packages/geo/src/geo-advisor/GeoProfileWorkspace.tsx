@@ -35,7 +35,7 @@ export function GeoProfileWorkspace() {
   const questions = [...(detail?.uncovered_questions ?? []), ...(detail?.partial_questions ?? [])]
 
   return <div className="profile-console">
-    <header className="workspace-intro"><div><span>ENTERPRISE KNOWLEDGE COVERAGE</span><h1>企业资料总览</h1><p>按当前可检索的知识对象、事实、关系与文档片段检查客户问题覆盖；历史快照不在这里冒充当前资料。</p></div><div className="workspace-actions"><button className="geo-btn secondary" onClick={() => void exportWord()}><Download />导出 Word</button><button className="geo-btn secondary" onClick={() => void refresh()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <RefreshCw />}清缓存并重新计算</button></div></header>
+    <header className="workspace-intro"><div><span>资料覆盖</span><h1>企业资料总览</h1><p>按当前可检索的知识对象、事实、关系与文档片段检查客户问题覆盖；历史快照不在这里冒充当前资料。</p></div><div className="workspace-actions"><button className="geo-btn secondary" onClick={() => void exportWord()}><Download />导出 Word</button><button className="geo-btn secondary" onClick={() => void refresh()} disabled={busy}>{busy ? <LoaderCircle className="spin" /> : <RefreshCw />}清缓存并重新计算</button></div></header>
     {notice && <div className="geo-notice">{notice}</div>}
     <section className="profile-summary"><div><span>整体覆盖率</span><strong>{overview?.overall_coverage_pct ?? '—'}<small>%</small></strong></div><div><b>{overview?.enough_count ?? '—'}</b><span>资料足够</span></div><div><b>{overview?.partial_count ?? '—'}</b><span>部分覆盖</span></div><div><b>{overview?.too_little_count ?? '—'}</b><span>需要补齐</span></div></section>
     <div className="profile-body">

@@ -51,6 +51,21 @@ def record(kind: str, payload: dict[str, Any], *, source_url: str = "") -> dict[
     """
     init_db()
     tenant_id = current_tenant()
+    # 快照必须带上经过宿主票验证的企业范围。旧快照没有这个水印时，
+    # 只能视为不可归属，后续读取会 fail-closed，避免不同企业串资料。
+    try:
+        from app.product.session import current_product_session
+
+        session = current_product_session()
+    except Exception:  # legacy/local mode has no product session
+        session = None
+    scoped_payload = dict(payload)
+    if session is not None:
+        scoped_payload["_knowledge_scope"] = {
+            "deployment_id": session.deployment_id,
+            "enterprise_id": session.enterprise_id,
+        }
+    payload = scoped_payload
     digest = payload_hash(payload)
     contract = payload.get("contract")
     db = SessionLocal()
@@ -122,6 +137,23 @@ def _row_to_dict(row: GeoKnowledgeSnapshots) -> dict[str, Any]:
     }
 
 
+def _scope_matches(payload: dict[str, Any]) -> bool:
+    """Only expose snapshots stamped for the verified current enterprise."""
+    try:
+        from app.product.session import current_product_session
+
+        session = current_product_session()
+    except Exception:
+        session = None
+    if session is None:
+        return True  # explicit legacy/local mode keeps historical compatibility
+    scope = payload.get("_knowledge_scope") or {}
+    return (
+        scope.get("deployment_id") == session.deployment_id
+        and scope.get("enterprise_id") == session.enterprise_id
+    )
+
+
 def list_recent(*, kind: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
     """最近读到的东西（按最后读到时间倒序）。"""
     init_db()
@@ -133,7 +165,12 @@ def list_recent(*, kind: str | None = None, limit: int = 50) -> list[dict[str, A
         if kind:
             q = q.filter(GeoKnowledgeSnapshots.kind == kind)
         rows = q.order_by(GeoKnowledgeSnapshots.last_read_at.desc()).limit(max(1, min(int(limit), 200))).all()
-        return [_row_to_dict(r) for r in rows]
+        out = []
+        for row in rows:
+            item = _row_to_dict(row)
+            if _scope_matches(item.get("payload") or {}):
+                out.append(item)
+        return out
     finally:
         db.close()
 

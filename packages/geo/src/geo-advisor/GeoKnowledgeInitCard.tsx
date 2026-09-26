@@ -33,11 +33,21 @@ import { GeoCardShell, GeoError, GeoLoading } from './shared'
 
 type Pick = { companies: Set<string>; products: Set<string>; documents: Set<string> }
 
+// 企业知识库里可能同时出现员工/薪酬/客户等内部资料。初始化只应主动带入
+// 面向产品事实的资料；敏感资料必须由用户逐项确认，避免误把人事或财务材料
+// 写入 GEO 快照。
+const SENSITIVE_DOCUMENT_RE = /(员工|雇员|薪酬|工资|薪资|客户|财务|薪税|合同|法务|人事|绩效|社保|employee|payroll|salary|customer|finance|contract|legal|hr)/i
+
+function isSensitiveDocument(document: GeoKbInitDocument): boolean {
+  return SENSITIVE_DOCUMENT_RE.test(`${document.title} ${document.document_id}`)
+}
+
 function allPicked(scan: GeoKbInitScan): Pick {
   return {
     companies: new Set(scan.candidates.companies.map((c) => c.name)),
     products: new Set(scan.candidates.products.map((p) => p.name)),
-    documents: new Set(scan.candidates.documents.map((d) => d.document_id)),
+    // 敏感资料默认不选，用户仍可逐项打开并明确确认。
+    documents: new Set(scan.candidates.documents.filter((d) => !isSensitiveDocument(d)).map((d) => d.document_id)),
   }
 }
 
@@ -174,6 +184,8 @@ export function GeoKnowledgeInitCard() {
     scan.candidates.companies.filter((c) => !c.in_profile && picked.companies.has(c.name)).length +
     scan.candidates.products.filter((p) => !p.in_profile && picked.products.has(p.name)).length +
     scan.candidates.documents.filter((d) => !d.in_profile && picked.documents.has(d.document_id)).length
+  const sensitiveDocuments = scan.candidates.documents.filter(isSensitiveDocument)
+  const sensitivePickedCount = sensitiveDocuments.filter((d) => picked.documents.has(d.document_id)).length
 
   // 文档这一桶：「未发布·快照」= 知识库里还没发布（文档列表看不到），候选来自 GEO 读到过的切块。
   const docBadge = (d: GeoKbInitDocument) =>
@@ -229,6 +241,12 @@ export function GeoKnowledgeInitCard() {
       {pickedCount === 0 && !result ? (
         <p className="text-[11px] text-[var(--yayu-muted)]">
           一项都不勾也可以点：知识库里只要有资料，GEO 工作空间就会建起来（这次不往公司 / 产品 / 文档清单里记）。
+        </p>
+      ) : null}
+      {sensitiveDocuments.length > 0 ? (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+          已识别 {sensitiveDocuments.length} 份可能包含员工、薪酬、客户、财务或合同信息的资料，默认未勾选。只有在确认确实需要用于 GEO 后才建议纳入
+          {sensitivePickedCount > 0 ? `（当前已选 ${sensitivePickedCount} 份）` : ''}。
         </p>
       ) : null}
       {emptySelectionLine ? (
@@ -318,7 +336,7 @@ export function GeoKnowledgeInitCard() {
                     key={d.document_id}
                     label={d.title || d.document_id}
                     checked={picked.documents.has(d.document_id)}
-                    badge={docBadge(d)}
+                    badge={isSensitiveDocument(d) ? `敏感·${docBadge(d)}` : docBadge(d)}
                     tone={d.listed === false ? 'new' : d.in_profile ? 'mine' : 'new'}
                     onToggle={() => toggle('documents', d.document_id)}
                   />

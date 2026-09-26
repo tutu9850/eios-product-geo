@@ -87,3 +87,8 @@ python3 -m venv .venv && .venv/bin/pip install -r apps/api/requirements.txt
 bash scripts/run_dev.sh
 # curl localhost:3002/health
 ```
+
+## Engineering workflow
+
+本仓的任务边界、产品门规则、测试和 Codex 完成报告要求见根目录 `AGENTS.md`。
+跨仓任务应先创建施工卡，明确 Product API / Foundation 的契约和验证命令。

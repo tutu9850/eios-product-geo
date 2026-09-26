@@ -379,6 +379,11 @@ def _match_knowledge(knowledge: list[dict], rules: dict) -> list[dict]:
     keywords = rules.get("keywords") or []
     out = []
     for k in knowledge:
+        # EIOS 返回的 entity/fact 没有 GEO 可自行推断的业务分类。
+        # 没有 Semantic 的权威关联时，不能把“负责/团队/客户”等字样
+        # 当成归类依据，否则全租户对象会污染某个子项的证据列表。
+        if not (k.get("semantic_object_id") or k.get("profile_field")):
+            continue
         ktype = k.get("object_type") or k.get("type") or ""
         pred = k.get("predicate") or ""
         name = k.get("canonical_name") or k.get("name") or ""
@@ -393,7 +398,7 @@ def _match_knowledge(knowledge: list[dict], rules: dict) -> list[dict]:
         if (predicates or keywords) and not (hit_pred or hit_kw):
             continue
         item = dict(k)
-        item["match_basis"] = "object_type" if (object_types and typed) else "content_keywords"
+        item["match_basis"] = "semantic_linkage"
         out.append(item)
     return out
 
@@ -564,8 +569,26 @@ async def _load_knowledge() -> dict:
     global _knowledge_cache, _knowledge_cache_at
     now = _time.time()
 
+    def _scope() -> dict[str, str] | None:
+        try:
+            from app.product.session import current_product_session
+
+            session = current_product_session()
+        except Exception:
+            session = None
+        if session is None:
+            return None
+        return {"deployment_id": session.deployment_id, "enterprise_id": session.enterprise_id}
+
+    current_scope = _scope()
+
+    def _scope_matches(value: dict) -> bool:
+        if current_scope is None:
+            return True
+        return value.get("_knowledge_scope") == current_scope
+
     # 1) 内存缓存
-    if _knowledge_cache is not None and now - _knowledge_cache_at < _KNOWLEDGE_TTL:
+    if _knowledge_cache is not None and _scope_matches(_knowledge_cache) and now - _knowledge_cache_at < _KNOWLEDGE_TTL:
         return _knowledge_cache
 
     # 2) SQLite 持久缓存（内存 miss 时读库；进程重启后秒恢复）
@@ -577,7 +600,7 @@ async def _load_knowledge() -> dict:
             row = rows[0]
             cached = row.get("data")
             cached_at = row.get("cached_at") or 0
-            if isinstance(cached, dict) and now - cached_at < 300:  # 5 分钟 TTL
+            if isinstance(cached, dict) and _scope_matches(cached) and now - cached_at < 300:  # 5 分钟 TTL
                 _knowledge_cache = cached
                 _knowledge_cache_at = now
                 return _knowledge_cache
@@ -633,6 +656,8 @@ async def _load_knowledge() -> dict:
         logger.warning("search_relations failed: %s", e)
 
     _knowledge_cache = {"entities": entities, "facts": facts, "relations": relations}
+    if current_scope is not None:
+        _knowledge_cache["_knowledge_scope"] = current_scope
     _knowledge_cache_at = now
 
     # 写 SQLite 持久缓存
@@ -765,12 +790,25 @@ async def profile_item(item_id: str):
                 # 审计 B5：命中里放正文的是 ``value``/``snippet``（``_map_hit`` 的字段），
                 # 旧代码读 ``text``/``content`` → 相关文档块恒空。
                 txt = (h.get("value") or h.get("snippet") or "").strip()
+                score = h.get("score")
+                # 搜索接口会返回低相关度的兜底命中；它们不能冒充当前
+                # 子项的企业资料。至少要求命中带文档来源、具备可比较分数，
+                # 且正文包含当前子项关键词之一。
+                if not h.get("document_id"):
+                    continue
+                try:
+                    if score is None or float(score) < 0.45:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                if not any(kw and kw in txt for kw in kws):
+                    continue
                 if not txt or txt in seen:
                     continue
                 seen.add(txt)
                 doc_chunks.append({
                     "text": txt[:160],
-                    "score": round(float(h.get("score") or 0), 2),
+                    "score": round(float(score), 2),
                     "source": h.get("document_id") or h.get("source") or "",
                 })
     except Exception as e:

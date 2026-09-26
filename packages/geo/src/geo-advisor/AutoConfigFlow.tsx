@@ -15,6 +15,18 @@ import { GeoButtonRow, GeoCardShell, GeoError, GeoList, GeoLoading, GeoRow } fro
 
 type FlowStep = 'detect' | 'discover' | 'create' | 'run' | 'distill' | 'schedule' | 'report'
 
+function uniqueNames(values: string[]): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const value of values) {
+    const name = value.trim()
+    if (!name || seen.has(name)) continue
+    seen.add(name)
+    result.push(name)
+  }
+  return result
+}
+
 /**
  * 自动配置流程卡（7 步固定状态机，前端代码驱动，不经大模型）：
  * detect → discover → create → run → distill → schedule → report
@@ -54,17 +66,17 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
   const [selectedCompetitorNames, setSelectedCompetitorNames] = useState<Set<string>>(loadSavedCompetitors())
 
   // 产品 chips = 检测到的 + 手填的（手填的也要能点掉，不然加错了没法撤）
-  const productChips = [
+  const productChips = uniqueNames([
     ...(detect?.products ?? []),
     ...[...selectedProducts].filter((p) => !(detect?.products ?? []).includes(p)),
-  ]
+  ])
   // 第一个勾选的公司 = 主名，其余 = 别名（一起当作「我们自己」监测）
   const primaryCompany = selectedCompanies[0] ?? detect?.company?.[0] ?? ''
   const aliasCompanies = selectedCompanies.slice(1)
-  const serviceChips = [
+  const serviceChips = uniqueNames([
     ...(detect?.services ?? []),
     ...[...selectedServices].filter((s) => !(detect?.services ?? []).includes(s)),
-  ]
+  ])
 
   // ── 竞品勾选持久化（刷新页面/重新进入后保留）──
   function loadSavedCompetitors(): Set<string> {
@@ -102,11 +114,13 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
     void run(async () => {
       const d = await geoPost<GeoDetectResult>('/onboard/auto-config', { step: 'detect' })
       setDetect(d)
-      setSelectedProducts(new Set(d.products ?? []))
-      setSelectedServices(new Set(d.services ?? []))
-      // 默认把检测到的公司都勾上（都是用户自己材料里认出来的候选）；
-      // 第一个是主名，其余当别名 —— 不想要的点一下取消。
-      setSelectedCompanies(d.company ?? [])
+      const companies = uniqueNames(d.company ?? [])
+      const products = uniqueNames(d.products ?? [])
+      // 首配默认保持最小监测范围：一个主品牌 + 一个产品。其余候选必须由
+      // 用户主动勾选，避免一键生成大量对象或把内部服务误当作对外品牌。
+      setSelectedProducts(new Set(products.slice(0, 1)))
+      setSelectedServices(new Set())
+      setSelectedCompanies(companies.slice(0, 1))
       setIndustryText(d.industry ?? '')
       setStep('detect')
     })
@@ -154,8 +168,8 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
     void run(async () => {
       const d = await geoPost<GeoDiscoverResult>('/onboard/auto-config', {
         step: 'discover',
-        products: [...selectedProducts],
-        services: [...selectedServices],
+        products: uniqueNames([...selectedProducts]),
+        services: uniqueNames([...selectedServices]),
         company: primaryCompany,
         aliases: aliasCompanies,
         industry: industryText.trim(),
@@ -193,11 +207,13 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
         step: 'create',
         company: primaryCompany,
         aliases: aliasCompanies,
-        products: [...selectedProducts],
-        services: [...selectedServices],
+        products: uniqueNames([...selectedProducts]),
+        services: uniqueNames([...selectedServices]),
         industry: industryText.trim(),
         city: cityText.trim(),
-        competitors,
+        competitors: competitors.filter((candidate, index, all) =>
+          candidate.name.trim() && all.findIndex((item) => item.name.trim() === candidate.name.trim()) === index,
+        ).map((candidate) => ({ ...candidate, name: candidate.name.trim() })),
         // 不传 keywords：监测对象只建勾选的产品/服务/竞品，不为未勾选关键词建 keyword 监测
       })
       setCreate(c)
@@ -283,7 +299,9 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
   if (loading) return <GeoLoading text="自动配置进行中…" />
   if (error) return <GeoError message={error} onRetry={() => setError(null)} />
 
-  const competitors = discover?.competitors ?? []
+  const competitors = (discover?.competitors ?? []).filter(
+    (candidate, index, all) => all.findIndex((item) => item.name.trim() === candidate.name.trim()) === index,
+  )
 
   return (
     <GeoCardShell title="⚙️ GEO 自动配置">
@@ -332,10 +350,10 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             {/* 公司：可多选（第一个是主名，其余作为别名一起监测） */}
             <div className="pt-1">
               <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
-                公司（点击选择，可多选；第一个是主名，其余作为别名一起监测）
+                公司（默认仅选主品牌；其余名称需手动确认）
               </div>
               <div className="flex flex-wrap gap-1.5">
-                {(detect?.company ?? []).map((c) => {
+                {uniqueNames(detect?.company ?? []).map((c) => {
                   const active = selectedCompanies.includes(c)
                   return (
                     <button
@@ -376,7 +394,7 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             </div>
             <div className="pt-1">
               <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
-                产品（{selectedProducts.size}/{productChips.length}，点击取消不想监测的）
+                产品（默认仅选第一个；当前 {selectedProducts.size}/{productChips.length}）
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {productChips.map((p) => {
@@ -424,7 +442,7 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             {/* 服务：与产品同一套（chips + 手填）。选中会各建一个监测对象，探针按服务问法问。 */}
             <div className="pt-1">
               <div className="mb-1 text-[12px] font-medium text-[var(--yayu-foreground)]">
-                服务（{selectedServices.size}/{serviceChips.length}，点击取消不想监测的）
+                服务（默认不选；当前 {selectedServices.size}/{serviceChips.length}）
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {serviceChips.map((s) => {
@@ -469,13 +487,17 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             {detect && detect.keywords.length > 0 ? (
               <p className="text-[11px] text-[var(--yayu-muted)]">关键词：{detect.keywords.join('、')}</p>
             ) : null}
+            <p className="rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-surface-raised)] px-2 py-1.5 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+              当前范围：{selectedCompanies.length > 0 ? 1 : 0} 个主品牌 · {selectedProducts.size} 个产品 · {selectedServices.size} 个服务。
+              继续后只会按这个范围发现竞品，后续创建前还会再次显示对象总数。
+            </p>
             <GeoButtonRow>
               <Button
                 size="sm"
                 onClick={runDiscover}
                 disabled={selectedProducts.size === 0 && selectedServices.size === 0}
               >
-                确认继续
+                确认范围并发现竞品
               </Button>
               <Button variant="secondary" size="sm" onClick={runDetect}>
                 调整
@@ -544,7 +566,7 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
             </div>
             <GeoButtonRow>
               <Button size="sm" disabled={competitors.filter((c) => selectedCompetitorNames.has(c.name)).length === 0} onClick={() => runCreate(competitors.filter((c) => selectedCompetitorNames.has(c.name)))}>
-                确认竞品
+                确认竞品（预计 {selectedProducts.size + selectedServices.size + competitors.filter((c) => selectedCompetitorNames.has(c.name)).length} 个对象）
               </Button>
               <Button variant="secondary" size="sm" onClick={runDiscover}>
                 刷新竞品
@@ -618,6 +640,9 @@ export function AutoConfigFlow({ onClose }: { onClose?: () => void }) {
       {step === 'create' ? (
         <>
           <GeoRow label="已创建监测对象" value={`${create?.created?.length ?? 0} 个`} />
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-2 py-1.5 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+            请先核对下面清单。只有确认对象名称和数量都正确后再开始监测；重复名称会在提交前自动合并。
+          </p>
           {create && create.created.length > 0 ? (
             <div className="space-y-1">
               {create.created.map((c) => (

@@ -174,7 +174,7 @@ export function GeoInsightWorkspace() {
     <div className="insight-console">
       <header className="workspace-intro">
         <div>
-          <span>PERCEPTION &amp; EVIDENCE</span>
+          <span>认知与证据</span>
           <h1>认知差距诊断</h1>
           <p>先看经营结论，再进入差距维度，最后回到模型原话与证据。</p>
         </div>
@@ -385,7 +385,7 @@ export function GeoInsightWorkspace() {
           <button className="drawer-close" onClick={() => { setFactor(null); setChain(null) }} aria-label="关闭证据抽屉">
             <X />
           </button>
-          <span>EVIDENCE CHAIN</span>
+          <span>证据链</span>
           <h2>{chain?.dimension ?? factor}</h2>
           {chainLoading ? (
             <div className="market-empty"><LoaderCircle className="spin" />正在取模型原话…</div>

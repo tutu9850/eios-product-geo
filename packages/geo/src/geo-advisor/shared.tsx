@@ -1,6 +1,7 @@
 import { Component, createContext, useContext, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Button, cn } from '@yayu/ui'
+import { GeoApiError, type GeoErrorCode } from './geo-api'
 
 /** GEO 卡片外壳（自适应聊天界面宽度，内容舒适排版） */
 export function GeoCardShell({ title, children, className }: { title?: string; children: ReactNode; className?: string }) {
@@ -53,15 +54,44 @@ export function GeoLoading({ text = '加载中…' }: { text?: string }) {
   )
 }
 
-export function GeoError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+const ERROR_LABEL: Record<GeoErrorCode, string> = {
+  empty: '暂无数据',
+  'not-configured': '需要配置',
+  forbidden: '无权访问',
+  'not-found': '资源不存在',
+  upstream: '服务暂时不可用',
+  contract: '数据格式异常',
+}
+
+function errorDetails(error: unknown, fallback?: string): { message: string; code?: GeoErrorCode } {
+  if (error instanceof GeoApiError) return { message: error.message, code: error.code }
+  if (error instanceof Error) return { message: error.message || fallback || '暂时无法完成操作' }
+  if (typeof error === 'string' && error) return { message: error }
+  return { message: fallback || '暂时无法完成操作' }
+}
+
+export function GeoError({
+  message,
+  error,
+  onRetry,
+  onConfigure,
+  configureLabel = '去配置',
+}: {
+  message?: string
+  error?: unknown
+  onRetry?: () => void
+  onConfigure?: () => void
+  configureLabel?: string
+}) {
+  const details = errorDetails(error, message)
+  const label = details.code ? ERROR_LABEL[details.code] : null
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-3 py-2 text-[12px] text-[var(--yayu-muted)]">
-      <span className="min-w-0 truncate">⚠️ {message}</span>
-      {onRetry ? (
-        <Button variant="secondary" size="sm" onClick={onRetry}>
-          重试
-        </Button>
-      ) : null}
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-3 py-2 text-[12px] text-[var(--yayu-muted)]" role="alert">
+      <span className="min-w-0 flex-1 leading-relaxed">⚠️ {label ? <b className="mr-1 text-[var(--yayu-foreground)]">{label}</b> : null}{details.message}</span>
+      <span className="flex shrink-0 items-center gap-2">
+        {details.code === 'not-configured' && onConfigure ? <Button variant="secondary" size="sm" onClick={onConfigure}>{configureLabel}</Button> : null}
+        {onRetry ? <Button variant="secondary" size="sm" onClick={onRetry}>重试</Button> : null}
+      </span>
     </div>
   )
 }

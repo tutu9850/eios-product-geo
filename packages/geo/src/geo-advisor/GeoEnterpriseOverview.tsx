@@ -63,7 +63,7 @@ export function GeoEnterpriseOverview({ onNavigate }: { onNavigate: (target: str
   }).sort((a, b) => b.value - a.value)
 
   return <div className="geo-dashboard">
-    <div className="geo-page-head"><div><span>AI DISCOVERY INTELLIGENCE</span><h1>企业 AI 可见度总览</h1><p>看见品牌在国产大模型回答中的位置，找到差距，并推动下一步增长。</p></div><button className="geo-btn secondary" onClick={() => void load()} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />}刷新数据</button></div>
+    <div className="geo-page-head"><div><span>总览</span><h1>企业 AI 可见度总览</h1><p>查看品牌在模型回答中的表现，找到下一步动作。</p></div><button className="geo-btn secondary" onClick={() => void load()} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />}刷新</button></div>
     <MonitorSubjectPicker />
     {error && <div className="geo-inline-error"><CircleAlert />{error}</div>}
     <p className="geo-note">{selectedBrandId ? `提及率、句序和平台表现来自${selectedBrandId === ALL_SUBJECTS ? '全选汇总的' : '所选'}主体最近批次（${latestBatchLabel}）。` : '请选择企业品牌后查看该主体的监测指标。'}知识缺口、内容资产与引擎状态为当前工作空间汇总，不与品牌监测指标直接比较。</p>

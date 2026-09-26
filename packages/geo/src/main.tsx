@@ -50,25 +50,17 @@ const SUBNAV: Partial<Record<Workspace, Array<{ id: GeoFlowKind; label: string }
 }
 const DEFAULTS: Partial<Record<Workspace, GeoFlowKind>> = { monitor: 'monitor', insight: 'insight-overview', profile: 'profile-overview', growth: 'plans' }
 
-/** 功能 → 它所在的页签（跨页跳转用，保证跳过去时页签也对） */
 const FLOW_WORKSPACE: Record<GeoFlowKind, Workspace> = {
-  'kb-init': 'profile', 'auto-config': 'profile', monitor: 'monitor', assets: 'profile', questions: 'growth',
-  gaps: 'growth', cognition: 'insight', content: 'growth', battle: 'monitor', report: 'insight',
-  plans: 'growth', 'action-plan': 'growth', 'insight-overview': 'insight', 'profile-overview': 'profile',
-  'monitor-analysis': 'monitor', faq: 'growth', 'cognition-map': 'insight',
+  'kb-init': 'profile', 'auto-config': 'profile', monitor: 'monitor', assets: 'profile', questions: 'growth', gaps: 'growth', cognition: 'insight', content: 'growth', battle: 'monitor', report: 'insight', plans: 'growth', 'action-plan': 'growth', 'insight-overview': 'insight', 'profile-overview': 'profile', 'monitor-analysis': 'monitor', faq: 'growth', 'cognition-map': 'insight',
 }
 
 const WORKSPACE_COPY: Record<Exclude<Workspace, 'overview' | 'market' | 'insight' | 'profile'>, { eyebrow: string; title: string; description: string; note: string }> = {
   monitor: { eyebrow: 'MODEL OBSERVATORY', title: '国产大模型监测', description: '管理监测对象、运行探针，并在同一工作区判断品牌是否被看见、如何被描述。', note: '仅监测国产大模型' },
   growth: { eyebrow: 'GROWTH OPERATIONS', title: '增长行动中心', description: '把客户问题、知识缺口和内容计划串成可执行的增长闭环。', note: '从洞察进入行动' },
 }
-
 function WorkspaceHeader({ workspace }: { workspace: Exclude<Workspace, 'overview' | 'market' | 'insight' | 'profile'> }) {
   const copy = WORKSPACE_COPY[workspace]
-  return <header className="workspace-intro">
-    <div><span>{copy.eyebrow}</span><h1>{copy.title}</h1><p>{copy.description}</p></div>
-    <em><CircleDot />{copy.note}</em>
-  </header>
+  return <header className="workspace-intro"><div><span>{copy.eyebrow}</span><h1>{copy.title}</h1><p>{copy.description}</p></div><em><CircleDot />{copy.note}</em></header>
 }
 
 function GeoProduct() {
@@ -79,7 +71,6 @@ function GeoProduct() {
   const [navParams, setNavParams] = useState<GeoNavParams>({ focus: null, seed: null, nonce: 0 })
   const flow = flows[active]
   function navigate(next: string) { if (NAV.some((item) => item.id === next)) setActive(next as Workspace) }
-  // 卡片发起的跨页跳转：切页签 + 切该页签的页内功能 + 带上 focus / seed
   function go(kind: string, options?: { focus?: string; seed?: string }) {
     if (!(kind in FLOW_WORKSPACE)) return
     const target = FLOW_WORKSPACE[kind as GeoFlowKind]

@@ -169,7 +169,7 @@ export function GeoMonitorAnalytics() {
     <div className="monitor-analysis">
       <header className="workspace-intro">
         <div>
-          <span>MONITORING ANALYTICS</span>
+          <span>监测结果</span>
           <h1>监测分析</h1>
           <p>用同一套结构查看品牌评价、事实偏差、竞争格局与模型信源表现。</p>
         </div>
