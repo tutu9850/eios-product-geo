@@ -40,10 +40,36 @@ _MID_MAX_LEN = 15
 #: 名字长度上限：再长就不是公司名了（句子/标题）。
 _MAX_LEN = 20
 
+# 自动识别里最危险的一类误报：材料中的提问/模板词被当成企业名。
+# 这些词不能进入“本公司是谁”的任何下游，否则会把整套监测绑定到一个不存在的主体。
+_PLACEHOLDER_COMPANY_NAMES = {
+    "品牌", "品牌名", "品牌名称", "企业", "企业名", "企业名称", "公司名", "公司名称",
+    "哪个品牌", "什么品牌", "某个品牌", "目标品牌", "当前品牌", "本品牌", "我方品牌", "自有品牌",
+    "哪个企业", "哪个公司", "哪家公司", "我们的公司", "你的公司", "你们公司",
+}
+
+
+def is_placeholder_company_name(name: str) -> bool:
+    """Return whether ``name`` is a template/question phrase rather than an identity.
+
+    This is intentionally conservative.  We only reject exact generic phrases and a few
+    question-shaped ``*品牌`` variants; real company names remain evidence-driven.
+    """
+    n = "".join(str(name or "").split()).strip("：:，,。.!！?？/\\")
+    if not n:
+        return True
+    if n in _PLACEHOLDER_COMPANY_NAMES:
+        return True
+    if n.endswith("品牌") and any(token in n for token in ("哪个", "什么", "哪家", "哪些", "某个", "目标", "当前", "本", "我方", "自有", "你的", "你们")):
+        return True
+    return False
+
 
 def looks_like_company_name(name: str) -> bool:
     """名字像不像一家公司（纯规则）。"""
     n = str(name or "").strip()
+    if is_placeholder_company_name(n):
+        return False
     if not n or len(n) > _MAX_LEN:
         return False
     if any(w in n for w in _TITLE_WORDS) or any(w in n for w in _UNIT_WORDS):
@@ -109,6 +135,7 @@ _PREFIX_NOISE_WORDS = (
     "提供", "以及", "面向", "旗下", "是一家", "可以", "就是", "作为", "通过", "公司是", "其中", "做的",
     "来自", "主要", "优先", "选择", "上市", "全面", "梳理", "阐述", "坚信", "传统", "属于", "归属",
     "确认", "暂无", "类似", "定位", "儿童房", "高净值", "服务于", "超越", "奢侈", "文化革命",
+    "哪个", "什么", "哪家", "哪些",
 )
 #: 前缀以量词/序数开头 = 在说「三大/五个/两类…」，不是名字。
 _QUANTIFIER_START = ("一", "二", "两", "三", "四", "五", "六", "七", "八", "九", "十", "几", "多", "各", "全")
@@ -243,7 +270,8 @@ def company_candidates_from_materials(materials: list[dict[str, Any]]) -> list[s
     score = {
         name: value
         for name, value in score.items()
-        if name in title_hits or occurrences.get(name, 0) >= 2 or _looks_like_proper_noun(name)
+        if not is_placeholder_company_name(name)
+        and (name in title_hits or occurrences.get(name, 0) >= 2 or _looks_like_proper_noun(name))
     }
     ranked = sorted(score.items(), key=lambda kv: (-kv[1], -len(kv[0]), kv[0]))
     # 后缀收敛：「臻隆科技」是「亚宇臻隆科技」的后缀、「有限公司」是「笔革家居有限公司」的后缀

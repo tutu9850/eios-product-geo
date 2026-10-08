@@ -155,11 +155,11 @@ def test_materials_are_document_chunks_plus_entities_not_repeated_slices():
     from services.content import _materials_from_hits
 
     hits = [
-        {"canonical_name": "M-001", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
+        {"canonical_name": "M-001", "layer": "governed", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
          "snippet": "工作表: 账号矩阵 M-001 | 抖音 | 亚宇臻隆AI获客"},
-        {"canonical_name": "抖音", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
+        {"canonical_name": "抖音", "layer": "governed", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
          "snippet": "工作表: 账号矩阵 M-001 | 抖音 | 亚宇臻隆AI获客"},
-        {"canonical_name": "M-002", "chunk_id": "chk_b", "document_title": "11_自媒体账号矩阵",
+        {"canonical_name": "M-002", "layer": "governed", "chunk_id": "chk_b", "document_title": "11_自媒体账号矩阵",
          "snippet": "工作表: 账号矩阵 M-002 | 抖音 | 笔革艺术家居"},
     ]
     chunks, entities = _materials_from_hits(hits)
@@ -174,15 +174,17 @@ def test_materials_from_hits_is_empty_without_hits():
     chunks, entities = _materials_from_hits([])
     assert chunks == [] and entities == []
     # 没有切块文本时不产出空壳行
-    chunks, entities = _materials_from_hits([{"canonical_name": "某实体", "chunk_id": "", "snippet": ""}])
+    chunks, entities = _materials_from_hits([{"canonical_name": "某实体", "layer": "governed", "chunk_id": "", "snippet": ""}])
     assert chunks == [] and entities == ["某实体"]
+    assert _materials_from_hits([{"canonical_name": "候选事实", "layer": "material", "chunk_id": "chk_c",
+                                 "snippet": "候选原文"}]) == ([], [])
 
 
 def test_build_context_sources_expose_chunks_and_entities_not_the_retired_name():
     """来源面板按新口径给来源，且不再出现退役的旧名字（Owner 2026-09-21 指出）。"""
     from services import content as content_mod
 
-    hits = [{"canonical_name": "M-001", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
+    hits = [{"canonical_name": "M-001", "layer": "governed", "chunk_id": "chk_a", "document_title": "11_自媒体账号矩阵",
              "snippet": "工作表: 账号矩阵"}]
 
     async def _search(*_a, **_kw):

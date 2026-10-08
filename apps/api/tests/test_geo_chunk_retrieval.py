@@ -129,9 +129,9 @@ def test_content_generation_reads_the_chunks_sync_stored_in_geos_own_ledger():
         payload=chunk_snapshot_payload(
             [
                 {"document_id": "doc_1", "document_title": "渠道复盘.docx", "chunk_id": "chk_1",
-                 "text": "成都、重庆、无锡三地演示间的成交路径与复购。"},
+                 "layer": "governed", "text": "成都、重庆、无锡三地演示间的成交路径与复购。"},
                 {"document_id": "doc_1", "document_title": "渠道复盘.docx", "chunk_id": "chk_2",
-                 "text": "售后与续费政策说明。"},
+                 "layer": "governed", "text": "售后与续费政策说明。"},
             ]
         ),
     )
@@ -152,17 +152,17 @@ def test_content_generation_reads_the_chunks_sync_stored_in_geos_own_ledger():
 
 
 def test_uploaded_file_now_reaches_content_generation():
-    """既存缺口：上传件是 source_type=file，原来被「历史素材」排除在外 → 生成时用不上。"""
+    """上传件以专属可追溯来源进入生成上下文。"""
     assets = [_material("m_up", "渠道复盘.txt", LONG) | {"source_type": "file"}]
     ctx = _context("无锡演示间怎么成交", assets)
-    titles = [a["title"] for a in ctx["other_assets"]]
-    assert "渠道复盘.txt" in titles, "上传的文件必须进入生成上下文"
+    src = next(s for s in ctx["context_sources"] if s["kind"] == "uploaded_material")
+    assert src["items"] and src["items"][0]["title"] == "渠道复盘.txt"
 
 
 def test_generation_injects_the_matched_segment_not_the_opening_150_chars():
     assets = [_material("m_up", "渠道复盘.txt", LONG) | {"source_type": "file"}]
     ctx = _context("无锡演示间怎么成交", assets)
-    src = next(s for s in ctx["context_sources"] if s["kind"] == "asset")
+    src = next(s for s in ctx["context_sources"] if s["kind"] == "uploaded_material")
     item = src["items"][0]
     assert item["content"] and "无锡" in item["content"], "注入的应当是命中那一段"
     assert item["chunk_ordinal"] is not None and item["chunk_id"].startswith("m_up#")
@@ -172,19 +172,18 @@ def test_generation_prefers_the_last_segment_when_that_is_the_one_that_matches()
     """命中在最后一段时，注入的必须是最后一段 —— 这才叫「最相关的几段」。"""
     assets = [_material("m_up", "渠道复盘.txt", LONG) | {"source_type": "file"}]
     ctx = _context("无锡演示间怎么成交", assets)
-    src = next(s for s in ctx["context_sources"] if s["kind"] == "asset")
-    item = src["items"][0]
-    assert item["chunk_ordinal"] == len(assets[0]["text_chunks"]) - 1
+    src = next(s for s in ctx["context_sources"] if s["kind"] == "uploaded_material")
+    item = next(i for i in src["items"] if i["chunk_ordinal"] == len(assets[0]["text_chunks"]) - 1)
     assert item["content"].startswith("第三段讲成都、重庆、无锡"), "注入的是那一段本身，不是整篇开头"
 
 
 def test_old_material_without_chunks_still_injects_its_opening_text():
     assets = [{"id": "m_old", "title": "老素材", "source_type": "file", "content": "无锡演示间" * 60}]
     ctx = _context("无锡演示间", assets)
-    src = next(s for s in ctx["context_sources"] if s["kind"] == "asset")
+    src = next(s for s in ctx["context_sources"] if s["kind"] == "uploaded_material")
     item = src["items"][0]
     assert item["chunk_ordinal"] is None, "没切块就不许报段号"
-    assert item["content"] == ("无锡演示间" * 60)[:150]
+    assert item["content"] == "无锡演示间" * 60
 
 
 def test_market_signal_row_is_empty_when_nothing_has_been_monitored():

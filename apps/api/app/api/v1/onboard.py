@@ -185,7 +185,13 @@ async def _finalize_detect(
     svcs = _dedup_list(result["services"])
     prods = [p for p in prods if p not in svcs]
     svcs = [s for s in svcs if s not in prods]
-    company = _dedup_list(result["company"])
+    # 模板/提问词（如「哪个品牌」）不是企业主体。任何来源（规则、知识库或模型）
+    # 都必须经过同一扇门，不能让一个占位词进入后续监测配置。
+    from services.company_identity import is_placeholder_company_name
+
+    company = _dedup_list(
+        name for name in (result.get("company") or []) if not is_placeholder_company_name(name)
+    )
     kws = _dedup_list(result["keywords"])
 
     # ④ 补全调用：LLM 第一次分类常漏 industry/keywords（实测两次全漏）——

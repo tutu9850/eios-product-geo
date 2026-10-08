@@ -25,6 +25,37 @@ DATA_DIR.mkdir(exist_ok=True)
 KB_FILE = DATA_DIR / "geo_kb.json"
 
 
+def _docx_text_in_order(document) -> str:
+    """Extract paragraphs and table cells in body order, including nested tables."""
+    import docx.table
+    import docx.text.paragraph
+    from docx.oxml.text.paragraph import CT_P
+    from docx.oxml.table import CT_Tbl
+
+    parts: list[str] = []
+
+    def walk_blocks(container, parent) -> None:
+        for child in container.iterchildren():
+            if isinstance(child, CT_P):
+                paragraph = docx.text.paragraph.Paragraph(child, parent)
+                value = paragraph.text.strip()
+                if value:
+                    parts.append(value)
+            elif isinstance(child, CT_Tbl):
+                table = docx.table.Table(child, parent)
+                seen_cells = set()
+                for row in table.rows:
+                    for cell in row.cells:
+                        cell_xml = cell._tc
+                        if cell_xml in seen_cells:
+                            continue
+                        seen_cells.add(cell_xml)
+                        walk_blocks(cell_xml, cell)
+
+    walk_blocks(document.element.body, document)
+    return "\n".join(parts)
+
+
 class MaterialIn(BaseModel):
     title: str
     content: str = ""
@@ -33,6 +64,9 @@ class MaterialIn(BaseModel):
     coverage_questions: list[str] | None = None  # 覆盖分析结果（V1.1 埋线，V2 效果回流用）
     published_at: str | None = None  # 人工发布打点（V1.1 埋线）
     published_url: str | None = None  # S4 打点：已发布 URL（小贝/人工发布后填，监测引用对上 citation）
+    context_sources: list[dict] | None = None  # GEO 草稿使用的来源提示；不代表正式 Evidence
+    source_material_ids: list[str] | None = None  # 本篇关联的 GEO 素材
+    claim_check: dict | None = None  # 生成侧主张检查结果；由调用方校验
 
 
 class MaterialPatchIn(BaseModel):
@@ -201,6 +235,9 @@ async def add_material(payload: MaterialIn):
         "url": payload.url,
         "coverage_questions": payload.coverage_questions or [],
         "published_at": payload.published_at,
+        "context_sources": payload.context_sources,
+        "source_material_ids": payload.source_material_ids,
+        "claim_check": payload.claim_check,
         "status": "stored",  # stored | vectorized（P3 接向量）
         "chunks": 0,
         "vectors": 0,
@@ -241,7 +278,7 @@ async def upload_material(file: UploadFile = File(...)):
             from docx import Document
 
             d = Document(io.BytesIO(raw))
-            text = "\n".join(p.text.strip() for p in d.paragraphs if p.text and p.text.strip())
+            text = _docx_text_in_order(d)
         elif ext in ("xlsx", "xlsm"):
             import io
 

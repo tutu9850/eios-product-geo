@@ -16,7 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # apps/api
 
 import pytest  # noqa: E402
 
-from services.company_identity import company_candidates_from_materials  # noqa: E402
+from services.company_identity import (  # noqa: E402
+    company_candidates_from_materials,
+    is_placeholder_company_name,
+)
 
 
 def _run(coro):
@@ -100,6 +103,38 @@ def test_a_clean_name_beats_the_longer_prose_fragment_that_ends_with_it():
 def test_no_materials_means_no_candidate():
     assert company_candidates_from_materials([]) == []
     assert company_candidates_from_materials([{"title": "全屋定制要多久", "content": "定制流程。"}]) == []
+
+
+def test_question_template_is_never_an_enterprise_candidate():
+    materials = [
+        {
+            "title": "品牌认知调研",
+            "content": "请判断哪个品牌更值得推荐。哪个品牌的交付证据更充分？",
+        }
+    ]
+    assert company_candidates_from_materials(materials) == []
+    assert is_placeholder_company_name("哪个品牌")
+    assert is_placeholder_company_name("沙发哪个品牌")
+    assert not is_placeholder_company_name("笔革家居")
+
+
+def test_finalize_detect_filters_model_placeholder(monkeypatch, tenant):
+    from app.api.v1 import onboard
+
+    got = _run(
+        onboard._finalize_detect(
+            {
+                "company": ["哪个品牌", "笔革家居"],
+                "products": [],
+                "services": [],
+                "industry": None,
+                "keywords": [],
+                "classification_source": "llm",
+            },
+            biz_fallback=[],
+        )
+    )
+    assert got["company"] == ["笔革家居"]
 
 
 def test_resolve_self_company_uses_own_materials(monkeypatch, tenant):

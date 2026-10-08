@@ -69,7 +69,10 @@ def test_improve_rewrites_the_draft_with_the_users_instruction(monkeypatch, tena
             question="亚宇臻隆是什么",
         )
     )
-    assert got == {"title": "改后的标题", "content": "改后的正文。", "source_title": "原题"}
+    assert {k: got[k] for k in ("title", "content", "source_title")} == {
+        "title": "改后的标题", "content": "改后的正文。", "source_title": "原题"
+    }
+    assert got["source_material_ids"] == [] and got["context_sources"] == []
     # 提示词里必须带上修改要求与「不得新增企业事实」的约束
     assert "第二段太啰嗦，压到三句" in seen["prompt"]
     assert "禁止编造" in seen["prompt"]
