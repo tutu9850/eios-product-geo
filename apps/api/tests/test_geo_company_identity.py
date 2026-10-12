@@ -111,7 +111,7 @@ def test_content_auto_company_uses_the_resolver(monkeypatch):
     monkeypatch.setattr("services.company_identity.resolve_self_company", _resolved)
 
     async def _search(name, tenant_id=None, top_k=8, include_candidates=False):
-        return {"hits": [{"canonical_name": "亚宇臻隆科技", "value": "做 GEO 与知识库"}]}
+        return {"hits": [{"canonical_name": "亚宇臻隆科技", "value": "做 GEO 与知识库", "layer": "governed"}]}
 
     monkeypatch.setattr(content_mod, "search_knowledge", _search)
     name, materials = _run(content_mod._auto_company("tenant_corp_01"))
