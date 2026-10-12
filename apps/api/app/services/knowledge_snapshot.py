@@ -175,6 +175,35 @@ def list_recent(*, kind: str | None = None, limit: int = 50) -> list[dict[str, A
         db.close()
 
 
+def read_status(kind: str) -> dict[str, Any]:
+    """Describe what a GEO snapshot can prove without treating old data as current authority.
+
+    ``not_synced`` means GEO has no snapshot for this category; ``empty`` means a successful
+    recorded read explicitly found no items; ``ready`` means items were recorded; and
+    ``partial`` means the saved response says it was truncated. This is descriptive metadata,
+    not a permission check for a new live read.
+    """
+    rows = list_recent(kind=kind, limit=1)
+    if not rows:
+        return {"status": "not_synced", "error": None, "snapshot_id": None, "count": 0}
+    row = rows[0]
+    payload = row.get("payload") or {}
+    items = payload.get("items")
+    if not isinstance(items, list):
+        items = payload.get("hits") if isinstance(payload.get("hits"), list) else []
+    truncated = bool(payload.get("truncated")) or any(
+        "truncated" in str(w).lower() for w in (payload.get("warnings") or [])
+    )
+    status = "partial" if truncated else ("ready" if items else "empty")
+    return {
+        "status": status,
+        "error": None,
+        "snapshot_id": row.get("snapshot_id"),
+        "count": len(items),
+        "authoritative": False,
+    }
+
+
 def _iter_items(kind: str):
     """按 kind 遍历台账里每一条 payload 的 items（新读到的排前面）。"""
     for row in list_recent(kind=kind, limit=200):

@@ -63,6 +63,23 @@ class EIOSKnowledgeError(RuntimeError):
         self.code = code
         self.message = message
         self.status = status
+        self.category = self._category(code, status)
+        self.authority_refused = self.category == "refused"
+
+    @staticmethod
+    def _category(code: str, status: int) -> str:
+        """Stable user-facing class while preserving the authority's original code."""
+        normalized = str(code or "").upper()
+        if normalized == "KNOWLEDGE_INVALID_RESPONSE":
+            return "invalid_response"
+        if status in (401, 403, 404, 409, 410) or any(
+            marker in normalized
+            for marker in ("DENIED", "FORBIDDEN", "UNAUTHORIZED", "SCOPE", "PERMISSION", "NOT_VISIBLE")
+        ):
+            return "refused"
+        if normalized in {"KNOWLEDGE_UNAVAILABLE", "DEPENDENCY_NOT_ACTIVE"} or status >= 500:
+            return "unavailable"
+        return "unreadable"
 
 
 #: 兼容别名：这个异常在换知识源前另有名字，调用点统一按知识库的名字捕获即可。
@@ -194,21 +211,44 @@ async def _request(
     try:
         body = response.json()
     except ValueError as exc:
+        if response.status_code in (401, 403, 404, 409, 410):
+            raise EIOSKnowledgeError(
+                "KNOWLEDGE_HTTP_ERROR",
+                f"知识库拒绝请求（HTTP {response.status_code}，响应正文无法读取）",
+                response.status_code,
+            ) from exc
         raise EIOSKnowledgeError(
             "KNOWLEDGE_INVALID_RESPONSE", f"知识库返回非 JSON（HTTP {response.status_code}）", 502
         ) from exc
 
     if not isinstance(body, dict):
+        if response.status_code in (401, 403, 404, 409, 410):
+            raise EIOSKnowledgeError(
+                "KNOWLEDGE_HTTP_ERROR",
+                f"知识库拒绝请求（HTTP {response.status_code}，响应结构异常）",
+                response.status_code,
+            )
         raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "知识库返回结构异常", 502)
+    if response.status_code >= 400 and body.get("ok"):
+        code = "KNOWLEDGE_FORBIDDEN" if response.status_code in (401, 403) else "KNOWLEDGE_HTTP_ERROR"
+        raise EIOSKnowledgeError(code, f"知识库请求失败（HTTP {response.status_code}）", response.status_code)
     if not body.get("ok"):
         error = body.get("error") or {}
+        code = str(error.get("code") or "KNOWLEDGE_ERROR")
+        response_status = response.status_code if response.status_code >= 400 else 502
+        # Some authority routes encode denial in the envelope while returning HTTP 200.
+        # Preserve the authority code and make the denial impossible to mistake for outage.
+        if EIOSKnowledgeError._category(code, response_status) == "refused" and response_status == 502:
+            response_status = 403
         raise EIOSKnowledgeError(
-            str(error.get("code") or "KNOWLEDGE_ERROR"),
+            code,
             str(error.get("message") or "知识库拒绝该请求")[:300],
-            response.status_code if response.status_code >= 400 else 502,
+            response_status,
         )
     data = body.get("data")
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "知识库成功响应缺少 data 对象", 502)
+    return data
 
 
 def _record(kind: str, payload: dict[str, Any]) -> bool:
@@ -409,6 +449,13 @@ def local_search(query: str, *, top_k: int = DEFAULT_LIMIT, include_candidates: 
         "layers": ["governed"] + (["material"] if include_candidates else []),
     }
     result = dict(payload)
+    chunk_state = knowledge_snapshot.read_status("chunks")
+    object_state = knowledge_snapshot.read_status("objects")
+    has_snapshot = any(s["status"] != "not_synced" for s in (chunk_state, object_state))
+    result["status"] = (
+        "partial" if any(s["status"] == "partial" for s in (chunk_state, object_state))
+        else "ready" if hits else ("empty" if has_snapshot else "not_synced")
+    )
     result["provenance"] = _local_provenance(kind="search", query=text[:512])
     result["snapshot_recorded"] = False
     return result
@@ -549,7 +596,16 @@ async def list_knowledge_objects(limit: int = 100, name: str | None = None) -> l
         if cursor:
             params["cursor"] = cursor
         data = await _request("GET", "/api/v1/knowledge/objects", params=params)
-        page = data.get("items") or []
+        page = data.get("items", [])
+        if not isinstance(page, list) or any(not isinstance(item, dict) for item in page):
+            raise EIOSKnowledgeError(
+                "KNOWLEDGE_INVALID_RESPONSE", "知识库对象响应中的 items 格式无效", 502
+            )
+        next_cursor = data.get("next_cursor")
+        if next_cursor is not None and not isinstance(next_cursor, str):
+            raise EIOSKnowledgeError(
+                "KNOWLEDGE_INVALID_RESPONSE", "知识库对象响应中的 next_cursor 格式无效", 502
+            )
         for item in page:
             items.append(
                 {
@@ -565,7 +621,7 @@ async def list_knowledge_objects(limit: int = 100, name: str | None = None) -> l
                     "evidence_ids": list(item.get("evidence_ids") or []),
                 }
             )
-        cursor = data.get("next_cursor")
+        cursor = next_cursor
         remaining -= len(page)
         if not cursor or not page:
             break
@@ -685,16 +741,19 @@ _MAX_CHUNK_PAGES = 5
 
 
 async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str, Any]:
-    """读某份文档的切块原文：先走权威的门，门关了就用 GEO 自己存下的切块。
+    """读某份文档的切块原文。
 
     权威的门（``GET /api/v1/knowledge/documents/{id}/chunks``）对**未发布**文档额外要求
     治理 scope；GEO 只有读 scope，所以未发布文档在那里是 404（fail-closed，权威侧有意为之，
-    不是 GEO 能改的）。但同一份文档的切块，检索的 material 层按契约是给有权限的读者的，
-    GEO 也已经按「读到的都存下来」把它落在自己的台账里。这条通道就是那个回退：
+    不是 GEO 能改的）。拒权代表本次没有读取资格，不能再用旧快照绕过当前拒绝。
+    只有服务不可达等非拒绝失败才可显示明确标记为历史的快照：
 
     - ``source="knowledge"``：权威给的（正本，``authoritative`` 仍为 false —— GEO 不冒充权威）；
     - ``source="geo_snapshot"``：GEO 读过的快照（带 ``note`` 说明正本在知识库）；
-    - 两边都没有 → 原样抛权威的错误，不伪造空内容。
+    - 权威成功但返回空列表 → 合法空，不用旧快照补数据；
+    - 拒权 → 原样抛出拒绝错误，绝不读取旧快照；
+    - 服务不可达等失败 → 可显示带历史标记的快照；
+    - 两边都没有 → 原样抛错误，不伪造空内容。
 
     ``limit`` 是**每页**条数；权威给了 ``next_cursor`` 就继续翻（最多 ``_MAX_CHUNK_PAGES`` 页）。
     翻到上限还有下一页时 ``truncated=true``，如实说明「这些不是全部」，不静默少带。
@@ -713,6 +772,11 @@ async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str
             if cursor:
                 params["cursor"] = cursor
             data = await _request("GET", path, params=params)
+            page_items = data.get("items")
+            if not isinstance(page_items, list) or any(not isinstance(item, dict) for item in page_items):
+                raise EIOSKnowledgeError(
+                    "KNOWLEDGE_INVALID_RESPONSE", "知识库切块响应中的 items 格式无效", 502
+                )
             items.extend(
                 {
                     "document_id": doc,
@@ -724,12 +788,26 @@ async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str
                     "authoritative": False,
                     "note": "来自企业知识库的正式读接口；GEO 只读，不冒充权威",
                 }
-                for item in (data.get("items") or [])
+                for item in page_items
             )
             cursor = data.get("next_cursor")
+            if cursor is not None and not isinstance(cursor, str):
+                raise EIOSKnowledgeError(
+                    "KNOWLEDGE_INVALID_RESPONSE", "知识库切块响应中的 next_cursor 格式无效", 502
+                )
             if not cursor:
                 break
         truncated = bool(cursor)
+        # A successful empty response is meaningful. Never turn it into stale cache data.
+        if not items:
+            return {
+                "document_id": doc,
+                "source": "knowledge",
+                "items": [],
+                "truncated": False,
+                "warnings": [],
+                "provenance": _provenance(kind="document_chunks"),
+            }
         if items:
             _record_read_chunks([{**i, "snippet": i["text"]} for i in items])
             warnings = (
@@ -749,7 +827,14 @@ async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str
                 "warnings": warnings,
                 "provenance": _provenance(kind="document_chunks"),
             }
-    except Exception as exc:  # noqa: BLE001 — 门关了不是错，去自己的台账找
+    except EIOSKnowledgeError as exc:
+        # A current Authority refusal cannot be turned into a fresh cache grant.
+        # Manual mode declines to issue a live request; it is not an Authority
+        # denial. Preserve its existing historical-view behavior, clearly marked.
+        if exc.authority_refused and not isinstance(exc, KnowledgeReadBlocked):
+            raise
+        authority_error = exc
+    except Exception as exc:
         authority_error = exc
 
     from app.services.knowledge_snapshot import chunks_for_document
@@ -759,6 +844,10 @@ async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str
         return {
             "document_id": doc,
             "source": "geo_snapshot",
+            "status": "historical_snapshot",
+            "error": {"code": str(getattr(authority_error, "code", "KNOWLEDGE_UNAVAILABLE")),
+                      "category": str(getattr(authority_error, "category", "unavailable")),
+                      "message": str(authority_error)[:300]},
             "items": stored,
             "truncated": False,
             "warnings": [
@@ -793,8 +882,13 @@ async def list_documents(limit: int = 50) -> list[dict[str, Any]]:
     data = await _request(
         "GET", "/api/v1/knowledge/documents", params={"limit": max(1, min(int(limit), 100))}
     )
+    raw_items = data.get("items")
+    if not isinstance(raw_items, list) or any(not isinstance(item, dict) for item in raw_items):
+        raise EIOSKnowledgeError(
+            "KNOWLEDGE_INVALID_RESPONSE", "知识库文档响应中的 items 格式无效", 502
+        )
     items = []
-    for item in data.get("items") or []:
+    for item in raw_items:
         items.append(
             {
                 "document_id": item.get("id") or item.get("document_id"),

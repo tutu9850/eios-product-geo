@@ -3,7 +3,11 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.core.envelope import ok, err
-from adapters.llm import LLMNotConfiguredError, LLMError
+from adapters.llm import LLMNotConfiguredError, LLMError, bounded_content_call
+
+
+class _SourceUnavailable(ValueError):
+    pass
 
 
 class GenerateRequest(BaseModel):
@@ -58,7 +62,7 @@ async def generate(req: GenerateRequest):
     from services.content import generate as generate_impl
 
     try:
-        result = await generate_impl(
+        result = await bounded_content_call(lambda: generate_impl(
             goal=req.goal,
             content_type=req.content_type,
             question=req.question,
@@ -73,7 +77,7 @@ async def generate(req: GenerateRequest):
             structure=req.structure,
             materials_extra=req.materials_extra,
             source_material_ids=req.source_material_ids,
-        )
+        ))
     except LLMNotConfiguredError as exc:
         return err("llm_not_configured", str(exc))
     except LLMError as exc:
@@ -214,30 +218,35 @@ async def improve(req: ImproveIn):
         return err("empty_content", "没有可改的内容")
     if not req.instruction.strip():
         return err("empty_instruction", "请先写清楚要改什么")
-    sources = None
-    if req.context_sources is not None:
-        try:
-            sources, _ = await _validate_saved_sources(SaveIn(
-                title=req.title, content=req.content, question=req.question,
-                source_material_ids=req.source_material_ids, context_sources=req.context_sources,
-            ))
-        except ValueError as exc:
-            return err("source_unavailable", str(exc))
     try:
-        result = await improve_impl(
-            title=req.title,
-            content=req.content,
-            instruction=req.instruction,
-            context_sources=sources,
-            question=req.question,
-            company_name=req.company_name,
-            tenant_id=_cabinet(req.tenant_id),
-            source_material_ids=req.source_material_ids,
-        )
+        async def run_improve():
+            sources = None
+            if req.context_sources is not None:
+                try:
+                    sources, _ = await _validate_saved_sources(SaveIn(
+                        title=req.title, content=req.content, question=req.question,
+                        source_material_ids=req.source_material_ids, context_sources=req.context_sources,
+                    ))
+                except ValueError as exc:
+                    raise _SourceUnavailable(str(exc)) from exc
+            return await improve_impl(
+                title=req.title,
+                content=req.content,
+                instruction=req.instruction,
+                context_sources=sources,
+                question=req.question,
+                company_name=req.company_name,
+                tenant_id=_cabinet(req.tenant_id),
+                source_material_ids=req.source_material_ids,
+            )
+
+        result = await bounded_content_call(run_improve)
     except LLMNotConfiguredError as exc:
         return err("llm_not_configured", str(exc))
     except LLMError as exc:
         return err(exc.code, exc.message)
+    except _SourceUnavailable as exc:
+        return err("source_unavailable", str(exc))
     except ValueError as exc:
         return err("improve_failed", str(exc))
     from services.content.claim_check import check_claims
@@ -335,11 +344,11 @@ async def quality(req: QualityIn):
     if not req.content.strip():
         return err("empty_content", "请先生成内容再检测")
     try:
-        result = await quality_impl(
+        result = await bounded_content_call(lambda: quality_impl(
             content=req.content,
             question=req.question,
             company_name=req.company_name,
-        )
+        ))
     except LLMNotConfiguredError as exc:
         return err("llm_not_configured", str(exc))
     except LLMError as exc:

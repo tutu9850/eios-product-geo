@@ -29,6 +29,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import contextlib
+import contextvars
+import time
+from dataclasses import dataclass, field
 from typing import Any
 
 from adapters import identity
@@ -50,6 +54,64 @@ _capability: Any | None = None
 _capability_error: str | None = None
 _default_model_id: str = ""
 _lock = threading.Lock()
+_CONTENT_CALL_BUDGET_SECONDS = 35.0
+
+
+@dataclass
+class CallBudget:
+    """Local waiting budget; stopping it does not terminate a running sync HTTP call."""
+    deadline: float
+    stopped: threading.Event = field(default_factory=threading.Event)
+
+    def remaining(self) -> float:
+        if self.stopped.is_set():
+            raise LLMError("CONTENT_CANCELLED", "本次内容请求已停止等待")
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise LLMError("CONTENT_DEADLINE_EXCEEDED", "本次内容请求已超过截止时间")
+        return remaining
+
+
+_budget: contextvars.ContextVar[CallBudget | None] = contextvars.ContextVar("geo_content_budget", default=None)
+
+
+@contextlib.contextmanager
+def call_budget(seconds: float):
+    existing = _budget.get()
+    budget = existing or CallBudget(time.monotonic() + seconds)
+    token = _budget.set(budget)
+    try:
+        yield budget
+    finally:
+        if existing is None:
+            budget.stopped.set()
+        _budget.reset(token)
+
+
+def remaining_budget(default: float = 120.0) -> float:
+    budget = _budget.get()
+    return min(default, budget.remaining()) if budget else default
+
+
+async def bounded_content_call(call):
+    """Use the existing 35s Product manage budget, including context and retries.
+
+    ASGI task cancellation stops waiting and further attempts; a running thread
+    can finish later, but its result cannot be returned as a successful draft.
+    Product API client disconnect cancellation is not propagated into GEO.
+    """
+    with call_budget(_CONTENT_CALL_BUDGET_SECONDS) as budget:
+        task = asyncio.create_task(call())
+        try:
+            done, _ = await asyncio.wait({task}, timeout=budget.remaining())
+            budget.remaining()
+            if task not in done:
+                raise LLMError("CONTENT_DEADLINE_EXCEEDED", "本次内容请求已超过截止时间")
+            return task.result()
+        finally:
+            budget.stopped.set()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
 
 class LLMNotConfiguredError(Exception):
@@ -192,4 +254,16 @@ async def chat(
         messages.append({"role": "system", "content": _JSON_INSTRUCTION})
     messages.append({"role": "user", "content": prompt})
     # 同步能力调用放线程里：一次真调用可能几十秒，占着事件循环会把整个 GEO 拖住。
-    return await asyncio.to_thread(_invoke_sync, messages, max_tokens)
+    budget = _budget.get()
+    try:
+        text = await asyncio.wait_for(asyncio.to_thread(_invoke_sync, messages, max_tokens), remaining_budget())
+        remaining_budget()
+        return text
+    except asyncio.TimeoutError as exc:
+        if budget:
+            budget.stopped.set()
+        raise LLMError("CONTENT_DEADLINE_EXCEEDED", "模型结果超过截止时间，未接受为成功稿") from exc
+    except asyncio.CancelledError:
+        if budget:
+            budget.stopped.set()
+        raise

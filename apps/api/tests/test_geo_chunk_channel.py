@@ -157,8 +157,8 @@ def test_list_document_chunks_uses_the_authority_gate_when_it_opens(monkeypatch)
     assert stored[0]["text"] == "权威给的切块原文"
 
 
-def test_list_document_chunks_falls_back_to_geo_snapshot_when_the_gate_denies(monkeypatch):
-    """门关着（未发布文档缺治理 scope）→ 用 GEO 自己存下的快照，并如实标拒绝过。"""
+def test_list_document_chunks_does_not_regrant_from_snapshot_when_authority_denies(monkeypatch):
+    """当前拒绝不得借历史快照获得本次消费资格，历史记录保持。"""
     import adapters.eios as eios
 
     _seed_chunks("doc_unpublished", [("chk_1", "检索读到过的那一段正文")])
@@ -169,15 +169,13 @@ def test_list_document_chunks_falls_back_to_geo_snapshot_when_the_gate_denies(mo
         )
 
     monkeypatch.setattr(eios, "_request", _deny)
-    got = _run(eios.list_document_chunks("doc_unpublished"))
-
-    assert got["source"] == "geo_snapshot"
-    assert got["warnings"][0] == "authority_document_chunks_denied"
-    assert "EIOSKnowledgeError" in got["warnings"][1]
-    assert "快照" in got["warnings"][1]
-    assert [i["chunk_id"] for i in got["items"]] == ["chk_1"]
-    assert got["items"][0]["text"] == "检索读到过的那一段正文"
-    assert got["items"][0]["authoritative"] is False
+    import pytest
+    with pytest.raises(eios.EIOSKnowledgeError) as caught:
+        _run(eios.list_document_chunks("doc_unpublished"))
+    assert caught.value.code == "NOT_FOUND"
+    assert caught.value.status == 404
+    from app.services.knowledge_snapshot import chunks_for_document
+    assert chunks_for_document("doc_unpublished")[0]["text"] == "检索读到过的那一段正文"
 
 
 def test_list_document_chunks_reraises_when_neither_side_has_it(monkeypatch):

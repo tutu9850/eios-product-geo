@@ -121,6 +121,26 @@ def test_snapshot_summary_reports_readiness(snapshot_db):
     assert summary["authoritative"] is False
 
 
+def test_snapshot_read_status_separates_not_synced_empty_and_partial(snapshot_db):
+    from app.services import knowledge_snapshot as snap
+
+    assert snap.read_status("documents")["status"] == "not_synced"
+    snap.record("documents", {"contract": "eios.knowledge_documents", "count": 0, "items": []})
+    assert snap.read_status("documents")["status"] == "empty"
+    snap.record("chunks", {"contract": "geo.knowledge_chunks/v1", "items": [{"chunk_id": "c1"}],
+                           "truncated": True})
+    assert snap.read_status("chunks")["status"] == "partial"
+
+
+def test_local_search_does_not_call_an_unsynced_snapshot_a_valid_empty_result(snapshot_db):
+    from adapters.eios import local_search
+    from app.services import knowledge_snapshot as snap
+
+    assert local_search("anything")["status"] == "not_synced"
+    snap.record("objects", {"contract": "eios.knowledge_object_list", "count": 0, "items": []})
+    assert local_search("anything")["status"] == "empty"
+
+
 # ── 3. 顾问查 GEO 的只读交接面 ──────────────────────────────────
 
 

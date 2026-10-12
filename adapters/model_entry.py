@@ -65,6 +65,8 @@ class ModelEntryClient:
         payload: dict[str, Any] | None = None,
     ) -> EntryResponse:
         require_outbound_network("model_capability_entry")
+        from adapters.llm import remaining_budget
+        remaining_budget(TIMEOUT_SECONDS)
         if not self.configured:
             # 部署没给统一入口 = 部署没说模型在哪。这里补一个默认地址就是 GEO 替部署决定。
             return EntryResponse(
@@ -82,11 +84,12 @@ class ModelEntryClient:
         )
         try:
             with httpx.Client(
-                timeout=TIMEOUT_SECONDS,
+                timeout=remaining_budget(TIMEOUT_SECONDS),
                 follow_redirects=False,
                 trust_env=False,
                 transport=self._transport,
             ) as client:
+                remaining_budget(TIMEOUT_SECONDS)
                 response = client.request(
                     method,
                     f"{self._url}{path}",
@@ -97,6 +100,7 @@ class ModelEntryClient:
             return EntryResponse(
                 503, {"code": _UNAVAILABLE, "message": f"统一模型入口暂时不可达：{exc}"[:300]}
             )
+        remaining_budget(TIMEOUT_SECONDS)
         try:
             body = response.json()
         except ValueError:

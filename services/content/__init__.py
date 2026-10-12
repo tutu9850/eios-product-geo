@@ -722,6 +722,14 @@ _FACT_MIN_SCORE = 2.0
 _fact_context_status: ContextVar[tuple[str, list[str]]] = ContextVar(
     "geo_content_fact_context_status", default=("empty", [])
 )
+_fact_read_error: ContextVar[dict | None] = ContextVar("geo_content_fact_read_error", default=None)
+
+
+def _read_failure(exc: Exception) -> dict:
+    return {"code": str(getattr(exc, "code", "KNOWLEDGE_UNAVAILABLE")),
+            "message": str(getattr(exc, "message", exc))[:300],
+            "category": str(getattr(exc, "category", "unavailable")),
+            "status": getattr(exc, "status", None)}
 
 
 async def _official_fact_context(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> tuple[list[str], str, list[str]]:
@@ -739,6 +747,7 @@ async def _official_fact_context(question: str = "", limit: int = _MAX_TOPIC_FAC
     与主题无关的事实不是「更多材料」，是**另一个题目的材料**，进来只会把文章拽走，所以不进。
     主题为空时（用户没给题目）没有可对照的主题，仍按目录顺序取前 ``limit`` 条。
     """
+    _fact_read_error.set(None)
     try:
         from adapters.eios import list_enterprise_facts
 
@@ -769,7 +778,9 @@ async def _official_fact_context(question: str = "", limit: int = _MAX_TOPIC_FAC
         return selected, ("available" if selected else "empty"), []
     except Exception as e:  # noqa: BLE001 — 读不到 ≠ 没有事实，由来源面板如实体现
         logging.getLogger("eios.geo.content").warning("正式事实读取失败: %s", e)
-        return [], "unavailable", ["official_facts_read_failed"]
+        detail = _read_failure(e)
+        _fact_read_error.set(detail)
+        return [], detail["category"], ["official_facts_read_failed", detail["code"]]
 
 
 async def _official_fact_lines(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> list[str]:
@@ -804,14 +815,23 @@ async def build_context(
 
         tenant_id = current_tenant() or "tenant_corp_01"
     auto_name: str | None = company_name
+    from adapters.eios import reads_granted
     chunk_lines: list[str] = []
     entity_names: list[str] = []
     # 正式企业事实（Knowledge 的 active fact）：Owner 2026-09-21 拍板「fact 接进内容生成」。
     # 原样注入、排在切块之前 —— 事实是权威给的句子，GEO 不改写。
+    _fact_read_error.set(None)
     official_facts = await _official_fact_lines(question)
     fact_status, fact_warnings = _fact_context_status.get()
     knowledge_status = fact_status
+    knowledge_error = _fact_read_error.get()
+    knowledge_refused = fact_status == "refused"
     context_warnings = list(fact_warnings)
+    if not official_facts and fact_status == "empty":
+        if not reads_granted():
+            from app.services.knowledge_snapshot import read_status
+            if all(read_status(kind)["status"] == "not_synced" for kind in ("objects", "chunks")):
+                knowledge_status = "not_synced"
     # 切块是从哪读到的不许含糊：实时检索给的 vs GEO 同步时存下的快照 —— 后者要在面板上说出来。
     chunks_from_snapshot = False
     if company_name:
@@ -827,10 +847,16 @@ async def build_context(
                     else "unavailable" if fact_status == "unavailable"
                     else "available" if has_knowledge else "empty"
                 )
+            if res.get("status") == "not_synced" and not official_facts:
+                knowledge_status = "not_synced"
+            elif res.get("status") == "partial":
+                knowledge_status = "partial"
         except Exception as exc:  # Knowledge unavailable must remain distinct from an empty result.
             logging.getLogger("eios.geo.content").warning("知识检索失败: %s", exc)
-            knowledge_status = "partial" if official_facts else "unavailable"
-            context_warnings.append("knowledge_search_failed")
+            knowledge_error = _read_failure(exc)
+            knowledge_status = knowledge_error["category"]
+            knowledge_refused = knowledge_refused or knowledge_status == "refused"
+            context_warnings.extend(["knowledge_search_failed", knowledge_error["code"]])
     else:
         # 没给企业名时先认出「本公司」，再按同一口径取材料（切块 + 实体）。
         auto_name = await _resolve_self_company(tenant_id)
@@ -846,12 +872,22 @@ async def build_context(
                         else "unavailable" if fact_status == "unavailable"
                         else "available" if has_knowledge else "empty"
                     )
-            except Exception:  # noqa: BLE001 — 读不到 ≠ 没有资料
-                knowledge_status = "partial" if official_facts else "unavailable"
-                context_warnings.append("knowledge_search_failed")
+                if res.get("status") == "not_synced" and not official_facts:
+                    knowledge_status = "not_synced"
+                elif res.get("status") == "partial":
+                    knowledge_status = "partial"
+            except Exception as exc:
+                knowledge_error = _read_failure(exc)
+                knowledge_status = knowledge_error["category"]
+                knowledge_refused = knowledge_refused or knowledge_status == "refused"
+                context_warnings.extend(["knowledge_search_failed", knowledge_error["code"]])
                 chunk_lines, entity_names = [], []
+    if knowledge_refused:
+        # A successful historical snapshot is not permission for this attempt.
+        official_facts, chunk_lines, entity_names = [], [], []
+        knowledge_status = "refused"
     # 实时检索没给够切块正文时，补上**同步时已经存进 GEO 自己柜**的那些（Owner 2026-09-22）。
-    if len(chunk_lines) < _MAX_CHUNKS:
+    if not knowledge_refused and not reads_granted() and len(chunk_lines) < _MAX_CHUNKS:
         seen_text = {line.split("：", 1)[-1] for line in chunk_lines}
         for line in _chunk_lines_from_snapshot(question, need=_MAX_CHUNKS - len(chunk_lines)):
             body = line.split("：", 1)[-1]
@@ -965,6 +1001,7 @@ async def build_context(
         "source_material_ids": selected_material_ids,
         "uploaded_sources": uploaded_sources,
         "knowledge_status": knowledge_status,
+        "knowledge_error": knowledge_error,
         "warnings": context_warnings,
         "signals": signals,
     }
@@ -1067,6 +1104,7 @@ async def improve(
         "source_material_ids": list(ctx.get("source_material_ids") or []),
         "context_sources": used_sources,
         "knowledge_status": ctx.get("knowledge_status", "unknown"),
+        "knowledge_error": ctx.get("knowledge_error"),
         "warnings": list(ctx.get("warnings") or []),
     }
 
@@ -1109,6 +1147,7 @@ async def generate(
             "source_material_ids": list(ctx.get("source_material_ids") or []),
             "context_sources": ctx.get("context_sources") or [],
             "knowledge_status": ctx.get("knowledge_status", "unknown"),
+        "knowledge_error": ctx.get("knowledge_error"),
             "warnings": list(ctx.get("warnings") or []),
         }
     # 1) Content Context Builder：聚合 正式事实/文档切块/实体 + FAQ 资产 + 历史素材 + 问题池
@@ -1294,14 +1333,22 @@ async def generate(
     last_err: Exception | None = None
     text = ""
     for attempt in range(3):
+        from adapters.llm import remaining_budget
+        remaining_budget()
         try:
             text = await chat(prompt, system=_SYSTEM, max_tokens=3000)
             last_err = None
             break
         except _LLMError as e:
             last_err = e
+            # Only transient failures qualify, and backoff shares the same deadline.
+            if e.code not in {"MODEL_CAPABILITY_UNAVAILABLE", "RATE_LIMITED", "MODEL_HTTP_429", "MODEL_HTTP_502", "MODEL_HTTP_503", "MODEL_HTTP_504"}:
+                raise
             if attempt < 2:
-                await asyncio.sleep(2**attempt)  # 1s, 2s 退避
+                delay = 2**attempt
+                if remaining_budget() <= delay:
+                    raise _LLMError("CONTENT_DEADLINE_EXCEEDED", "重试剩余时间不足")
+                await asyncio.sleep(delay)
     if last_err is not None:
         raise last_err
 
@@ -1338,6 +1385,7 @@ async def generate(
         "context_sources": ctx["context_sources"],
         "source_material_ids": list(ctx.get("source_material_ids") or []),
         "knowledge_status": ctx.get("knowledge_status", "unknown"),
+        "knowledge_error": ctx.get("knowledge_error"),
         "warnings": list(ctx.get("warnings") or []),
         "goal": goal,
         "content_type": content_type,
