@@ -274,6 +274,8 @@ async def build_company_profile(
         g = str(f.get("fact_group") or "enterprise_fact")
         fact_groups[g] = fact_groups.get(g, 0) + 1
 
+    semantic_linked_count = sum(1 for f in knowledge_facts if str(f.get("semantic_object_id") or "").strip())
+
     return {
         "company": company_name,
         "facts": facts[:top_facts],
@@ -300,4 +302,15 @@ async def build_company_profile(
         "sources": ["knowledge_search", "knowledge_relations", "geo_questions", "geo_kb", "enterprise_facts"],
         "knowledge_ok": knowledge_ok,    # 审计 P1-7：知识库可用性（失败 ≠ 无数据）
         "knowledge_error": knowledge_error,
+        # 给产品层一个明确的数据状态，避免把「48 个覆盖评估子项」误读成
+        # 企业事实，也避免把 Semantic 尚未关联误读成「企业没有资料」。
+        "data_status": {
+            "questions_count": len(questions),
+            "knowledge_facts_count": len(knowledge_facts),
+            "semantic_linked_count": semantic_linked_count,
+            "relations_count": len(relations),
+            "assets_count": len(assets),
+            "knowledge_ok": knowledge_ok,
+            "facts_ok": facts_error is None,
+        },
     }

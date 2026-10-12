@@ -297,6 +297,24 @@ def test_scan_tells_the_truth_when_the_base_has_objects_but_no_candidate(monkeyp
     assert "不勾选" in data["hint"]
 
 
+def test_scan_empty_state_explains_current_foundation_visibility(monkeypatch, tenant):
+    """空候选不能把「当前账号不可见」误报成 Foundation 没有资料。"""
+    from app.api.v1 import kb_init
+
+    _patch_kb(
+        monkeypatch,
+        detect={**DETECT, "company": [], "products": [], "services": [], "hint": "旧的空库提示"},
+        documents=[],
+        entities=[],
+    )
+    data = asyncio.run(kb_init.kb_init_scan())["data"]
+
+    assert data["empty"] is True
+    assert "当前登录账号" in data["hint"]
+    assert "发布/共享" in data["hint"]
+    assert "当前登录账号" in data["visibility_note"]
+
+
 def test_apply_refuses_to_store_document_titles_it_could_not_verify(monkeypatch, tenant):
     """文档标题要 GEO 自己去知识库核：核不了就明确失败，而不是把客户端传的当权威存下。"""
     from app.api.v1 import kb_init
@@ -319,12 +337,8 @@ def test_kb_init_never_touches_the_knowledge_write_path():
     assert "publish" not in source
 
 
-def test_scan_offers_documents_geo_already_read_but_the_knowledge_base_has_not_published(monkeypatch, tenant):
-    """Owner 2026-09-21 的发现：两份未发布的 docx，切块检索得到、文档读接口被拒。
-
-    「未发布」意味着它不在知识库的文档列表里；但 GEO 已经读到过它的切块并存在自己台账里，
-    所以同步时它也必须在候选里出现（``listed: false`` 如实标出来处）。
-    """
+def test_scan_keeps_historical_snapshot_visible_but_not_selectable(monkeypatch, tenant):
+    """历史正文保留供查看，但当前权威列表缺席时不能让它取得同步资格。"""
     from app.api.v1 import kb_init
     from app.services.knowledge_snapshot import chunk_snapshot_payload, record
 
@@ -343,16 +357,15 @@ def test_scan_offers_documents_geo_already_read_but_the_knowledge_base_has_not_p
 
     docs = {d["document_id"]: d for d in data["candidates"]["documents"]}
     assert docs["doc_1"]["listed"] is True
-    assert docs["doc_unpublished"]["listed"] is False
-    assert docs["doc_unpublished"]["chunks_stored"] == 1
-    assert docs["doc_unpublished"]["title"].endswith("纯利润500万.docx")
+    assert "doc_unpublished" not in docs
     assert [d["document_id"] for d in data["documents_from_snapshot"]] == ["doc_unpublished"]
-    assert "没发布" in data["snapshot_note"]
+    assert "不属于本次可勾选清单" in data["snapshot_note"]
 
 
-def test_apply_accepts_a_document_it_only_knows_from_geos_own_chunk_snapshot(monkeypatch, tenant):
-    """只在自己快照里的未发布文档：不是 unknown，切块也要一并带过来存下。"""
+def test_apply_does_not_let_a_historical_snapshot_qualify_a_document(monkeypatch, tenant):
+    """只在旧快照里的文档当前不具备资格，历史正文仍保留。"""
     from app.api.v1 import kb_init
+    from app.services import knowledge_snapshot
     from app.services.knowledge_snapshot import chunk_snapshot_payload, record
 
     _patch_kb(monkeypatch, chunks={"doc_unpublished": [{"chunk_id": "chk_1", "text": "读到过的正文"}]})
@@ -369,10 +382,11 @@ def test_apply_accepts_a_document_it_only_knows_from_geos_own_chunk_snapshot(mon
         kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_unpublished"]))
     )["data"]
 
-    assert data["unknown_documents"] == []
-    assert [d["document_id"] for d in data["added"]["documents"]] == ["doc_unpublished"]
-    assert data["chunks_pulled"] == [{"document_id": "doc_unpublished", "chunks": 1}]
-    assert data["chunks_total"] == 1
+    assert data["unknown_documents"] == ["doc_unpublished"]
+    assert data["added"]["documents"] == []
+    assert data["chunks_pulled"] == []
+    assert data["chunks_total"] == 0
+    assert knowledge_snapshot.chunks_for_document("doc_unpublished")
 
 
 def test_apply_reports_the_chunks_it_brought_over_for_every_picked_document(monkeypatch, tenant):
@@ -388,8 +402,8 @@ def test_apply_reports_the_chunks_it_brought_over_for_every_picked_document(monk
     )["data"]
 
     assert data["chunks_pulled"] == [
-        {"document_id": "doc_1", "chunks": 1},
-        {"document_id": "doc_2", "chunks": 2},
+        {"document_id": "doc_1", "chunks": 1, "status": "ready"},
+        {"document_id": "doc_2", "chunks": 2, "status": "ready"},
     ]
     assert data["chunks_total"] == 3
 
@@ -437,7 +451,8 @@ def test_a_document_whose_chunks_cannot_be_read_is_still_recorded_but_reported(m
     data = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1"])))["data"]
 
     assert [d["document_id"] for d in data["added"]["documents"]] == ["doc_1"]
-    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 0}]
+    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 0, "status": "unreadable",
+                                      "error": {"code": "RuntimeError", "message": "resource is not available in the caller's view"}}]
     assert data["chunks_total"] == 0
 
 
@@ -449,5 +464,43 @@ def test_apply_reports_when_a_documents_chunks_were_only_partly_brought_over(mon
               chunks_truncated=True)
     data = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1"])))["data"]
 
-    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 1, "truncated": True}]
+    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 1, "status": "partial",
+                                      "truncated": True}]
     assert data["chunks_truncated"] == ["doc_1"]
+
+
+def test_current_authority_refusal_never_falls_back_to_old_chunks(monkeypatch, tenant):
+    from adapters import eios
+    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+
+    record("chunks", chunk_snapshot_payload([{
+        "document_id": "doc_1", "chunk_id": "old_chunk", "text": "已撤权后的旧正文"
+    }]))
+
+    async def denied(*_args, **_kwargs):
+        raise eios.EIOSKnowledgeError("FORBIDDEN_SCOPE", "当前账号无权读取", 403)
+
+    monkeypatch.setattr(eios, "_request", denied)
+    with pytest.raises(eios.EIOSKnowledgeError) as exc:
+        asyncio.run(eios.list_document_chunks("doc_1"))
+
+    assert exc.value.category == "refused"
+    assert exc.value.code == "FORBIDDEN_SCOPE"
+    assert exc.value.status == 403
+
+
+def test_successful_empty_authority_read_does_not_fill_from_old_chunks(monkeypatch, tenant):
+    from adapters import eios
+    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+
+    record("chunks", chunk_snapshot_payload([{
+        "document_id": "doc_1", "chunk_id": "old_chunk", "text": "历史正文"
+    }]))
+
+    async def empty(*_args, **_kwargs):
+        return {"items": [], "next_cursor": None}
+
+    monkeypatch.setattr(eios, "_request", empty)
+    got = asyncio.run(eios.list_document_chunks("doc_1"))
+    assert got["items"] == []
+    assert got["source"] == "knowledge"

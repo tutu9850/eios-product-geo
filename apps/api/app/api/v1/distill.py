@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/distill")
 from app.services.distill_domain import (
     _clamp_priority, _extract_json_array, _funnel_rows,
     _normalize_intent, _normalize_question, _normalize_stage,
-    _content_bigrams, _infer_intent,
+    _content_bigrams, _infer_intent, _STAGE_CN,
 )
 
 DATA_DIR = Path(__file__).resolve().parents[4] / "data"
@@ -42,6 +42,18 @@ class QuestionsIn(BaseModel):
     seed_keywords: list[str] = []  # 种子词/行业关键词
     industry: str = ""  # 行业（可选，增强生成质量）
     count: int = 10
+    # 监测主体是增长闭环的边界；没有它生成的问题只能作为账号级草稿。
+    monitor_id: str | None = None
+
+
+def _scope_rows(rows: list[dict], monitor_id: str | None) -> list[dict]:
+    """按监测主体读增长数据；已存在但没有主体绑定的旧行必须留在全选视图，
+    进入某个主体后则 fail closed，避免把另一家公司留下的计划/问题冒充当前主体。
+    """
+    picked = str(monitor_id or "").strip()
+    if not picked or picked.lower() == "all":
+        return rows
+    return [row for row in rows if str(row.get("monitor_id") or "") == picked]
 
 
 def _load_questions() -> list[dict]:
@@ -167,6 +179,7 @@ async def gen_questions(payload: QuestionsIn):
             "monitor_count": 0,  # 监测过的回答数（真实统计）
             "created_at": now,
             "status": "pending",
+            "monitor_id": payload.monitor_id,
         }
         items.append(entry)
         added.append(entry)
@@ -176,13 +189,13 @@ async def gen_questions(payload: QuestionsIn):
 
 
 @router.get("/cognition-map")
-async def cognition_map():
+async def cognition_map(monitor_id: str | None = None):
     """蒸馏中心·客户认知地图：问题池按决策阶段聚合 + 企业覆盖
 
     企业覆盖 = 该阶段问题中 AI 回答有企业依据（evidence_level=grounded）的比例，
     纯规则聚合零调用；无数据阶段标 null（诚实空态）。
     """
-    qs = _load_questions()
+    qs = _scope_rows(_load_questions(), monitor_id)
     rows = _funnel_rows(qs)
     return ok({
         "stages": rows,
@@ -191,8 +204,8 @@ async def cognition_map():
 
 
 @router.get("/questions")
-async def list_questions(status: str | None = None, limit: int = 100, validated: str | None = None, stage: str | None = None, priority: str | None = None):
-    items = _load_questions()
+async def list_questions(status: str | None = None, limit: int = 100, validated: str | None = None, stage: str | None = None, priority: str | None = None, monitor_id: str | None = None):
+    items = _scope_rows(_load_questions(), monitor_id)
     if status:
         items = [q for q in items if q.get("status") == status]
     if validated == "true":
@@ -658,7 +671,7 @@ def _impact_by_priority(p: int) -> str:
 
 
 @router.post("/gaps")
-async def detect_gaps(limit: int = 30):
+async def detect_gaps(limit: int = 30, monitor_id: str | None = None):
     """知识缺口检测：问题池 → 逐个 企业知识库匹配 → 无知识的问题生成缺口
 
     缺口 = 客户问题需要的信息 − 企业已有知识。
@@ -666,7 +679,7 @@ async def detect_gaps(limit: int = 30):
     """
     from adapters.llm import chat, LLMNotConfiguredError, LLMError
 
-    questions = _load_questions()[-limit:]
+    questions = _scope_rows(_load_questions(), monitor_id)[-limit:]
     if not questions:
         return ok({"added": [], "total": 0, "error": "问题池为空，先分析问题"})
 
@@ -738,6 +751,14 @@ async def detect_gaps(limit: int = 30):
             for it in _extract_json_array(text):
                 mi_map[str(it.get("question", "")).strip()] = str(it.get("missing_information", "")).strip()
 
+    # 同一问题可能同时属于多个主体；在全选视图下不要把缺口凭文本
+    # 随机挂到第一个主体。只有唯一命中时才继承问题的主体，否则保留调用方范围。
+    question_monitor_ids: dict[str, set[str]] = {}
+    for question in questions:
+        text_key = str(question.get("question") or "").strip()
+        if text_key:
+            question_monitor_ids.setdefault(text_key, set()).add(str(question.get("monitor_id") or "").strip())
+
     gaps = _load_gaps()
     # V1.1 证据链：intent → 信息需求规则分类（纯规则，诚实标"规则分类"；LLM missing_information 仅作建议）
     _CAP_TEMPLATE = {
@@ -763,6 +784,11 @@ async def detect_gaps(limit: int = 30):
             "id": f"g_{uuid.uuid4().hex[:10]}",
             "question": a["question"],
             "entity": a["entity"],
+            "monitor_id": (
+                next(iter(ids))
+                if len(ids := {item for item in question_monitor_ids.get(str(a["question"]).strip(), set()) if item}) == 1
+                else monitor_id
+            ),
             # 2026-09-21 修：原来这里兜底成 `a["question"]` —— 模型没答上来时
             # （本机就没配模型 key），「缺什么」直接变成「问题原文」，
             # 页面上看着有值、实际是句废话（实测 dev 库几条缺口的 missing_information
@@ -806,8 +832,8 @@ async def detect_gaps(limit: int = 30):
 
 
 @router.get("/gaps")
-async def list_gaps(status: str | None = None, limit: int = 100):
-    items = _load_gaps()
+async def list_gaps(status: str | None = None, limit: int = 100, monitor_id: str | None = None):
+    items = _scope_rows(_load_gaps(), monitor_id)
     if status:
         items = [g for g in items if g.get("status") == status]
     items = items[-limit:][::-1]
@@ -1581,6 +1607,7 @@ class PlanManualIn(BaseModel):
     target_question: str = ""
     recommended_content_type: str = "FAQ+案例文章"
     priority: int = 60
+    monitor_id: str | None = None
 
 
 class CustomerGapPlanIn(BaseModel):
@@ -1626,6 +1653,7 @@ async def add_plan_manual(payload: PlanManualIn):
         "created_at": datetime.now(timezone.utc).isoformat(),
         "source": "assistant",  # AI 助手对话建议
         "evidence_level": "C",  # 拍板：助手建议无外部/企业记录 ID → C（待验证）
+        "monitor_id": payload.monitor_id,
     })
     _save_plans(plans)
     return ok({"added": True, "total": len(plans), "error": None, "dup": False})
@@ -1669,6 +1697,7 @@ class FromGapsIn(BaseModel):
     """报告页薄弱榜 → 内容计划（S0）"""
     questions: list[str] = []
     batch_id: str | None = None  # 拍板证据等级：薄弱问题绑最近批量监测 ID → A
+    monitor_id: str | None = None
 
 
 @router.post("/plans/from-gaps")
@@ -1702,6 +1731,7 @@ async def plans_from_weak(payload: FromGapsIn):
             "evidence_level": "A",  # 外部事实（监测薄弱 → 可追溯到 batch）
             "status": "planned",
             "created_at": now,
+            "monitor_id": payload.monitor_id,
         })
         existing.add(q)
         added += 1
@@ -1815,9 +1845,9 @@ async def delete_plan(plan_id: str):
 
 
 @router.get("/plans")
-async def list_plans(status: str | None = None, limit: int = 100, sort: str = "priority"):
+async def list_plans(status: str | None = None, limit: int = 100, sort: str = "priority", monitor_id: str | None = None):
     """内容计划列表（S0 起支持三维排序：priority/weak/effect；分数可解释，不落库）"""
-    all_plans = _load_plans()
+    all_plans = _scope_rows(_load_plans(), monitor_id)
     items = all_plans
     if status:
         items = [p for p in items if p.get("status") == status]
@@ -1986,7 +2016,7 @@ async def _subitem_knowledge(questions: list[dict], items: list[dict]) -> dict:
 
 
 @router.post("/content-plan")
-async def gen_content_plan(limit: int = 10):
+async def gen_content_plan(limit: int = 10, monitor_id: str | None = None):
     """内容计划算法（V1 规则版）：问题池 × AI 监测 → 48 子项压力 → 内容计划 Top N。
 
     输出每条计划（plans 表，兼容旧字段 + 新字段）：
@@ -1998,7 +2028,7 @@ async def gen_content_plan(limit: int = 10):
     """
     from app.api.v1.enterprise_profile import _load_items, _match_question
 
-    questions = _load_questions()
+    questions = _scope_rows(_load_questions(), monitor_id)
     if not questions:
         return ok({"items": [], "total": 0, "error": "问题池为空：先跑监测蒸馏生成问题"})
     items = _load_items()
@@ -2049,7 +2079,7 @@ async def gen_content_plan(limit: int = 10):
     #    无知识的子项不生成计划，全部由知识缺口承载（见 /gaps 子项粒度）。）
     #    旧版「待补知识」计划（status=knowledge_required）一并归档，不再展示/推荐。
     by_id = {it["id"]: it for it in items}
-    existing = _load_plans()
+    existing = _scope_rows(_load_plans(), monitor_id)
     existing_subitems = {
         p.get("subitem") for p in existing if p.get("status") not in ("archived", "completed")
     }
@@ -2106,6 +2136,7 @@ async def gen_content_plan(limit: int = 10):
                 "pressure": round(bucket["pressure"], 3),
             },
             "created_at": now,
+            "monitor_id": monitor_id,
         })
         if len(rows) >= max(1, limit):
             break

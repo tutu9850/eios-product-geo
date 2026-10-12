@@ -190,13 +190,8 @@ async def _pull_documents(wanted_ids: list[str], list_documents, list_document_c
         known = {str(d.get("document_id") or ""): d for d in (await list_documents(limit=100) or [])}
     except Exception as exc:  # noqa: BLE001 — 核不了标题就不能假装存了
         raise KnowledgeUnreadable(f"读知识库核对文档失败：{str(exc)[:200]}") from exc
-    # 知识库未发布的文档不在 documents 列表里，但 GEO 读到过它的切块 —— 也认。
-    for c in knowledge_snapshot.documents_with_chunks():
-        known.setdefault(
-            c["document_id"],
-            {"document_id": c["document_id"], "title": c["title"], "version": None,
-             "source": "geo_snapshot"},
-        )
+    # 只有本次权威文档列表确认可见的文档才具备本次同步资格。历史快照保留供查看，
+    # 但不能在当前列表缺席或拒绝时替文档取得资格。
     for doc_id in wanted_ids:
         item = known.get(doc_id)
         if item is None:
@@ -230,9 +225,21 @@ async def _pull_documents(wanted_ids: list[str], list_documents, list_document_c
                     ),
                     source_url="",
                 )
-        except Exception as exc:  # noqa: BLE001 — 拉不到切块不影响「选中文档」这件事，但要如实报
+        except Exception as exc:  # noqa: BLE001 — 保留文档清单结果，同时具名报告切块读取状态
             logger.warning("kb-init apply: chunks for %s failed: %s", doc_id, exc)
-        entry = {"document_id": doc_id, "chunks": pulled}
+            entry = {"document_id": doc_id, "chunks": pulled, "status": getattr(exc, "category", "unreadable")}
+            entry["error"] = {
+                "code": getattr(exc, "code", type(exc).__name__),
+                "message": str(getattr(exc, "message", exc))[:200],
+            }
+        else:
+            entry = {
+                "document_id": doc_id,
+                "chunks": pulled,
+                "status": "partial" if truncated else ("ready" if pulled else "empty"),
+            }
+            if got.get("source") == "geo_snapshot":
+                entry["status"] = "historical_snapshot"
         if truncated:
             # 翻页到上限还有下一页：如实说「这只是其中一部分」，不把少带说成带全了。
             entry["truncated"] = True
@@ -275,10 +282,17 @@ async def kb_init_scan():
 
         documents: list[dict] = []
         doc_error: str | None = None
+        doc_error_detail: dict | None = None
         try:
             documents = await list_documents(limit=100) or []
         except Exception as exc:  # noqa: BLE001 — 文档读不到只少一桶，不假装三桶齐全
             doc_error = str(exc)[:200]
+            doc_error_detail = {
+                "code": getattr(exc, "code", type(exc).__name__),
+                "category": getattr(exc, "category", "unreadable"),
+                "status": getattr(exc, "status", None),
+                "message": str(getattr(exc, "message", exc))[:200],
+            }
             logger.warning("kb-init scan: list_documents failed: %s", exc)
         # 同步一步到位：对象 / 正式事实 / 本公司关系一并落进 GEO 自己的柜
         # （运行时不再实时读知识库，靠的就是这份）。
@@ -296,8 +310,7 @@ async def kb_init_scan():
         {"name": n, "in_profile": n in have_products}
         for n in _clean_names([*(detect.get("products") or []), *(detect.get("services") or [])])
     ]
-    # GEO 读到过切块的文档（含知识库里**未发布**、文档列表看不到的那些）。
-    # Owner 2026-09-21：切块既然读得到并已存进 GEO 台账，同步时就该一并出现在候选里。
+    # 历史切块可供查看，但不能替代本次权威文档列表来取得同步资格。
     read_docs = knowledge_snapshot.documents_with_chunks()
     seen_ids = {str(d.get("document_id") or "") for d in documents}
     document_items = [
@@ -313,17 +326,6 @@ async def kb_init_scan():
         }
         for d in documents
         if d.get("document_id")
-    ] + [
-        {
-            "document_id": c["document_id"],
-            "title": c["title"] or c["document_id"],
-            "version": None,
-            "in_profile": c["document_id"] in have_documents,
-            "listed": False,        # 只在 GEO 快照里有（知识库未发布，读文档会被拒）
-            "chunks_stored": int(c["chunks"]),
-        }
-        for c in read_docs
-        if c["document_id"] and c["document_id"] not in seen_ids
     ]
     document_items = document_items[:MAX_CANDIDATES]
 
@@ -338,7 +340,14 @@ async def kb_init_scan():
             "不勾选也能点上面的按钮初始化工作空间 —— 这些对象和正式事实会一并带回 GEO 自己的柜。"
         )
     elif empty:
-        empty_hint = detect.get("hint") or "知识库里没有可用的公司 / 产品 / 文档。"
+        # Foundation 会按当前登录主体、企业和文档 visibility_scope 过滤结果。
+        # 这里不能把「当前账号看不到」说成「Foundation 没有资料」，更不能为了让
+        # 卡片有数据而跨账号读取 personal 文档。把权限范围写进空态，用户才能知道
+        # 应该切换账号、共享/发布文档，还是去排查服务连接。
+        empty_hint = (
+            "当前登录账号没有可导入的 Foundation 企业资料（只显示你有权限看到的文档）。"
+            "请确认登录账号，或在 Foundation 将资料发布/共享后重新查找。"
+        )
     else:
         empty_hint = ""
     return ok(
@@ -363,17 +372,22 @@ async def kb_init_scan():
                 if c["document_id"] not in seen_ids
             ],
             "snapshot_note": (
-                "有些文档在知识库里还没发布，读它的文档门会被拒（fail-closed）；"
-                "它们的切块文本 GEO 已经读到并存进自己的台账，所以这里也能点选。"
-                if any(c["document_id"] not in seen_ids for c in read_docs)
-                else ""
+                "下面列的是 GEO 以前读到并保留的历史切块；它们不属于本次可勾选清单，"
+                "只有本次知识库文档列表确认可见的文档才能同步。"
+                if any(c["document_id"] not in seen_ids for c in read_docs) else ""
             ),
             "captured": captured,
             "classification_source": detect.get("classification_source"),
             "industry": detect.get("industry"),
             "empty": empty,
             "objects_in_knowledge": objects_in_knowledge,
+            "visibility_note": (
+                "候选只来自当前登录账号在 Foundation 有权限读取的企业和文档；"
+                "其他账号的私有资料、未共享或未发布的文档不会出现在这里。"
+            ),
             "error": doc_error,
+            "status": "partial" if doc_error else ("empty" if empty else "ready"),
+            "error_detail": doc_error_detail,
             "hint": empty_hint or detect.get("hint"),
         }
     )
@@ -440,6 +454,13 @@ async def kb_init_apply(payload: KbInitApplyIn):
         "documents": merged_documents,
     }
     outcome = knowledge_snapshot.record(kind=PROFILE_KIND, payload=stored, source_url="")
+    # 同步完成后让企业资料体检丢弃“未同步”缓存，下一次读取只看新快照。
+    try:
+        from app.api.v1.enterprise_profile import _clear_cache
+
+        _clear_cache()
+    except Exception as exc:  # noqa: BLE001 — 同步成功不能被展示缓存失败拖成失败
+        logger.warning("clear enterprise profile cache after kb sync failed: %s", exc)
 
     added_companies = [n for n in companies if n not in set(prev["companies"])]
     added_products = [n for n in products if n not in set(prev["products"])]
