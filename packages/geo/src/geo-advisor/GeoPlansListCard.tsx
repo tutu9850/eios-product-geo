@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Plus, RefreshCw, RotateCcw, Trash2 } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoDelete, geoGet, geoPost, type GeoPlan } from './geo-api'
 import { GeoCardShell, GeoError, GeoLoading, askGeoConfirm, useGeoNav, useGeoNavParams } from './shared'
+import { ALL_SUBJECTS, MonitorSubjectPicker, useMonitorSubject } from './geo-monitor-subject'
 
 type Sort = 'priority' | 'created_at'
 
@@ -11,7 +12,7 @@ type Sort = 'priority' | 'created_at'
  * 2026-09-21：这张卡以前直接打印「来源：subitem_pressure」这种字段值。
  */
 const PLAN_SOURCE_LABEL: Record<string, string> = {
-  subitem_pressure: '认知节点压力算法',
+  subitem_pressure: '模型回答缺口分析',
   monitor_weak: '监测薄弱问题',
   customer_agent_gap: '客户问题缺口',
   coverage_analysis: '内容覆盖分析',
@@ -24,6 +25,7 @@ export function GeoPlansListCard() {
   const [items, setItems] = useState<GeoPlan[] | null>(null)
   const go = useGeoNav()
   const { focus: navFocus, nonce: navNonce } = useGeoNavParams()
+  const { scopeQuery, value: subjectValue } = useMonitorSubject()
   const [sort, setSort] = useState<Sort>('priority')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -38,51 +40,43 @@ export function GeoPlansListCard() {
   const [publishFor, setPublishFor] = useState<string | null>(null)
   const [pubUrl, setPubUrl] = useState('')
   const [pubAt, setPubAt] = useState('')
+  const [plansOpen, setPlansOpen] = useState(false)
+  const loadVersion = useRef(0)
 
   const load = useCallback(async (s: Sort = sort) => {
+    const version = ++loadVersion.current
     setLoading(true)
     setError(null)
     try {
-      const d = await geoGet<{ items: GeoPlan[]; total: number }>(`/distill/plans?limit=50&sort=${s}`)
-      setItems(d.items)
+      const d = await geoGet<{ items: GeoPlan[]; total: number }>(`/distill/plans?limit=50&sort=${s}${scopeQuery ? `&${scopeQuery}` : ''}`)
+      if (version === loadVersion.current) setItems(d.items)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '内容计划加载失败')
+      if (version === loadVersion.current) setError(e instanceof Error ? e.message : '内容计划加载失败')
     } finally {
-      setLoading(false)
+      if (version === loadVersion.current) setLoading(false)
     }
-  }, [sort])
+  }, [sort, scopeQuery])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  useEffect(() => {
+    setPlansOpen((items ?? []).length <= 5)
+  }, [items?.length])
 
   const changeSort = (s: Sort) => {
     setSort(s)
     void load(s)
   }
 
-  const generateFromGaps = async () => {
-    setGenerating(true)
-    setGenMsg(null)
-    try {
-      // from-gaps 必须带 body（哪怕是空对象），否则 FastAPI 报 422 missing body
-      const d = await geoPost<{ added?: number; total?: number }>('/distill/plans/from-gaps', {})
-      setGenMsg(`已从缺口生成内容计划${d?.added !== undefined ? `（新增 ${d.added} 条）` : ''}`)
-      await load()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '生成失败')
-    } finally {
-      setGenerating(false)
-    }
-  }
-
-  /** 内容计划 V1（2026-08-19）：48 认知子项压力算法——问题价值×AI缺口→认知节点压力→Top N */
+  /** 内容计划 V1（2026-08-19）：按客户问题价值与模型回答缺口生成 Top N 计划。 */
   const generateByAlgorithm = async () => {
     setGenerating(true)
     setGenMsg(null)
     try {
-      const d = await geoPost<{ added?: number; total?: number; note?: string }>('/distill/content-plan', { limit: 10 })
-      setGenMsg(`算法生成内容计划${d?.added !== undefined && d.added > 0 ? `（新增 ${d.added} 条）` : '（无新增：Top 认知节点均已有计划）'}`)
+      const d = await geoPost<{ added?: number; total?: number; note?: string }>(`/distill/content-plan?limit=10${scopeQuery ? `&${scopeQuery}` : ''}`)
+      setGenMsg(`按缺口生成内容计划${d?.added !== undefined && d.added > 0 ? `（新增 ${d.added} 条）` : '（暂无新的缺口需要安排）'}`)
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败')
@@ -140,7 +134,7 @@ export function GeoPlansListCard() {
   const addManualPlan = async () => {
     if (!manualTopic.trim()) return
     setGenerating(true)
-    try { const d = await geoPost<{ added?: boolean; dup?: boolean; error?: string }>('/distill/plans/manual', { topic: manualTopic.trim(), target_question: manualQuestion.trim(), reason: '用户手动创建', recommended_content_type: 'FAQ+案例文章', priority: 60 }); setGenMsg(d.error || (d.dup ? '已有相同计划，未重复添加' : '计划已创建')); setManualTopic(''); setManualQuestion(''); setManualOpen(false); await load() }
+    try { const d = await geoPost<{ added?: boolean; dup?: boolean; error?: string }>('/distill/plans/manual', { topic: manualTopic.trim(), target_question: manualQuestion.trim(), reason: '用户手动创建', recommended_content_type: 'FAQ+案例文章', priority: 60, monitor_id: subjectValue !== ALL_SUBJECTS ? subjectValue : null }); setGenMsg(d.error || (d.dup ? '已有相同计划，未重复添加' : '计划已创建')); setManualTopic(''); setManualQuestion(''); setManualOpen(false); await load() }
     catch (e) { setError(e instanceof Error ? e.message : '创建计划失败') } finally { setGenerating(false) }
   }
 
@@ -149,13 +143,11 @@ export function GeoPlansListCard() {
 
   return (
     <GeoCardShell title={`内容计划 · ${items?.length ?? 0} 条`} className="geo-growth-workbench">
+      <MonitorSubjectPicker note="内容计划按这里选择的主体筛选；“全部”显示账号汇总。" />
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void generateByAlgorithm()} disabled={generating}>
           <RefreshCw className={`size-3.5 ${generating ? 'animate-spin' : ''}`} />
-          {generating ? '生成中…' : '算法生成计划'}
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => void generateFromGaps()} disabled={generating}>
-          从缺口生成计划
+          {generating ? '生成中…' : '按缺口生成计划'}
         </Button>
         <Button size="sm" variant="secondary" onClick={() => setManualOpen(!manualOpen)}><Plus className="size-3.5" />手动新建</Button>
         <div className="flex gap-1.5">
@@ -184,20 +176,19 @@ export function GeoPlansListCard() {
 
       {manualOpen ? <div className="manual-plan"><input value={manualTopic} onChange={(e)=>setManualTopic(e.target.value)} placeholder="计划主题（必填）"/><input value={manualQuestion} onChange={(e)=>setManualQuestion(e.target.value)} placeholder="要回答的客户问题（可选）"/><Button size="sm" disabled={!manualTopic.trim()||generating} onClick={()=>void addManualPlan()}>创建计划</Button></div> : null}
 
-      {/* 算法公式说明（2026-08-19：公式可见性） */}
-      <div className="mt-1 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-1.5 text-[10px] leading-relaxed text-[var(--yayu-muted)]">
-        <span className="text-[var(--yayu-foreground)]">算法：</span>
-        问题价值×AI缺口（简化分层 0/1/2 等权，无拍脑袋系数）→ 48 认知节点压力（高优问题共享的节点最值钱）
-        → 企业知识库检查（有依据=待生产，无依据=进知识缺口）→ 压力 TopN 生成，重复节点跳过
-        → 发布登记 + 复测对比（效果落库反哺）。
-      </div>
+      <details className="plan-method-note">
+        <summary>计划如何排序</summary>
+        <p>系统会把客户问题的重要程度、模型回答里的缺口和多个问题共同需要的资料合并排序，再跳过重复计划。发布后可回到国产模型监测复测，结果会保留在计划里。</p>
+      </details>
 
       {!items || items.length === 0 ? (
         <p className="text-[12px] text-[var(--yayu-muted)]">
-          暂无内容计划，点「算法生成计划」自动生成（问题价值×AI缺口→认知节点压力）。
+          {subjectValue !== ALL_SUBJECTS ? '当前主体还没有已绑定的内容计划；先完成监测并确认主体，再按本主体生成。' : '暂无内容计划，点「按缺口生成计划」自动生成。'}
         </p>
       ) : (
-        <div className="space-y-1.5">
+        <details className="geo-long-list" open={plansOpen} onToggle={(event) => setPlansOpen(event.currentTarget.open)}>
+          <summary><span>内容计划</span><small>{items.length} 条，默认收起长列表</small></summary>
+          <div className="geo-long-list-body space-y-1.5">
           {items.map((p) => (
             <div
               key={p.id ?? p.topic}
@@ -210,7 +201,7 @@ export function GeoPlansListCard() {
                   {p.reason ? <div className="mt-0.5 text-[11px] leading-snug text-[var(--yayu-muted)]">{p.reason}</div> : null}
                   <div className="mt-0.5 text-[10px] text-[var(--yayu-faint)]">
                     {p.recommended_content_type ?? '通用'} · 来源：{planSourceText(p.source_type ?? p.source)}
-                    {p.subitem_name ? ` · 认知节点：${p.subitem_name}` : ''}
+                    {p.subitem_name ? ` · 相关主题：${p.subitem_name}` : ''}
                     {p.covered_questions ? ` · 覆盖 ${p.covered_questions} 题` : ''}
                   </div>
                 </div>
@@ -297,7 +288,8 @@ export function GeoPlansListCard() {
               {impact[p.id] ? <div className="plan-impact">复测结论：{impact[p.id]}</div> : null}
             </div>
           ))}
-        </div>
+          </div>
+        </details>
       )}
     </GeoCardShell>
   )

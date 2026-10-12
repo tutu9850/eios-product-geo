@@ -28,7 +28,7 @@ const SOURCE_LABELS: Record<string, string> = {
   file: '上传文件',
   text: '手写素材',
   generated: '生成内容',
-  faq: 'FAQ',
+  faq: '常见问答',
   url: '链接收录',
 }
 const SOURCE_FILTERS = [
@@ -36,7 +36,7 @@ const SOURCE_FILTERS = [
   { id: 'file', label: '上传文件' },
   { id: 'text', label: '手写素材' },
   { id: 'generated', label: '生成内容' },
-  { id: 'faq', label: 'FAQ' },
+  { id: 'faq', label: '常见问答' },
 ]
 
 function sourceLabel(value?: string) {
@@ -50,8 +50,9 @@ function shortTime(value?: string) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function formatChars(n?: number) {
-  const v = Number(n ?? 0)
+function formatChars(n?: number | null) {
+  if (n == null || !Number.isFinite(Number(n))) return '—'
+  const v = Number(n)
   if (!v) return '0 字'
   if (v >= 10000) return `${(v / 10000).toFixed(1)} 万字`
   return `${v} 字`
@@ -78,6 +79,7 @@ export function GeoAssetsListCard() {
   const [error, setError] = useState<string | null>(null)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detailText, setDetailText] = useState<string | null>(null)
+  const [detailMaterial, setDetailMaterial] = useState<GeoMaterial | null>(null)
   const [detailChunks, setDetailChunks] = useState<number | null>(null)
   const [detailEffects, setDetailEffects] = useState<MaterialEffects | null>(null)
   // 文件管理器：按来源筛选 + 全库统计 + 删除后的如实回执
@@ -133,18 +135,21 @@ export function GeoAssetsListCard() {
     if (detailId === id) {
       setDetailId(null)
       setDetailText(null)
+      setDetailMaterial(null)
       setDetailChunks(null)
       setDetailEffects(null)
       return
     }
     setDetailId(id)
     setDetailText(null)
+    setDetailMaterial(null)
     setDetailChunks(null)
     setDetailEffects(null)
     try {
       // 接口返回的是 { item, effects }：以前这里读 d.content，永远是 undefined →
       // 详情永远显示「（无内容）」（2026-09-21 修）。
       const d = await geoGet<{ item: GeoMaterial; effects?: MaterialEffects }>(`/knowledge/materials/${id}`)
+      setDetailMaterial(d.item ?? null)
       setDetailText(d.item?.content ?? '（无内容）')
       setDetailChunks(d.item?.chunks ?? null)
       setDetailEffects(d.effects ?? null)
@@ -157,7 +162,7 @@ export function GeoAssetsListCard() {
     const chunkText = chunks ? `，连同它切好的 ${chunks} 段也一起删掉` : ''
     if (
       !(await askGeoConfirm(
-        `删除后「${title}」会从 GEO 的内容资产里移除${chunkText}（正文与切块都在 GEO 自己的库里，删了不可恢复）。`,
+        `删除后「${title}」会从 GEO 的内容资产里移除${chunkText}（正文和可搜索内容都会删除，且无法恢复）。`,
       ))
     )
       return
@@ -165,10 +170,12 @@ export function GeoAssetsListCard() {
     setNote(null)
     try {
       const d = await geoDelete<{ chunks_removed?: number }>(`/knowledge/materials/${id}`)
-      setNote(`已删除「${title}」，一并清掉 ${d?.chunks_removed ?? chunks ?? 0} 段切块。`)
+      const removedChunks = d?.chunks_removed ?? chunks
+      setNote(removedChunks == null ? `已删除「${title}」。` : `已删除「${title}」，一并清掉 ${removedChunks} 段可搜索内容。`)
       if (detailId === id) {
         setDetailId(null)
         setDetailText(null)
+        setDetailMaterial(null)
         setDetailChunks(null)
         setDetailEffects(null)
       }
@@ -262,21 +269,29 @@ export function GeoAssetsListCard() {
 
   const visibleItems = (items ?? []).filter((m) => filter === 'all' || (m.source_type ?? '') === filter)
 
+  // 内容资产是文件管理器，列表很容易把总览淹没；少量素材直接展示，长列表默认收起。
+  const [assetsOpen, setAssetsOpen] = useState(false)
+  useEffect(() => {
+    setAssetsOpen(visibleItems.length <= 6)
+  }, [visibleItems.length])
+
   if (loading) return <GeoLoading text="内容资产加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
   return (
     <GeoCardShell title="内容资产 · 文件管理" className="geo-assets-workbench">
-      {/* 全库统计：这是 GEO 自己的库，跟企业知识库没关系 */}
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-[var(--yayu-muted)]">
-        <span className="text-[12px] text-[var(--yayu-foreground)]">
-          {stats?.files ?? items?.length ?? 0} 份素材
-        </span>
-        <span>其中上传文件 {stats?.uploaded_files ?? 0} 份</span>
-        <span>共 {stats?.chunks ?? 0} 段切块</span>
-        <span>{formatChars(stats?.chars)}</span>
-        <span className="text-[10.5px]">存在 GEO 自己的库里；原始文件不入库，只存解析出的正文与切块</span>
-      </div>
+      {/* 全库统计：这是 GEO 自己的库，跟企业知识库没关系。空库时只给下一步，避免一串没有意义的 0。 */}
+      {(stats?.files ?? items?.length ?? 0) > 0 ? (
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-[11px] text-[var(--yayu-muted)]">
+          <span className="text-[12px] text-[var(--yayu-foreground)]">
+            {stats?.files ?? items?.length} 份素材
+          </span>
+          {stats?.uploaded_files != null ? <span>上传文件 {stats.uploaded_files} 份</span> : null}
+          {stats?.chunks != null ? <span>{stats.chunks} 段可搜索内容</span> : null}
+          {stats?.chars != null ? <span>{formatChars(stats.chars)}</span> : null}
+          <span className="text-[10.5px]">原始文件不入库，只保存可搜索的正文片段</span>
+        </div>
+      ) : null}
 
       {note ? <p className="text-[11px] text-[var(--yayu-muted)]">{note}</p> : null}
 
@@ -386,8 +401,17 @@ export function GeoAssetsListCard() {
       ) : visibleItems.length === 0 ? (
         <p className="text-[12px] text-[var(--yayu-muted)]">这个来源下没有素材，换个筛选看看。</p>
       ) : (
-        <div className="space-y-1.5">
-          {visibleItems.map((m) => {
+        <details
+          className="geo-long-list"
+          open={assetsOpen}
+          onToggle={(event) => setAssetsOpen(event.currentTarget.open)}
+        >
+          <summary>
+            <span>素材列表</span>
+            <small>{visibleItems.length} 份{visibleItems.length > 6 ? '，默认收起长列表' : ''}</small>
+          </summary>
+          <div className="geo-long-list-body space-y-1.5">
+            {visibleItems.map((m) => {
             const id = m.material_id ?? m.id ?? m.title
             const active = detailId === id
             return (
@@ -410,7 +434,7 @@ export function GeoAssetsListCard() {
                       {sourceLabel(m.source_type)}
                       {m.file_name ? ` · ${m.file_name}` : ''}
                       {` · ${formatChars(m.chars ?? m.content?.length)}`}
-                      {` · ${m.chunks ?? 0} 段切块`}
+                      {m.chunks == null ? '' : ` · ${m.chunks} 段可搜索内容`}
                       {shortTime(m.created_at) ? ` · ${shortTime(m.created_at)}` : ''}
                     </span>
                     {!active ? (
@@ -428,7 +452,7 @@ export function GeoAssetsListCard() {
                       variant="ghost"
                       size="sm"
                       onClick={() => void remove(m.title, id, m.chunks)}
-                      aria-label="删除素材及其切块"
+                      aria-label="删除素材及其可搜索内容"
                     >
                       <Trash2 className="size-3.5" />
                     </Button>
@@ -438,16 +462,58 @@ export function GeoAssetsListCard() {
                   <>
                     <div className="mt-2 text-[10.5px] text-[var(--yayu-muted)]">
                       {(detailChunks ?? m.chunks)
-                        ? `已切块 ${detailChunks ?? m.chunks} 段（切块与正文存在 GEO 自己的库；未向量化、不写企业知识库）`
-                        : '还没切块（正文为空或上传早于切块）'}
+                        ? `已整理为 ${detailChunks ?? m.chunks} 段可搜索内容（正文保存在 GEO 内容库；不改写企业资料）`
+                        : '还没有可搜索内容（正文为空或仍在整理）'}
                     </div>
                     <div className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[var(--yayu-surface-raised)] p-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
                       {detailText ?? '加载中…'}
                     </div>
+                    {((detailMaterial ?? m).source_type === 'generated' || (detailMaterial ?? m).source_type === 'faq') ? (
+                      <div className="mt-2 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] p-2 text-[10.5px] text-[var(--yayu-muted)]">
+                        <b>本篇来源</b>
+                        {(detailMaterial ?? m).context_sources?.some((source) => source.items?.length) ? (
+                          <div className="mt-1 space-y-1">
+                            {(detailMaterial ?? m).context_sources?.map((source) => source.items?.length ? (
+                              <div key={source.kind}>
+                                <div>{source.label}</div>
+                                {source.items.slice(0, 5).map((item, index) => {
+                                  const excerpt = ['content', 'excerpt', 'text', 'chunk', 'fact', 'claim', 'name', 'title', 'question', 'summary']
+                                    .map((key) => item[key])
+                                    .find((value) => typeof value === 'string' && value.trim())
+                                  return <div key={index} className="text-[var(--yayu-faint)]">· {typeof excerpt === 'string' ? excerpt : '本条来源没有可显示的原文片段'}</div>
+                                })}
+                              </div>
+                            ) : null)}
+                          </div>
+                        ) : (
+                          <p className="mt-0.5">未记录</p>
+                        )}
+                        <div className="mt-2 border-t border-[var(--yayu-border)] pt-2">
+                          <b>发布前待核验</b>
+                          {(detailMaterial ?? m).claim_check ? (
+                            <>
+                              {(detailMaterial ?? m).claim_check?.status === 'no_flags' ? (
+                                <p className="mt-0.5">有限文字筛查没有标出待核验说法。</p>
+                              ) : (
+                                <ul className="mt-0.5 max-h-40 space-y-1 overflow-y-auto">
+                                  {((detailMaterial ?? m).claim_check?.flags ?? []).map((flag, index) => (
+                                    <li key={index}>· {flag.claim}：{flag.reason}</li>
+                                  ))}
+                                  {!((detailMaterial ?? m).claim_check?.flags?.length) ? <li>· 有待核验提醒，详情未提供具体条目。</li> : null}
+                                </ul>
+                              )}
+                              <p className="mt-1 text-[var(--yayu-faint)]">{(detailMaterial ?? m).claim_check?.notice ?? '这是有限的文字筛查；没有提示也不代表全文正确，发布前仍需对照原文人工核验。'}</p>
+                            </>
+                          ) : (
+                            <p className="mt-0.5">这篇旧稿没有保存核验提醒；这不表示正文已经核实，发布前请对照原文逐项确认。</p>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
                     {detailEffects ? <div className="material-effect-card">
                       <div><b>内容效果</b><span>{detailEffects.published ? detailEffects.data_empty ? '已发布 · 等待监测' : '已发布 · 已有结果' : '尚未登记发布'}</span></div>
                       {detailEffects.conclusion ? <p>{detailEffects.conclusion}</p> : <p>{detailEffects.message ?? '登记发布链接后，系统会用覆盖问题的后续监测结果判断效果。'}</p>}
-                      {detailEffects.published && !detailEffects.data_empty ? <div className="material-effect-metrics"><span><b>{detailEffects.mentioned_questions.length}/{detailEffects.covered_questions.length}</b>覆盖问题被提及</span><span><b>{detailEffects.mentioned_count}/{detailEffects.total_checks}</b>模型回答提及</span><span><b>{detailEffects.citations_count ?? 0}</b>次内容引用</span><span><b>{detailEffects.trend.length}</b>个监测周期</span></div> : null}
+                      {detailEffects.published && !detailEffects.data_empty ? <div className="material-effect-metrics"><span><b>{detailEffects.mentioned_questions.length}/{detailEffects.covered_questions.length}</b>覆盖问题被提及</span><span><b>{detailEffects.mentioned_count}/{detailEffects.total_checks}</b>模型回答提及</span><span><b>{detailEffects.citations_count == null ? '—' : detailEffects.citations_count}</b>次内容引用</span><span><b>{detailEffects.trend.length || '—'}</b>{detailEffects.trend.length ? '个监测周期' : '暂无监测周期'}</span></div> : null}
                       {detailEffects.weak_questions.length ? <small>仍需改善：{detailEffects.weak_questions.slice(0, 3).join('；')}</small> : null}
                       {detailEffects.published && !detailEffects.has_baseline ? <small>缺少发布前基线，只展示发布后的真实结果，不计算提升幅度。</small> : null}
                     </div> : null}
@@ -468,8 +534,9 @@ export function GeoAssetsListCard() {
                 ) : null}
               </div>
             )
-          })}
-        </div>
+            })}
+          </div>
+        </details>
       )}
     </GeoCardShell>
   )

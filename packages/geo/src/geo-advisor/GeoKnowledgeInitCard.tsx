@@ -42,6 +42,17 @@ function isSensitiveDocument(document: GeoKbInitDocument): boolean {
   return SENSITIVE_DOCUMENT_RE.test(`${document.title} ${document.document_id}`)
 }
 
+function isOpaqueDocumentTitle(document: GeoKbInitDocument): boolean {
+  const title = document.title.trim()
+  return !title || /^card-z-[a-f0-9]{8,}(?:\.md)?$/i.test(title) || /^export_\d{8,}$/i.test(title)
+}
+
+function shortDocumentId(document: GeoKbInitDocument): string {
+  const id = document.document_id.trim()
+  if (!id) return ''
+  return id.length > 18 ? `${id.slice(0, 12)}…${id.slice(-4)}` : id
+}
+
 function allPicked(scan: GeoKbInitScan): Pick {
   return {
     companies: new Set(scan.candidates.companies.map((c) => c.name)),
@@ -109,7 +120,7 @@ export function GeoKnowledgeInitCard() {
       setCheckup(ov)
       setCheckupCats(cats.categories ?? [])
     } catch {
-      // 体检读不到不该把「扫描知识库」整卡带崩：这一块如实留空，下面会说明。
+      // 体检读不到不该把「查找企业资料」整卡带崩：这一块如实留空，下面会说明。
       setCheckup(null)
       setCheckupCats(null)
     }
@@ -124,7 +135,7 @@ export function GeoKnowledgeInitCard() {
       setPicked(allPicked(d))
       await loadCheckup()
     } catch (e) {
-      setError(e instanceof Error ? e.message : '扫描知识库失败')
+      setError(e instanceof Error ? e.message : '查找企业资料失败')
     } finally {
       setLoading(false)
     }
@@ -162,19 +173,22 @@ export function GeoKnowledgeInitCard() {
     }
   }
 
-  if (loading) return <GeoLoading text="正在扫描企业知识库…" />
+  if (loading) return <GeoLoading text="正在查找企业资料…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
   if (!scan) return null
 
   const allItems = (checkupCats ?? []).flatMap((c) => c.items)
   const tooLittle = allItems.filter((i) => i.level === '太少')
+  const knowledgeReady = checkup?.data_status?.knowledge_ready !== false
   const checkupAdvice =
-    !checkup || checkup.total_items === 0
+    checkup && !knowledgeReady
+      ? '还没有同步企业资料到 GEO。先完成上面的同步，系统才会按当前资料检查客户问题。'
+      : !checkup || checkup.total_items === 0
       ? '体检还没算出结果（后端没返回子项）。'
       : checkup.overall_coverage_pct === null
-        ? '客户问题池还是空的，总覆盖率算不出来 —— 先去「问题池 / 监测」生成客户问题，再回来看这张结论。'
+        ? '客户问题还是空的，总覆盖率算不出来 —— 先去「客户会问什么」生成问题，再回来看这张结论。'
         : checkup.too_little_count === checkup.total_items
-          ? `${checkup.total_items} 个子项全部「太少」。先补知识库，或去「内容计划」按子项生成要补的内容。`
+          ? `${checkup.total_items} 个子项全部「太少」。先补企业资料，或去「内容计划」按子项生成要补的内容。`
           : `还差 ${checkup.too_little_count} 个子项${
               tooLittle.length ? `（例如 ${tooLittle.slice(0, 3).map((i) => i.name).join('、')}）` : ''
             }；去「内容计划」可以按子项一键生成要补的内容。`
@@ -198,49 +212,57 @@ export function GeoKnowledgeInitCard() {
   // 空选择的结果要单独说：别让它看起来像「记了 0 项」。
   const emptySelectionLine = result?.selection_empty
     ? result.first_time
-      ? '工作空间已初始化。这次一项都没勾选：公司 / 产品 / 文档清单还是空的，公司资料随时可以回去勾。'
-      : '工作空间已刷新。这次一项都没勾选：清单没有变化。'
+      ? '工作区已建立。这次一项都没勾选：企业名称、产品和资料清单还是空的，之后可以再回来选择。'
+      : '工作区已刷新。这次一项都没勾选：清单没有变化。'
     : null
 
   const resultLine = result
     ? result.first_time
-      ? `第一次初始化完成：新增公司 ${result.added.companies.length} / 产品 ${result.added.products.length} / 文档 ${result.added.documents.length}，共 ${result.total.companies + result.total.products + result.total.documents} 项`
+      ? `第一次导入完成：新增企业名称 ${result.added.companies.length} / 产品 ${result.added.products.length} / 资料 ${result.added.documents.length}，共 ${result.total.companies + result.total.products + result.total.documents} 项`
       : result.recorded
-        ? `增量刷新：新增公司 ${result.added.companies.length} / 产品 ${result.added.products.length} / 文档 ${result.added.documents.length}，共 ${result.total.companies + result.total.products + result.total.documents} 项`
-        : `增量刷新：知识库里没有新的（共 ${result.total.companies + result.total.products + result.total.documents} 项没变）`
+        ? `增量导入：新增企业名称 ${result.added.companies.length} / 产品 ${result.added.products.length} / 资料 ${result.added.documents.length}，共 ${result.total.companies + result.total.products + result.total.documents} 项`
+        : `增量导入：没有新的资料（共 ${result.total.companies + result.total.products + result.total.documents} 项没变）`
     : null
 
   return (
-    <GeoCardShell title="企业事实源" className="geo-profile-workbench">
+    <GeoCardShell title="导入企业资料" className="geo-profile-workbench">
+      <p className="geo-scope-note mb-3 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+        这里先从企业资料库挑选候选内容；点“导入”后，才会成为 GEO 的当前工作资料。文件名和候选名称不能当作企业事实，判断前还要核对正文与来源。
+      </p>
+      {scan.visibility_note ? (
+        <p className="mb-3 rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-surface-raised)] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--yayu-muted)]">
+          {scan.visibility_note}
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         {/* Owner 2026-09-22：公司 / 产品 / 相关文档都可以不选 —— 不勾选不再锁按钮。
             知识库里只要有东西（哪怕只有对象、0 个文档），照样把 GEO 工作空间建起来。 */}
         <Button size="sm" onClick={() => void apply()} disabled={applying}>
           <Database className="size-3.5" />
           {applying
-            ? '写入中…'
+            ? '导入中…'
             : pickedCount === 0
               ? scan.initialized
-                ? '刷新工作空间（不勾选也可以）'
-                : '初始化工作空间（不勾选也可以）'
+                ? '重新导入资料（不勾选也可以）'
+                : '建立工作区（不勾选也可以）'
               : scan.initialized
-                ? `增量刷新进我的库（${pickedCount} 项）`
-                : `初始化进我的库（${pickedCount} 项）`}
+                ? `增量同步到 GEO 工作区（${pickedCount} 项）`
+                : `导入选中的资料（${pickedCount} 项）`}
         </Button>
         <Button variant="secondary" size="sm" onClick={() => void load()} disabled={loading || applying}>
-          <RefreshCw className="size-3.5" /> 重新扫描知识库
+          <RefreshCw className="size-3.5" /> 重新查找资料
         </Button>
         <span className="text-[11px] text-[var(--yayu-muted)]">
           {scan.initialized
-            ? `已初始化过（上次 ${scan.last_applied_at ? scan.last_applied_at.slice(0, 19).replace('T', ' ') : '未知'}）`
-            : '还没初始化过'}
-          {newCount > 0 ? ` · 本次有新候选 ${newCount} 项` : ' · 没有新候选'}
+            ? `已导入过（上次 ${scan.last_applied_at ? scan.last_applied_at.slice(0, 19).replace('T', ' ') : '未知'}）`
+            : '当前 GEO 尚未导入'}
+          {newCount > 0 ? ` · 找到 ${newCount} 份可选资料` : ' · 没有新的资料'}
         </span>
       </div>
 
       {pickedCount === 0 && !result ? (
         <p className="text-[11px] text-[var(--yayu-muted)]">
-          一项都不勾也可以点：知识库里只要有资料，GEO 工作空间就会建起来（这次不往公司 / 产品 / 文档清单里记）。
+          一项都不勾也可以点：只要已有企业资料，就能先建立工作区（这次不把公司、产品或文档加入清单）。
         </p>
       ) : null}
       {sensitiveDocuments.length > 0 ? (
@@ -258,41 +280,41 @@ export function GeoKnowledgeInitCard() {
       ) : null}
       {result?.selection_empty && result.captured ? (
         <p className="text-[11px] text-[var(--yayu-muted)]">
-          顺手带回 GEO 自己的库：企业知识对象 {result.captured.objects} 条、正式事实{' '}
+            导入结果：企业对象 {result.captured.objects} 条、已确认企业信息{' '}
           {result.captured.facts} 条、关系 {result.captured.relations} 条
           {result.captured.error ? `（有一项没读到：${result.captured.error}）` : ''}
         </p>
       ) : null}
       {result && (result.chunks_total ?? 0) > 0 ? (
         <p className="text-[11px] text-[var(--yayu-muted)]">
-          同步时一并带回 {result.chunks_total} 块文档切块，存进 GEO 自己的库（正本仍在知识库）
+          同时带回 {result.chunks_total} 段正文内容，保存为 GEO 的工作副本（正本仍在企业资料库）
           {(result.chunks_truncated?.length ?? 0) > 0
-            ? `；其中 ${result.chunks_truncated!.length} 份文档还有没读完的切块，这次只带回了前一部分`
+            ? `；其中 ${result.chunks_truncated!.length} 份文档还有未读完的正文片段，这次只带回了前一部分`
             : ''}
         </p>
       ) : null}
       {result && result.unknown_documents.length > 0 ? (
         <p className="text-[11px] text-[var(--yayu-muted)]">
-          这些文档在知识库里查不到，没记（{result.unknown_documents.join('、')}）
+            这些资料当前无法读取，未导入（{result.unknown_documents.join('、')}）
         </p>
       ) : null}
 
       {scan.empty ? (
         <div className="space-y-1">
           <p className="text-[12px] text-[var(--yayu-muted)]">
-            {scan.hint ?? '知识库里没有可用的公司/产品/文档。'}
+            {scan.hint ?? '当前没有找到可用的企业名称、产品或资料。'}
           </p>
           {/* 空态不等于「没得做」：不勾选也能初始化工作空间（Owner 2026-09-22）。 */}
           <p className="text-[11px] text-[var(--yayu-muted)]">
-            没有可勾选的候选也没关系：不勾选直接点上面的按钮，工作空间照样建起来。
+            没有可勾选的内容也没关系：不勾选直接点上面的按钮，工作区照样可以建立。
           </p>
         </div>
       ) : (
         <div className="space-y-2">
           <div className="space-y-1">
-            <div className="text-[11px] text-[var(--yayu-muted)]">公司</div>
+            <div className="text-[11px] text-[var(--yayu-muted)]">企业名称</div>
             {scan.candidates.companies.length === 0 ? (
-              <p className="text-[11px] text-[var(--yayu-muted)]">知识库里没筛出公司名</p>
+              <p className="text-[11px] text-[var(--yayu-muted)]">暂时没有找到企业名称</p>
             ) : (
               scan.candidates.companies.map((c) => (
                 <Row
@@ -308,9 +330,9 @@ export function GeoKnowledgeInitCard() {
           </div>
 
           <div className="space-y-1">
-            <div className="text-[11px] text-[var(--yayu-muted)]">产品</div>
+            <div className="text-[11px] text-[var(--yayu-muted)]">产品与服务</div>
             {scan.candidates.products.length === 0 ? (
-              <p className="text-[11px] text-[var(--yayu-muted)]">知识库里没筛出产品名</p>
+              <p className="text-[11px] text-[var(--yayu-muted)]">暂时没有找到产品或服务</p>
             ) : (
               scan.candidates.products.map((p) => (
                 <Row
@@ -325,18 +347,23 @@ export function GeoKnowledgeInitCard() {
             )}
           </div>
 
-          <div className="space-y-1">
-            <div className="text-[11px] text-[var(--yayu-muted)]">相关文档</div>
+              <div className="space-y-1">
+            <div className="text-[11px] text-[var(--yayu-muted)]">企业资料文档</div>
+            {scan.candidates.documents.some(isOpaqueDocumentTitle) ? (
+              <p className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
+                部分资料只有系统文件名，下面会标为“未命名资料”；需要确认内容时，请回原知识库查看正文。
+              </p>
+            ) : null}
             {scan.candidates.documents.length === 0 ? (
-              <p className="text-[11px] text-[var(--yayu-muted)]">知识库里没有文档</p>
+              <p className="text-[11px] text-[var(--yayu-muted)]">暂时没有找到资料文档</p>
             ) : (
               <>
-                {scan.candidates.documents.map((d) => (
+                {scan.candidates.documents.map((d, index) => (
                   <Row
                     key={d.document_id}
-                    label={d.title || d.document_id}
+                    label={isOpaqueDocumentTitle(d) ? `未命名资料 ${index + 1}` : d.title}
                     checked={picked.documents.has(d.document_id)}
-                    badge={isSensitiveDocument(d) ? `敏感·${docBadge(d)}` : docBadge(d)}
+                    badge={`${isSensitiveDocument(d) ? '敏感·' : ''}${docBadge(d)}${isOpaqueDocumentTitle(d) && shortDocumentId(d) ? ` · ${shortDocumentId(d)}` : ''}`}
                     tone={d.listed === false ? 'new' : d.in_profile ? 'mine' : 'new'}
                     onToggle={() => toggle('documents', d.document_id)}
                   />
@@ -355,19 +382,21 @@ export function GeoKnowledgeInitCard() {
       {checkup ? (
         <div className="space-y-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-surface-raised)] px-2 py-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-[11.5px] font-semibold text-[var(--yayu-foreground)]">企业资料体检</span>
+            <span className="text-[11.5px] font-semibold text-[var(--yayu-foreground)]">资料覆盖检查</span>
             <span className="text-[11px] text-[var(--yayu-muted)]">
-              企业资料总覆盖率{' '}
-              <span className="font-medium text-[var(--yayu-foreground)]">
-                {checkup.overall_coverage_pct === null ? '算不出来' : `${checkup.overall_coverage_pct}%`}
-              </span>
-              （规则估算）
+                当前资料能回答客户问题的比例{' '}
+                <span className="font-medium text-[var(--yayu-foreground)]">
+                {!knowledgeReady ? '未同步' : checkup.overall_coverage_pct === null ? '算不出来' : `${checkup.overall_coverage_pct}%`}
+                </span>
             </span>
             <span className="text-[11px] text-[var(--yayu-muted)]">
+            （按资料匹配估算）
+            </span>
+            {knowledgeReady ? <span className="text-[11px] text-[var(--yayu-muted)]">
               共 {checkup.total_items} 个子项：足够 {checkup.enough_count} / 部分 {checkup.partial_count} / 太少{' '}
               {checkup.too_little_count}
-            </span>
-            {checkupCats && checkupCats.length > 0 ? (
+            </span> : null}
+            {knowledgeReady && checkupCats && checkupCats.length > 0 ? (
               <button
                 type="button"
                 className="text-[11px] text-[var(--yayu-muted)] underline decoration-dotted underline-offset-2"
@@ -378,7 +407,7 @@ export function GeoKnowledgeInitCard() {
             ) : null}
           </div>
           <p className="text-[11px] leading-snug text-[var(--yayu-muted)]">建议：{checkupAdvice}</p>
-          {checkupOpen && checkupCats ? (
+          {knowledgeReady && checkupOpen && checkupCats ? (
             <div className="space-y-1">
               {checkupCats.map((c) => {
                 const lv = (k: string) => c.items.filter((i) => i.level === k).length
@@ -407,15 +436,15 @@ export function GeoKnowledgeInitCard() {
               })}
             </div>
           ) : null}
-          <p className="text-[10px] leading-snug text-[var(--yayu-muted)]">
-            三档 = 子项相关问题覆盖率 ≥70% 足够 / ≥30% 部分 / &lt;30% 太少；覆盖率 = 全部客户问题里能被知识支撑的比例
-            （COVERED=1、部分=0.5，规则估算，不是模型打分）。体检只读，不改任何数据。
-          </p>
+          <details className="mt-1 text-[10px] leading-snug text-[var(--yayu-muted)]">
+            <summary className="cursor-pointer">如何计算这项比例？</summary>
+            <p className="mt-1">系统会把客户问题和当前资料逐项匹配，分成“足够、部分、太少”三档。这是资料覆盖估算，不是模型给企业打分；这里只读，不会修改原资料。</p>
+          </details>
         </div>
       ) : null}
 
       <p className="text-[10.5px] leading-snug text-[var(--yayu-muted)]">
-        存进的是 GEO 自己的快照（带来源与时间），正本仍在企业知识库；GEO 只读知识库，不往里写。
+        GEO 会保存一份带来源和时间的工作副本，原资料仍在企业资料库；GEO 只读取，不修改原资料。
         {scan.error ? ` 这次文档读不到：${scan.error}` : ''}
       </p>
     </GeoCardShell>
