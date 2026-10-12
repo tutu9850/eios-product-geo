@@ -95,7 +95,9 @@ export function useMonitorSubject() {
 
   const select = useCallback((next: string) => setMonitorSubject(next), [])
   const query = value ? `monitor_id=${encodeURIComponent(value)}` : ''
-  return { value, select, query, subjects, loaded }
+  const scopeQuery = value && value !== ALL_SUBJECTS ? `monitor_id=${encodeURIComponent(value)}` : ''
+  const subject = subjects.find((item) => item.monitor_id === value) ?? null
+  return { value, select, query, scopeQuery, subject, subjects, loaded }
 }
 
 /** 监测主体选择器：全 GEO 共用一处，选完各页都用这个主体。 */
@@ -119,7 +121,7 @@ export function MonitorSubjectPicker({ note }: { note?: string }) {
           ? '正在读取监测对象…'
           : subjects.length === 0
             ? '还没有启用中的企业品牌监测对象，请先到监测工作台创建。'
-            : note ?? `共 ${subjects.length} 个企业品牌对象；这里选一次，GEO 各页都用它`}
+            : note ?? `共 ${subjects.length} 个企业品牌对象；在这里选择后，其他页面都会使用同一个主体`}
       </span>
     </div>
   )

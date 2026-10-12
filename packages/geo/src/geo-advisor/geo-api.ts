@@ -257,6 +257,7 @@ export async function geoUpload<T>(path: string, file: File, field = 'file'): Pr
 
 export interface GeoStatsOverview {
   knowledge: { materials: number; text_blocks: number; bytes: number }
+  knowledge_objects?: { empty: boolean | null; entities?: number | null; error?: string | null }
   links: { total: number; indexed: number; failed: number; pending: number; unknown: number }
   monitor: { runs: number; mentioned: number; avg_score: number }
   // total = 这个部署登记了几个模型；answered = 最近一次监测里几个引擎答上来了。
@@ -271,7 +272,7 @@ export interface GeoDistillOverview {
 }
 
 export interface GeoMonitorOverview {
-  scope?: { monitor_id?: string | null; scope_required?: boolean; citations_attribution_available?: boolean }
+  scope?: { monitor_id?: string | null; scope_required?: boolean; citations_attribution_available?: boolean; identity_status?: 'confirmed' | 'unconfirmed' | null; identity_note?: string | null }
   recommend: { value: number | null; delta: number | null }
   rank: { value: number | null; delta: number | null }
   citations_count: number
@@ -399,6 +400,14 @@ export interface GeoMaterial {
   chunk_ordinal?: number | null
   /** 命中那一段的 id（素材 id#序号） */
   chunk_id?: string | null
+  /** 草稿保存时记录的来源材料和实际使用片段；老稿可能没有这些字段。 */
+  source_material_ids?: string[] | null
+  context_sources?: Array<{ kind: string; label: string; items: Array<Record<string, unknown>> }> | null
+  claim_check?: {
+    status: 'review_required' | 'no_flags' | string
+    flags?: Array<{ kind?: string; claim: string; reason: string }>
+    notice?: string
+  } | null
 }
 
 export interface GeoKnowledgeReadiness {
@@ -479,6 +488,8 @@ export interface GeoKbInitScan {
   empty: boolean
   /** 知识库里的知识对象条数（空态提示据此说人话：有对象也照样能初始化） */
   objects_in_knowledge?: number
+  /** Foundation 按当前登录主体做可见性过滤；GEO 不跨账号展示私有资料 */
+  visibility_note?: string
   error?: string | null
   hint?: string | null
 }
@@ -521,6 +532,15 @@ export interface GeoProfileOverview {
   enough_count: number
   partial_count: number
   too_little_count: number
+  not_ready_count?: number
+  data_status?: {
+    questions_count?: number
+    knowledge_entities_count?: number
+    knowledge_facts_count?: number
+    semantic_linked_count?: number
+    relations_count?: number
+    knowledge_ready?: boolean
+  }
   note: string
 }
 
@@ -571,6 +591,7 @@ export interface GeoDiscoverResult {
  */
 export interface GeoBattleResult {
   question: string
+  scope?: { mode: 'selected' | 'all' | 'unspecified'; monitor_id: string | null; name: string | null }
   rounds: Array<{
     round: number
     results: Array<{ engine_id: string; engine_name: string; answer: string }>

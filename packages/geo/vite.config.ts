@@ -13,6 +13,8 @@ import { defineConfig } from 'vite'
  */
 export default defineConfig({
   base: '/product/geo/',
+  // 隔离验收可将制品写入任务目录，避免覆盖正在使用的界面制品。
+  build: { outDir: process.env.GEO_UI_OUT_DIR ?? 'dist' },
   plugins: [react(), tailwindcss()],
   resolve: {
     // 用带锚点的正则而不是字符串前缀：字符串形式下 `@geo-advisor` 会先吃掉
