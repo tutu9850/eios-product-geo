@@ -1,0 +1,37 @@
+{
+  "scope": "source preservation and local Git closure; not production acceptance",
+  "push_performed": false,
+  "main_unchanged": "08e72087d2358d5a6593f2367132e3410243376c",
+  "trees": {
+    "current": {
+      "root": "/Users/tutu/eios-product-geo",
+      "branch": "codex/geo-ui-layout",
+      "verified_clean_head": "57b556ab1ca84ed15fb9b979ec1db5d0c9d6a9a8",
+      "porcelain": "",
+      "all_initial_files_exactly_preserved_except_authorized_CURRENT_STATE_update": true,
+      "source_mismatches": [],
+      "backend": {
+        "passed": 391,
+        "skipped": 5,
+        "warnings": 6
+      },
+      "ui": "check:ui passed; temporary output",
+      "build_artifacts_committed": false
+    },
+    "package": {
+      "root": "/Users/tutu/eios-geo-package-session2/geo",
+      "branch": "codex/geo-package-preserved-20261012",
+      "verified_clean_head": "a7e56ee03872d2dd2f00a70d7732591b68e9253f",
+      "porcelain": "",
+      "all_initial_files_exactly_preserved_except_authorized_CURRENT_STATE_update": true,
+      "source_mismatches": [],
+      "backend": {
+        "passed": 353,
+        "skipped": 5,
+        "warnings": 6
+      },
+      "ui": "check:ui passed; temporary output",
+      "build_artifacts_committed": false
+    }
+  }
+}
