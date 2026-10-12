@@ -195,7 +195,7 @@ def _sample_basis(scope: dict | None = None) -> dict:
     }
 
 
-def _flat_answers(limit: int = 100, batches: int | None = None) -> list[dict]:
+def _flat_answers(limit: int = 100, batches: int | None = None, monitor_id: str | None = None) -> list[dict]:
     """拍平 monitor history → 逐探针 × 逐引擎回答（复刻 monitor.answers 口径）。
 
     2026-09-18 Owner 修复单：对**存下来的原始回答**用当前判定规则复算
@@ -217,6 +217,8 @@ def _flat_answers(limit: int = 100, batches: int | None = None) -> list[dict]:
         for q in qs:
             mid = q.get("monitor_id")
             if not mid:
+                continue
+            if monitor_id and monitor_id.lower() != "all" and str(mid) != monitor_id:
                 continue
             meta = next((x for x in items if x.get("monitor_id") == mid), None)
             itype = (meta or {}).get("type") or "question"
@@ -265,10 +267,18 @@ def _flat_answers(limit: int = 100, batches: int | None = None) -> list[dict]:
 
 # ── 场景覆盖矩阵（报告 03）──
 @router.get("/coverage")
-async def coverage():
+async def coverage(monitor_id: str | None = None):
     store = get_store()
-    questions = store.load("questions")
-    answers_list = _primary_brand_answers()
+    scope = _subject_scope(monitor_id)
+    # 问题池和回答必须使用同一主体范围；否则选择某品牌后，回答是该品牌，
+    # question_count 却把账号里其他品牌/产品的问题也算进来，阶段图的分子分母会错位。
+    all_questions = store.load("questions")
+    scoped_ids = scope["monitor_ids"]
+    questions = [
+        q for q in all_questions
+        if str(q.get("monitor_id") or "") in scoped_ids
+    ] if scoped_ids else []
+    answers_list = _primary_brand_answers(scope=scope)
     q_count: dict[str, int] = {}
     q_other: list[str] = []
     for q in questions:
@@ -304,6 +314,12 @@ async def coverage():
         })
     classified = len(questions) - len(q_other)
     return ok({
+        "scope": {
+            "mode": scope["mode"],
+            "scope_required": bool(scope.get("error")),
+            "monitor_id": monitor_id,
+            "subjects": scope["names"],
+        },
         "stages": stages,
         "question_total": len(questions),
         "classified_count": classified,
@@ -314,6 +330,7 @@ async def coverage():
             f"（已归类 {classified}/{len(questions)}）；"
             "我方覆盖 = 该阶段真实作答中被判定提及企业的占比；未作答引擎不进分母，"
             "提及判定已排除「AI 明确表示不认识该企业」的回答。"
+            + (f"当前主体不可用：{scope['error']}。" if scope.get("error") else "")
         ),
     })
 
@@ -499,8 +516,20 @@ _PLATFORMS = [
 
 
 @router.get("/sources")
-async def sources():
-    answers_list = _flat_answers(100000, batches=1)
+async def sources(monitor_id: str | None = None):
+    scope = _subject_scope(monitor_id)
+    if scope["error"]:
+        return ok({
+            "items": [],
+            "total": 0,
+            "scope": {"mode": scope["mode"], "monitor_ids": sorted(scope["monitor_ids"]), "names": scope["names"]},
+            "note": f"{scope['error']}；请选择一个监测主体后再看回答中的外部来源。",
+        })
+    answers_list = _flat_answers(
+        100000,
+        batches=1,
+        monitor_id=monitor_id if monitor_id and monitor_id.lower() != "all" else None,
+    )
     texts = "\n".join(f"{a.get('snippet', '')} {a.get('answer', '')}" for a in answers_list).lower()
     counts: dict[str, int] = {}
     for p in _PLATFORMS:

@@ -200,6 +200,46 @@ def test_cognition_coverage_is_null_when_nobody_answered(monkeypatch):
     assert know["coverage"] is None, "没人作答 → 覆盖未判定（null），不编 0%"
 
 
+def test_cognition_coverage_uses_the_selected_brand_scope(monkeypatch):
+    from app.api.v1 import cognition
+
+    items = [
+        {"monitor_id": "brand_a", "type": "brand", "status": "active", "entity": "甲品牌", "config_json": {"company": "甲品牌"}},
+        {"monitor_id": "brand_b", "type": "brand", "status": "active", "entity": "乙品牌", "config_json": {"company": "乙品牌"}},
+    ]
+    history = [{
+        "created_at": "2026-09-27T01:00:00+00:00",
+        "questions": [
+            {"monitor_id": "brand_a", "query": "甲品牌是什么？", "engine_detail": [_engine_row("DeepSeek", True, "甲品牌提供家居产品。")]},
+            {"monitor_id": "brand_b", "query": "乙品牌是什么？", "engine_detail": [_engine_row("DeepSeek", False, "我不知道这家企业。")]},
+        ],
+    }]
+    monkeypatch.setattr(cognition, "_load_items", lambda: items)
+    monkeypatch.setattr(cognition, "_load_history", lambda: history)
+    monkeypatch.setattr(cognition, "get_store", lambda: _FakeStore({"questions": [
+        {"monitor_id": "brand_a", "question": "甲品牌是什么？"},
+        {"monitor_id": "brand_b", "question": "乙品牌是什么？"},
+        {"monitor_id": "product_a", "question": "甲产品是什么？"},
+    ]}))
+
+    def know_for(monitor_id):
+        data = _run(cognition.coverage(monitor_id=monitor_id))["data"]
+        return data, next(stage for stage in data["stages"] if stage["key"] == "know")
+
+    a, a_know = know_for("brand_a")
+    b, b_know = know_for("brand_b")
+    all_brands, all_know = know_for("all")
+    pending, pending_know = know_for(None)
+
+    assert a["scope"]["subjects"] == ["甲品牌"]
+    assert a_know["question_count"] == 1 and a_know["answered_count"] == 1 and a_know["coverage"] == 100
+    assert b["scope"]["subjects"] == ["乙品牌"]
+    assert b_know["question_count"] == 1 and b_know["answered_count"] == 1 and b_know["coverage"] == 0
+    assert all_know["question_count"] == 2 and all_know["answered_count"] == 2 and all_know["coverage"] == 50
+    assert pending["scope"]["scope_required"] is True
+    assert pending_know["coverage"] is None
+
+
 def test_industry_mentions_keep_evidence_and_do_not_double_count(monkeypatch):
     from app.api.v1 import monitor
 
@@ -477,3 +517,30 @@ def test_humanize_still_reports_a_real_zero_exposure_when_samples_exist(monkeypa
     out = intel.humanize()
     assert out["headline"]["main"] == "AI 回答里还没提到过你", "有样本、曝光真为 0 时才说这句话"
     assert out["metrics"]["exposure_rate"] == 0.0
+
+
+def test_humanize_keeps_unconfirmed_identity_out_of_exposure(monkeypatch):
+    from services.intelligence import cognition as intel
+
+    monkeypatch.setattr(
+        intel,
+        "compare",
+        lambda **kw: {
+            "brands": [{
+                "brand": "笔革家居",
+                "is_self": True,
+                "exposure_rate": None,
+                "recommendation_rate": None,
+                "identity_status": "unconfirmed",
+                "unconfirmed_count": 6,
+            }],
+            "sample_note": {"total": 12, "reliability": "低", "note": "样本不足"},
+        },
+    )
+    monkeypatch.setattr(intel, "strategies", lambda **kw: {"strategies": []})
+    monkeypatch.setattr(intel, "factor_gaps", lambda **kw: {"left": [], "right": [], "risk_notes": []})
+
+    out = intel.humanize()
+    assert out["headline"]["main"] == "主体识别不足，暂不判断品牌曝光"
+    assert out["metrics"]["exposure_rate"] is None
+    assert out["metrics"]["identity_status"] == "unconfirmed"

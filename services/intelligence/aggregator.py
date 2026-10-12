@@ -196,17 +196,45 @@ def _load_mentions(evidence_ids: set[str], tenant: str) -> list[dict]:
             .subquery()
         )
         rows = (
-            db.query(BrandMention, GeoEvidence.subject_company)
+            db.query(BrandMention, GeoEvidence.subject_company, GeoExtraction.analysis_json)
             .join(GeoEvidence, BrandMention.evidence_id == GeoEvidence.id)
             .join(latest, latest.c.evidence_id == BrandMention.evidence_id)
+            .join(
+                GeoExtraction,
+                (GeoExtraction.evidence_id == BrandMention.evidence_id)
+                & (GeoExtraction.version == latest.c.max_version)
+                & (GeoExtraction.status == "succeeded"),
+            )
             .filter(BrandMention.evidence_id.in_(evidence_ids))
             .order_by(BrandMention.created_at.asc())
             .all()
         )
         out = []
-        for m, subject in rows:
+        for m, subject, analysis_json in rows:
             d = repo._row_to_dict(m)
             d["subject_company"] = subject  # self 判定基准（不依赖查询参数）
+            # A model can repeat the requested name while explicitly saying it
+            # cannot identify the enterprise.  Such a row is useful identity
+            # evidence, but must not inflate exposure or recommendation rates.
+            if d.get("mention_type") == "missing" and _is_self(d.get("brand_name", ""), subject or ""):
+                try:
+                    analysis = json.loads(analysis_json or "{}") if isinstance(analysis_json, str) else (analysis_json or {})
+                except (TypeError, json.JSONDecodeError):
+                    analysis = {}
+                self_brand = analysis.get("self_brand") or {}
+                identity_status = str(self_brand.get("identity_status") or "").lower()
+                quote = f"{self_brand.get('evidence_quote') or ''} {self_brand.get('missing_reason') or ''}"
+                uncertain_markers = (
+                    "无法确认具体", "无法确认你", "无法确认该", "并不是一个广为人知", "不是一个广为人知",
+                    "大概率是", "笔误", "非标准行业术语", "信息相对有限", "无法获取该企业",
+                    "不太像", "名字不够知名", "不够知名", "不是头部品牌", "区域性品牌", "新兴品牌",
+                    "品牌本身知名度不高", "听起来像", "通常指的是采用", "这类材质",
+                )
+                # Legacy extractions predate identity_status.  Treat their
+                # self-brand "missing" rows conservatively until re-parsed;
+                # a name-only mention must not silently become exposure.
+                if (not identity_status) or identity_status in {"unconfirmed", "ambiguous", "unknown"} or any(marker in quote for marker in uncertain_markers):
+                    d["mention_type"] = "unconfirmed"
             out.append(d)
         return out
 
@@ -233,7 +261,7 @@ def matrix(
     mentions = _filter_mentions(mentions, company, tenant)
     for m in mentions:
         subject = m.get("subject_company") or company or ""
-        if m["mention_type"] == "missing":
+        if m["mention_type"] in {"missing", "unconfirmed"}:
             missing_notes.append(
                 {"brand": m["brand_name"], "quote": m["evidence_quote"], "subject_company": subject}
             )
@@ -390,10 +418,15 @@ def brand_overview(
     total = len(ev_ids)
     brand_ev: dict[str, set] = {}
     self_brands: set[str] = set()
+    self_unconfirmed: dict[str, set] = {}
     for m in mentions:
+        subject = m.get("subject_company") or company or ""
+        if m["mention_type"] == "unconfirmed":
+            if _is_self(m["brand_name"], subject):
+                self_unconfirmed.setdefault(m["brand_name"], set()).add(m["evidence_id"])
+            continue
         if m["mention_type"] == "missing":
             continue  # missing 是"提到但未推荐"，不算正面提及；单独统计
-        subject = m.get("subject_company") or company or ""
         if _is_self(m["brand_name"], subject):
             self_brands.add(m["brand_name"])
         brand_ev.setdefault(m["brand_name"], set()).add(m["evidence_id"])
@@ -405,6 +438,23 @@ def brand_overview(
                 "is_self": name in self_brands,
                 "mentions": len(evs),
                 "rate": round(len(evs) / total * 100, 1) if total else 0.0,
+                "unconfirmed_count": len(self_unconfirmed.get(name, set())),
+                "identity_status": "unconfirmed" if self_unconfirmed.get(name) and not evs else "confirmed",
+            }
+        )
+    # Keep the selected subject visible when every apparent mention was an
+    # identity failure; an empty brand list would look like no data at all.
+    for name, evs in self_unconfirmed.items():
+        if name in {row["name"] for row in brands}:
+            continue
+        brands.append(
+            {
+                "name": name,
+                "is_self": True,
+                "mentions": 0,
+                "rate": 0.0,
+                "unconfirmed_count": len(evs),
+                "identity_status": "unconfirmed",
             }
         )
     return {
@@ -440,12 +490,16 @@ def share_of_voice(
     brand_mention_n: dict[str, int] = {}
     brand_reco_n: dict[str, int] = {}
     brand_missing_n: dict[str, int] = {}
+    brand_unconfirmed_n: dict[str, int] = {}
     self_brands: set[str] = set()
     for m in mentions:
         name = m["brand_name"]
         subject = m.get("subject_company") or company or ""
         if _is_self(name, subject):
             self_brands.add(name)
+        if m["mention_type"] == "unconfirmed":
+            brand_unconfirmed_n[name] = brand_unconfirmed_n.get(name, 0) + 1
+            continue
         brand_mention_n[name] = brand_mention_n.get(name, 0) + 1
         if m["mention_type"] == "missing":
             brand_missing_n[name] = brand_missing_n.get(name, 0) + 1
@@ -468,13 +522,29 @@ def share_of_voice(
             "recommend_count": rn,
             "recommend_share": round(rn / total_reco * 100, 1) if total_reco else 0.0,
             "missing_count": xn,
+            "unconfirmed_count": brand_unconfirmed_n.get(name, 0),
+            "identity_status": "unconfirmed" if brand_unconfirmed_n.get(name) and not mn else "confirmed",
+        })
+    for name, count in brand_unconfirmed_n.items():
+        if name in brand_mention_n:
+            continue
+        brands.append({
+            "brand": name,
+            "is_self": True,
+            "mention_count": 0,
+            "mention_share": 0.0,
+            "recommend_count": 0,
+            "recommend_share": 0.0,
+            "missing_count": 0,
+            "unconfirmed_count": count,
+            "identity_status": "unconfirmed",
         })
     brands.sort(key=lambda b: -b["recommend_share"])
 
     # 趋势：按周窗口推荐份额（mention.created_at）
     week_map: dict[str, dict[str, int]] = {}  # 周 → {brand: reco_n}
     for m in mentions:
-        if m["mention_type"] == "missing":
+        if m["mention_type"] in {"missing", "unconfirmed"}:
             continue
         ts = m.get("created_at") or m.get("observed_at") or ""
         wk = str(ts)[:10]  # 简化：按天，日报趋势；周报可后续聚周

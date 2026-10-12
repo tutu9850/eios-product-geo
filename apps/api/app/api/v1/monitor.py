@@ -64,6 +64,7 @@ def _save_pool(pool: dict) -> None:
 class MonitorCheckIn(BaseModel):
     question: str
     company_name: str | None = None
+    monitor_id: str | None = None  # 选中的企业品牌；Quick Check 不再猜第一个品牌
     engines: list[str] | None = None  # 默认全部引擎
     full: bool = False  # True 时返回完整回答（对战页用）
 
@@ -110,7 +111,7 @@ def _brand_scope_options() -> list[dict]:
             "name": (i.get("config_json") or {}).get("company") or i.get("entity") or "未命名品牌",
         }
         for i in _load_items()
-        if i.get("type") == "brand" and i.get("status") != "archived" and i.get("monitor_id")
+        if i.get("type") == "brand" and (i.get("status") or "active") == "active" and i.get("monitor_id")
     ]
 
 
@@ -118,7 +119,20 @@ ALL_SUBJECTS = "all"
 
 
 def _active_brands() -> list[dict]:
-    return [i for i in _load_items() if i.get("type") == "brand" and i.get("status") != "archived"]
+    # Older persisted MonitorItems may omit status; treat that legacy row as
+    # active for read aggregation while still excluding explicit paused/
+    # archived rows.  This does not change management state.
+    return [i for i in _load_items() if i.get("type") == "brand" and (i.get("status") or "active") == "active"]
+
+
+def _active_brand_ids() -> set[str]:
+    """IDs used by an explicit ``all`` analytics scope.
+
+    ``all`` means all enabled enterprise brand subjects, never every historical
+    product/competitor probe in the account.  Keeping this as a read helper
+    leaves MonitorItem management and its persisted statuses untouched.
+    """
+    return {str(item.get("monitor_id")) for item in _active_brands() if item.get("monitor_id")}
 
 
 def _resolve_subject_scope(monitor_id: str | None) -> tuple[str | None, bool]:
@@ -139,6 +153,44 @@ def _resolve_subject_scope(monitor_id: str | None) -> tuple[str | None, bool]:
     if not brands:
         return None, False  # 一个企业品牌对象都没有：没什么可选，也没得统计
     return None, True
+
+
+def _analysis_brand_scope(monitor_id: str | None) -> dict:
+    """Resolve the shared analytics subject selector to active brand rows.
+
+    The six analysis views share the same brand picker, but the underlying
+    observations for competitor and industry probes live on their own
+    MonitorItems.  Keep the translation at this read boundary: a selected
+    brand limits the related probe objects, while ``all`` limits them to
+    objects belonging to any active brand.  This helper intentionally does
+    not mutate or validate MonitorItem management state beyond the existing
+    active read scope.
+    """
+    picked = str(monitor_id or "").strip()
+    resolved, scope_required = _resolve_subject_scope(monitor_id)
+    brands = _active_brands()
+    if scope_required:
+        selected: list[dict] = []
+    elif resolved:
+        selected = [row for row in brands if row.get("monitor_id") == resolved]
+    else:
+        selected = brands
+    return {
+        "requested": picked or None,
+        "monitor_id": "all" if picked.lower() == ALL_SUBJECTS else resolved,
+        "monitor_ids": {str(row.get("monitor_id")) for row in selected if row.get("monitor_id")},
+        "brands": selected,
+        "scope_required": scope_required,
+    }
+
+
+def _analysis_scope_payload(scope: dict) -> dict:
+    """Common scope metadata for the non-brand analysis endpoints."""
+    return {
+        "monitor_id": scope.get("monitor_id"),
+        "scope_required": bool(scope.get("scope_required")),
+        "brands": _brand_scope_options(),
+    }
 
 
 def _inclusive_end_boundary(value: str | None) -> str | None:
@@ -769,6 +821,10 @@ _NON_RECOGNITION_WORDS = (
 # Uncertainty about the entity or about whether the answer can make a judgment
 # should not become a negative review. Specific praise/criticism still wins.
 _UNCERTAIN_ENTITY_RES = (
+    # A model that says “usually means X or a similar name” has not resolved the
+    # canonical subject.  Keep the whole answer as an observation, but do not let
+    # its generic praise/criticism become a fact about the monitored company.
+    re.compile(r"(?:通常|一般|可能|疑似|大概率|很可能)(?:指|是|为)?[^。！？\n]{0,60}(?:或类似|类似名称|同名(?:品牌|企业)|其他(?:品牌|企业)|笔误|误写|错别字|打字错误|区域性(?:的)?(?:品牌|企业|实体店))"),
     re.compile(r"(?:可能|或许|也许)(?:只是|是|为|属于)?[^。！？\n]{0,24}(?:线上品牌|区域性(?:的)?(?:品牌|实体店)|实体店|网店|店铺名称|店铺名|平台店铺)"),
     re.compile(r"无法给出[^。！？\n]{0,12}(?:绝对|明确)?[^。！？\n]{0,4}(?:是或否|结论)"),
     re.compile(r"(?:无法|难以|不能)判断(?:是否|它|其|该品牌)?[^。！？\n]{0,12}(?:靠谱|可靠|口碑|放心|值得|推荐)"),
@@ -903,10 +959,19 @@ def _analyze_answer(company_name: str | None, answer: str, aliases: list[str] | 
 def _reassess_history_engine(monitor_id: str | None, engine: dict, brand_items: dict[str, dict]) -> dict:
     """Re-run current entity/sentiment rules for stored full answers without mutating history."""
     brand = brand_items.get(monitor_id or "")
-    answer = engine.get("answer") or ""
+    # Quick Check and older history rows may only retain a snippet.  It is still
+    # the captured observation and must be used to re-check entity certainty;
+    # falling back to the stored recognition would preserve a stale false fact.
+    answer = engine.get("answer") or engine.get("snippet") or ""
     if brand and answer:
         cfg = brand.get("config_json") or {}
-        name = cfg.get("company") or brand.get("entity")
+        # Competitor monitor rows carry the monitored side in ``target`` while
+        # their display entity is often "我方 vs 竞品".  Reassessing against the
+        # display string would miss the canonical brand and preserve stale
+        # recognition from an older run.
+        name = cfg.get("company") or cfg.get("target") or brand.get("entity")
+        if isinstance(name, str) and " vs " in name:
+            name = name.split(" vs ", 1)[0].strip()
         aliases = cfg.get("aliases") or cfg.get("alias") or []
         return _analyze_answer(name, answer, aliases if isinstance(aliases, list) else [aliases])
 
@@ -1043,7 +1108,7 @@ async def history(limit: int = 20):
 
 
 @router.get("/competitor")
-async def competitor():
+async def competitor(monitor_id: str | None = None):
     """全智解析·竞品分析（0.4 升级）：从监测回答聚合竞争认知
 
     规则估算（诚实标注）：全部指标基于「回答文本词频 + 情感词」，
@@ -1052,9 +1117,43 @@ async def competitor():
 
     输出：胜负统计 / 归因词频 / 认知对比 / 能力矩阵（相对分）/ 竞争机会（snippet 溯源）
     """
+    scope = _analysis_brand_scope(monitor_id)
+    if scope["scope_required"]:
+        return ok({
+            "pairs": [],
+            "scope": _analysis_scope_payload(scope),
+            "note": "请选择一个启用中的企业品牌后再查看关联竞品探针。",
+        })
+
     hist = _load_history()
     items = _load_items()
-    comp_items = [i for i in items if i.get("type") == "competitor" and i.get("status") != "archived"]
+    # Competitor probes are separate MonitorItems.  Associate them to the
+    # selected active brand through the canonical target/company value; never
+    # fall back to every competitor object in the account.
+    brand_names: set[str] = set()
+    for brand in scope["brands"]:
+        cfg = brand.get("config_json") or {}
+        for value in [cfg.get("company"), brand.get("entity"), *(cfg.get("aliases") or [])]:
+            value = str(value or "").strip()
+            if value:
+                brand_names.add(value)
+
+    def _competitor_target(item: dict) -> str:
+        cfg = item.get("config_json") or {}
+        return str(cfg.get("company") or cfg.get("target") or item.get("entity") or "").strip()
+
+    active_competitors = [
+        i for i in items
+        if i.get("type") == "competitor" and (i.get("status") or "active") == "active"
+    ]
+    # A no-query legacy caller historically meant account-wide competitor
+    # analysis.  Preserve that read-only compatibility when there is no
+    # active brand metadata to associate; the Client always sends ``all`` or
+    # a concrete subject and therefore takes the scoped branch above.
+    if scope["requested"] is None and not brand_names:
+        comp_items = active_competitors
+    else:
+        comp_items = [i for i in active_competitors if _competitor_target(i) in brand_names]
 
     # 归因/矩阵用关键词表（词频估算）
     REASON_WORDS = [
@@ -1381,21 +1480,35 @@ async def competitor():
     return ok(
         {
             "pairs": rows,
+            "scope": _analysis_scope_payload(scope),
             "note": "提及与首次出现顺序不代表推荐偏好；缺少明确偏好判断时不判胜负。其余为回答文本词频估算，不代表 AI 真实观点",
         }
     )
 
 
 @router.get("/sources")
-async def sources():
+async def sources(monitor_id: str | None = None):
     """全智解析·信源分析：各 AI 引擎（信源）的表现排行
 
     规则估算（诚实标注）：从监测回答聚合每引擎的 提及率/正面率/回答数。
     """
+    scope = _analysis_brand_scope(monitor_id)
+    if scope["scope_required"]:
+        return ok({
+            "sources": [],
+            "scope": _analysis_scope_payload(scope),
+            "note": "请选择一个启用中的企业品牌后再比较模型差异。",
+        })
+
     hist = _load_history()
+    brand_ids = scope["monitor_ids"]
     per_engine: dict[str, dict] = {}
     for h in reversed(hist):
         for q in h.get("questions") or []:
+            # 信源差异只回答“品牌探针在哪些模型被看见”，不能把同账号的
+            # 行业/竞品/其他对象回答混进品牌分母。
+            if q.get("monitor_id") not in brand_ids:
+                continue
             for ed in q.get("engine_detail") or []:
                 # 2026-08-09 修复：空壳记录（未配置 key / 未真实回答，answer+snippet+mentioned 全空）
                 # 是"题库规模"占位，不是该引擎的真实回答——参与统计会伪造"123 条回答 0 提及"假象
@@ -1428,7 +1541,11 @@ async def sources():
             }
         )
     rows.sort(key=lambda x: (-x["mention_pct"], -x["total"]))
-    return ok({"sources": rows, "note": "规则估算：按监测回答聚合，非 LLM 精判"})
+    return ok({
+        "sources": rows,
+        "scope": _analysis_scope_payload(scope),
+        "note": "规则估算：按启用中的品牌监测回答聚合，非 LLM 精判",
+    })
 
 
 @router.get("/answers")
@@ -1442,8 +1559,11 @@ async def answers(limit: int = 100, item_type: str | None = None, page: int = 1,
     """
     hist = _load_history()
     all_items = _load_items()
-    brand_items = {i.get("monitor_id"): i for i in all_items
-                    if i.get("type") == "brand" and i.get("monitor_id")}
+    # Reassess every persisted monitor subject, not only primary brand rows.
+    # Competitor/product probes carry their canonical target in config_json and
+    # can also contain ambiguous entity answers; falling back to the stored
+    # mentioned/sentiment flags would let a stale false fact leak into reports.
+    brand_items = {i.get("monitor_id"): i for i in all_items if i.get("monitor_id")}
     # Paginate by observation group (monitor + batch + probe), never by engine row:
     # the six platform answers for one question must travel together.
     size = max(1, min(page_size if page_size is not None else limit, 100))
@@ -1515,10 +1635,25 @@ async def check(payload: MonitorCheckIn):
     if not question:
         return ok({"question": question, "company_name": payload.company_name, "results": [], "summary": None})
 
+    company_name = payload.company_name
+    aliases: list[str] = []
+    if payload.monitor_id:
+        target = next((item for item in _load_items() if item.get("monitor_id") == payload.monitor_id), None)
+        if not target or target.get("type") != "brand":
+            return err("invalid_input", "即时监测必须选择已登记的企业品牌主体")
+        if (target.get("status") or "active") != "active":
+            return err("invalid_input", "选中的企业品牌主体当前未启用")
+        cfg = target.get("config_json") or {}
+        company_name = (cfg.get("company") or target.get("entity") or "").strip()
+        raw_aliases = cfg.get("aliases") or cfg.get("alias") or []
+        aliases = raw_aliases if isinstance(raw_aliases, list) else [raw_aliases]
+        if not company_name:
+            return err("invalid_input", "选中的企业品牌主体没有公司名")
+
     from adapters.engines import EngineFaceError
 
     try:
-        results = await _run_check(question, payload.company_name, payload.engines, payload.full)
+        results = await _run_check(question, company_name, payload.engines, payload.full, aliases=aliases)
     except EngineFaceError as exc:
         return err(exc.code, exc.message)
     summary = _summarize(results)
@@ -1539,7 +1674,8 @@ async def check(payload: MonitorCheckIn):
         {
             "id": f"h_{uuid.uuid4().hex[:12]}",
             "question": question,
-            "company_name": payload.company_name,
+            "company_name": company_name,
+            "monitor_id": payload.monitor_id,
             "summary": summary,
             "engine_detail": [
                 {
@@ -1551,11 +1687,30 @@ async def check(payload: MonitorCheckIn):
                 }
                 for r in results
             ],
+            # Keep one history shape for Quick Check and batch monitor runs so
+            # the same evidence adapter can ingest both without guessing scope.
+            "questions": [{
+                "monitor_id": payload.monitor_id,
+                "item_type": "brand" if payload.monitor_id else "question",
+                "query_id": f"quick_{uuid.uuid4().hex[:10]}",
+                "question": question,
+                "engine_detail": [
+                    {
+                        "engine_name": r.get("engine_name"),
+                        "mentioned": r.get("mentioned"),
+                        "rank_est": r.get("rank_est"),
+                        "sentiment": r.get("sentiment"),
+                        "snippet": (r.get("snippet") or "")[:240],
+                        "answer": r.get("answer") or r.get("snippet") or "",
+                    }
+                    for r in results
+                ],
+            }],
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
     )
 
-    return ok({"question": question, "company_name": payload.company_name, "results": results, "summary": summary})
+    return ok({"question": question, "company_name": company_name, "monitor_id": payload.monitor_id, "results": results, "summary": summary})
 
 
 @router.post("/batch")
@@ -1906,12 +2061,23 @@ async def export_report():
 
 
 @router.get("/citations")
-async def list_citations(limit: int = 10):
+async def list_citations(limit: int = 10, monitor_id: str | None = None):
     """被 AI 引用的内容 Top N（S2：聚合 history batch 条目的 citations 字段）"""
     items = _load_history()
     agg: dict[str, dict] = {}
     for h in items:
-        for c in h.get("citations") or []:
+        # 全账号历史保留了 batch 级 citations；主体筛选必须下钻到问题级，
+        # 否则选择某一家企业后仍会把其他主体被引用的内容混进来。
+        if monitor_id and monitor_id.lower() != "all":
+            citations = [
+                c
+                for q in (h.get("questions") or [])
+                if str(q.get("monitor_id") or "") == monitor_id
+                for c in (q.get("citations") or [])
+            ]
+        else:
+            citations = h.get("citations") or []
+        for c in citations:
             mid = c.get("material_id")
             if not mid:
                 continue
@@ -2207,8 +2373,49 @@ async def rank_sentiment():
     return ok(_aggregate_rank_sentiment(_load_history()))
 
 
+def _identity_gate_for_monitor_ids(monitor_ids: set[str]) -> str | None:
+    """Return the controlled identity state for a selected monitor scope.
+
+    The legacy monitor history can still contain a name-only mention. Once a
+    subject has entered the controlled extraction path, the overview must use
+    the same identity gate as Intelligence. A missing/old identity field is
+    fail-closed; no extraction rows means the legacy compatibility path.
+    """
+    ids = {str(value).strip() for value in monitor_ids if value}
+    if not ids:
+        return None
+    try:
+        from app.models.geo_models import GeoExtraction, SessionLocal, init_db
+
+        init_db()
+        with SessionLocal() as db:
+            rows = (
+                db.query(GeoExtraction.status, GeoExtraction.analysis_json)
+                .filter(GeoExtraction.monitor_id.in_(ids), GeoExtraction.source_type == "ai_answer")
+                .all()
+            )
+    except Exception:
+        # Identity gating must never make the legacy endpoint fail.
+        return None
+    succeeded = [row for row in rows if row.status == "succeeded"]
+    if not succeeded:
+        return None
+    for row in succeeded:
+        try:
+            analysis = json.loads(row.analysis_json or "{}") if isinstance(row.analysis_json, str) else (row.analysis_json or {})
+        except (TypeError, json.JSONDecodeError):
+            analysis = {}
+        self_brand = analysis.get("self_brand") or {}
+        # Pre-identity extraction rows deliberately fail closed. Repeating the
+        # requested name inside a generic answer is an observation, not proof
+        # that the answer describes the selected enterprise.
+        if str(self_brand.get("identity_status") or "").lower() != "confirmed":
+            return "unconfirmed"
+    return "confirmed"
+
+
 def _aggregate_overview(items: list[dict], monitor_id: str | None = None,
-                        scope_required: bool = False) -> dict:
+                        scope_required: bool = False, monitor_ids: set[str] | None = None) -> dict:
     """数据总览四指标 + 分平台趋势（驾驶舱）
 
     指标口径（冻结，见产品目标 V2 第四节；语义 08-08 拍板=提及率）：
@@ -2230,15 +2437,17 @@ def _aggregate_overview(items: list[dict], monitor_id: str | None = None,
                       "citations_attribution_available": False},
         }
 
-    if monitor_id:
-        brand_items = {i.get("monitor_id"): i for i in _load_items()
-                       if i.get("type") == "brand" and i.get("monitor_id")}
+    if monitor_id or monitor_ids is not None:
+        scope_ids = set(monitor_ids or ())
+        if monitor_id:
+            scope_ids.add(monitor_id)
+        subject_items = {i.get("monitor_id"): i for i in _load_items() if i.get("monitor_id")}
         scoped_history: list[dict] = []
         scoped_citations = 0
         for h in items:
             if not h.get("batch"):
                 continue
-            selected_questions = [q for q in (h.get("questions") or []) if q.get("monitor_id") == monitor_id]
+            selected_questions = [q for q in (h.get("questions") or []) if q.get("monitor_id") in scope_ids]
             if not selected_questions:
                 continue
             scoped_qs = []
@@ -2251,7 +2460,7 @@ def _aggregate_overview(items: list[dict], monitor_id: str | None = None,
                 q_ranks: list[float] = []
                 q_sentiment = {"positive": 0, "negative": 0, "neutral": 0}
                 for er in q.get("engine_detail") or []:
-                    assessed = _reassess_history_engine(monitor_id, er, brand_items)
+                    assessed = _reassess_history_engine(q.get("monitor_id"), er, subject_items)
                     er2 = {**er, **assessed}
                     engines.append(er2)
                     has_answer = bool(er.get("answer") or er.get("snippet") or er.get("mentioned") is not None)
@@ -2291,8 +2500,20 @@ def _aggregate_overview(items: list[dict], monitor_id: str | None = None,
         result["citations_count"] = scoped_citations
         result["cite_rate"] = None  # citation asset IDs are not stored per monitor question.
         result["cited_count"] = None
+        identity_gate = _identity_gate_for_monitor_ids(scope_ids)
+        identity_note = None
+        if identity_gate == "unconfirmed":
+            # Keep raw observations in the report page, but do not publish
+            # deterministic overview numbers until the selected subject has a
+            # confirmed identity in the controlled extraction path.
+            result["recommend"] = {"value": None, "delta": None}
+            result["rank"] = {"value": None, "delta": None}
+            result["platforms"] = {}
+            result["questions"] = []
+            identity_note = "已有回答，但还不能确认对应的是哪家企业；先完成回答理解后再显示品牌表现。"
         result["scope"] = {"monitor_id": monitor_id, "scope_required": False,
-                           "brands": _brand_scope_options(), "citations_attribution_available": False}
+                           "brands": _brand_scope_options(), "citations_attribution_available": False,
+                           "identity_status": identity_gate, "identity_note": identity_note}
         return result
 
     batches = [h for h in items if h.get("batch")]
@@ -2388,12 +2609,18 @@ def _aggregate_overview(items: list[dict], monitor_id: str | None = None,
 @router.get("/overview")
 async def overview(monitor_id: str | None = None):
     """P0：数据总览驾驶舱四指标 + 分平台趋势"""
+    requested = str(monitor_id or "").strip().lower()
+    if requested == ALL_SUBJECTS:
+        result = _aggregate_overview(_load_history(), scope_required=False, monitor_ids=_active_brand_ids())
+        result["scope"] = {**result.get("scope", {}), "monitor_id": ALL_SUBJECTS, "brands": _brand_scope_options()}
+        return ok(result)
     resolved, scope_required = _resolve_subject_scope(monitor_id)
     return ok(_aggregate_overview(_load_history(), resolved, scope_required))
 
 
 def _aggregate_public_opinion(items: list[dict], monitor_id: str | None = None, start_at: str | None = None,
-                             end_at: str | None = None, scope_required: bool = False) -> dict:
+                             end_at: str | None = None, scope_required: bool = False,
+                             monitor_ids: set[str] | None = None) -> dict:
     """舆情分析页（对齐竞品 7 区块）：健康分 + 四指标 + 趋势 + 平台分布 + 高风险 top3 + 明细
 
     数据源：history 的 engine_detail（单次 check + batch questions 明细都算），
@@ -2408,7 +2635,9 @@ def _aggregate_public_opinion(items: list[dict], monitor_id: str | None = None, 
     - 高风险 top3 = 负面回答最多的问题
     - 明细 = 逐条（question/platform/sentiment/ts），按时间倒序
     """
-    records, unknown_count = ([], 0) if scope_required else _collect_sentiment_data(items, monitor_id, start_at, end_at)
+    records, unknown_count = ([], 0) if scope_required else _collect_sentiment_data(
+        items, monitor_id, start_at, end_at, monitor_ids
+    )
     total = len(records)
     neg = sum(1 for r in records if r["sentiment"] == "negative")
     pos = sum(1 for r in records if r["sentiment"] == "positive")
@@ -2429,8 +2658,7 @@ def _aggregate_public_opinion(items: list[dict], monitor_id: str | None = None, 
 
     # 趋势：逐 batch 负面占比（有负面或总数>0 的批次才画点）
     trend: list[dict] = []
-    brands = {i.get("monitor_id"): i for i in _load_items()
-              if i.get("type") == "brand" and i.get("monitor_id")}
+    brands = {i.get("monitor_id"): i for i in _load_items() if i.get("monitor_id")}
     for h in items:
         if not h.get("batch"):
             continue
@@ -2441,6 +2669,7 @@ def _aggregate_public_opinion(items: list[dict], monitor_id: str | None = None, 
             assessment
             for qi in (h.get("questions") or [])
             if not monitor_id or qi.get("monitor_id") == monitor_id
+            if monitor_ids is None or qi.get("monitor_id") in monitor_ids
             for er in (qi.get("engine_detail") or [])
             for assessment in [_reassess_history_engine(qi.get("monitor_id"), er, brands)]
             if assessment.get("sentiment_status") != "unknown" and assessment.get("sentiment") is not None
@@ -2502,14 +2731,23 @@ def _aggregate_public_opinion(items: list[dict], monitor_id: str | None = None, 
 @router.get("/public-opinion")
 async def public_opinion(monitor_id: str | None = None, start_at: str | None = None, end_at: str | None = None):
     """P1：舆情分析页（健康分 + 四指标 + 趋势 + 平台分布 + 高风险 top3 + 明细）"""
-    monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+    requested = str(monitor_id or "").strip().lower()
+    if requested == ALL_SUBJECTS:
+        active_ids = _active_brand_ids()
+        monitor_id, scope_required, monitor_ids = None, False, active_ids
+    else:
+        monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+        monitor_ids = None
     end_at = _inclusive_end_boundary(end_at)
-    return ok(_aggregate_public_opinion(_load_history(), monitor_id, start_at, end_at, scope_required))
+    result = _aggregate_public_opinion(_load_history(), monitor_id, start_at, end_at, scope_required, monitor_ids)
+    if requested == ALL_SUBJECTS:
+        result["scope"] = {**result.get("scope", {}), "monitor_id": ALL_SUBJECTS, "brands": _brand_scope_options()}
+    return ok(result)
 
 
 # ── P1-6：行业分析（2026-08-08 新增） ─────────────────────
 @router.get("/industry")
-async def industry():
+async def industry(monitor_id: str | None = None):
     """全智解析·行业分析：从行业/关键词监测对象回答聚合行业格局
 
     数据源：type=keyword（行业）监测对象的回答文本。
@@ -2517,9 +2755,48 @@ async def industry():
     统计各企业被 AI 提及的次数与占比；提及≠推荐/好评，非 LLM 精判。
     无行业对象 → 空态引导去监测中心建行业对象。
     """
+    scope = _analysis_brand_scope(monitor_id)
+    if scope["scope_required"]:
+        return ok({
+            "industry": None,
+            "objects": 0,
+            "total_answers": 0,
+            "total_mention": 0,
+            "players": [],
+            "empty": True,
+            "scope": _analysis_scope_payload(scope),
+            "note": "请选择一个启用中的企业品牌后再查看行业提及。",
+            "hint": "行业分析需要关联该品牌的行业/关键词监测对象。",
+        })
+
     hist = _load_history()
     items = _load_items()
-    kw_items = [i for i in items if i.get("type") == "keyword" and i.get("status") != "archived"]
+    # Keyword probes are separate MonitorItems and currently carry the
+    # industry value rather than a parent brand id.  Match them against the
+    # selected active brand's configured industry; this prevents another
+    # brand's unrelated keyword probe from leaking into the view.
+    industries: set[str] = set()
+    for brand in scope["brands"]:
+        cfg = brand.get("config_json") or {}
+        value = str(cfg.get("industry") or "").strip()
+        if value:
+            industries.add(value)
+
+    def _keyword_value(item: dict) -> str:
+        cfg = item.get("config_json") or {}
+        return str(cfg.get("keyword") or item.get("entity") or "").strip()
+
+    active_keywords = [
+        i for i in items
+        if i.get("type") == "keyword" and (i.get("status") or "active") == "active"
+    ]
+    # Keep the historical no-query endpoint useful for legacy rows that have
+    # no brand industry metadata.  Explicit subject selections remain strict:
+    # an unlinked keyword object is not silently attributed to that brand.
+    if scope["requested"] is None and not industries:
+        kw_items = active_keywords
+    else:
+        kw_items = [i for i in active_keywords if _keyword_value(i) in industries]
 
     # 候选企业名：所有 competitor 对象的竞品名 + 我方公司名 + 通用特征后缀
     cands: dict[str, str] = {}  # 名称 → 类别（self/competitor）
@@ -2589,19 +2866,18 @@ async def industry():
         "players": rows[:15],
         "note": "规则估算：每条回答中识别到企业名即记 1 次提及，并保留回答原文；同一回答重复出现不重复计数。提及≠推荐/好评，也不代表真实市场份额。",
         "empty": not kw_items,
-        "hint": "暂无行业监测对象——先在监测中心建「行业/关键词」对象（如：工业AI质检）后跑监测" if not kw_items else None,
+        "hint": "暂无该品牌关联的行业监测对象——先在监测中心建「行业/关键词」对象后跑监测" if not kw_items else None,
+        "scope": _analysis_scope_payload(scope),
     })
 
 
 def _collect_sentiment_data(items: list[dict], monitor_id: str | None = None,
-                            start_at: str | None = None, end_at: str | None = None) -> tuple[list[dict], int]:
+                            start_at: str | None = None, end_at: str | None = None,
+                            monitor_ids: set[str] | None = None) -> tuple[list[dict], int]:
     """Reassess full brand answers and return classifiable records plus unknown count."""
     records: list[dict] = []
     unknowns: list[dict] = []
-    brands = {
-        i.get("monitor_id"): i for i in _load_items()
-        if i.get("type") == "brand" and i.get("monitor_id")
-    }
+    brands = {i.get("monitor_id"): i for i in _load_items() if i.get("monitor_id")}
 
     def add(mid: str | None, question: str | None, engine: dict, ts: str) -> None:
         assessment = _reassess_history_engine(mid, engine, brands)
@@ -2624,10 +2900,12 @@ def _collect_sentiment_data(items: list[dict], monitor_id: str | None = None,
                 mid = qi.get("monitor_id")
                 if monitor_id and mid != monitor_id:
                     continue
+                if monitor_ids is not None and mid not in monitor_ids:
+                    continue
                 for er in qi.get("engine_detail") or []:
                     add(mid, qi.get("question") or qi.get("query"), er, ts)
         else:
-            if monitor_id:
+            if monitor_id or monitor_ids is not None:
                 continue  # Standalone checks have no monitor_id and cannot be attributed safely.
             for er in h.get("engine_detail") or []:
                 add(None, h.get("question"), er, ts)
@@ -2715,7 +2993,8 @@ def _negative_top_words(records: list[dict], monitor_id: str | None = None) -> l
 
 
 def _aggregate_sentiment(items: list[dict], monitor_id: str | None = None, start_at: str | None = None,
-                         end_at: str | None = None, scope_required: bool = False) -> dict:
+                         end_at: str | None = None, scope_required: bool = False,
+                         monitor_ids: set[str] | None = None) -> dict:
     """评价分析页（对齐竞品）：占比 + 趋势 + 用户意图维度 + 负面高频词
 
     数据源：history engine_detail（sentiment 非 None = AI 提到企业）。
@@ -2724,7 +3003,9 @@ def _aggregate_sentiment(items: list[dict], monitor_id: str | None = None, start
     - 用户意图维度：每问题 正/负/中 计数 + 倾向
     - 负面高频词：负面回答 snippet 里重复出现的 2-4 字词（最长优先、不重叠；只列出现过 ≥2 次的）
     """
-    records, unknown_count = ([], 0) if scope_required else _collect_sentiment_data(items, monitor_id, start_at, end_at)
+    records, unknown_count = ([], 0) if scope_required else _collect_sentiment_data(
+        items, monitor_id, start_at, end_at, monitor_ids
+    )
 
     pos = sum(1 for r in records if r["sentiment"] == "positive")
     neg = sum(1 for r in records if r["sentiment"] == "negative")
@@ -2736,8 +3017,7 @@ def _aggregate_sentiment(items: list[dict], monitor_id: str | None = None, start
 
     # 趋势：逐批次
     trend: list[dict] = []
-    brands = {i.get("monitor_id"): i for i in _load_items()
-              if i.get("type") == "brand" and i.get("monitor_id")}
+    brands = {i.get("monitor_id"): i for i in _load_items() if i.get("monitor_id")}
     for h in items:
         ts = h.get("created_at") or h.get("ts", "")
         if start_at and ts < start_at or end_at and ts > end_at:
@@ -2746,6 +3026,7 @@ def _aggregate_sentiment(items: list[dict], monitor_id: str | None = None, start
             assessment
             for qi in (h.get("questions") or [])
             if not monitor_id or qi.get("monitor_id") == monitor_id
+            if monitor_ids is None or qi.get("monitor_id") in monitor_ids
             for er in (qi.get("engine_detail") or [])
             for assessment in [_reassess_history_engine(qi.get("monitor_id"), er, brands)]
             if assessment.get("sentiment_status") != "unknown" and assessment.get("sentiment") is not None
@@ -2816,9 +3097,18 @@ def _aggregate_sentiment(items: list[dict], monitor_id: str | None = None, start
 @router.get("/sentiment")
 async def sentiment(monitor_id: str | None = None, start_at: str | None = None, end_at: str | None = None):
     """P1：评价分析页（占比 + 趋势 + 用户意图维度 + 负面高频词）"""
-    monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+    requested = str(monitor_id or "").strip().lower()
+    if requested == ALL_SUBJECTS:
+        active_ids = _active_brand_ids()
+        monitor_id, scope_required, monitor_ids = None, False, active_ids
+    else:
+        monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+        monitor_ids = None
     end_at = _inclusive_end_boundary(end_at)
-    return ok(_aggregate_sentiment(_load_history(), monitor_id, start_at, end_at, scope_required))
+    result = _aggregate_sentiment(_load_history(), monitor_id, start_at, end_at, scope_required, monitor_ids)
+    if requested == ALL_SUBJECTS:
+        result["scope"] = {**result.get("scope", {}), "monitor_id": ALL_SUBJECTS, "brands": _brand_scope_options()}
+    return ok(result)
 
 
 # ── P1-5：事实分析（监测侧失真检测，对齐竞品"基于知识库识别 AI 回复失真"） ──
@@ -2911,7 +3201,8 @@ async def _check_answer_facts(company_name: str, snippet: str, question: str) ->
         return {"checked": False, "abnormal": False, "reason": "知识库不可用", "knowledge_ok": False}
 
 
-def _aggregate_fact_check(items: list[dict], company_name: str | None = None) -> dict:
+def _aggregate_fact_check(items: list[dict], company_name: str | None = None,
+                          monitor_ids: set[str] | None = None) -> dict:
     """事实分析页聚合：命中库/异常回复/关联意图/关联信源 + 排行 + 明细
 
     数据源：history 中 AI 提到企业的回答（mentioned=True 且 sentiment 非 None 的记录
@@ -2920,7 +3211,10 @@ def _aggregate_fact_check(items: list[dict], company_name: str | None = None) ->
     """
     try:
         brand_items = {i.get("monitor_id"): i for i in _load_items()
-                       if i.get("type") == "brand" and i.get("status") != "archived"}
+                       if i.get("type") == "brand"
+                       and (i.get("status") or "active") == "active"
+                       and i.get("monitor_id")
+                       and (monitor_ids is None or i.get("monitor_id") in monitor_ids)}
     except Exception:  # noqa: BLE001
         brand_items = {}
 
@@ -2953,12 +3247,18 @@ def _aggregate_fact_check(items: list[dict], company_name: str | None = None) ->
 async def fact_check(monitor_id: str | None = None):
     """P1-5：事实分析页（基于知识库识别 AI 回复失真：命中/异常/排行/明细）"""
     items = _load_history()
-    base = _aggregate_fact_check(items)
+    requested = str(monitor_id or "").strip().lower()
+    all_scope_ids = _active_brand_ids() if requested == ALL_SUBJECTS else None
+    base = (_aggregate_fact_check(items, monitor_ids=all_scope_ids)
+            if requested == ALL_SUBJECTS else _aggregate_fact_check(items))
 
     # Never pick the first brand and apply it to every history row. A missing selector is
     # resolved only when there is exactly one active brand; ambiguous accounts return no sample.
-    monitor_id, scope_required = _resolve_subject_scope(monitor_id)
-    brand_items = [i for i in _load_items() if i.get("type") == "brand" and i.get("status") != "archived"]
+    if requested == ALL_SUBJECTS:
+        monitor_id, scope_required = None, False
+    else:
+        monitor_id, scope_required = _resolve_subject_scope(monitor_id)
+    brand_items = [i for i in _load_items() if i.get("type") == "brand" and (i.get("status") or "active") == "active"]
     selected_brand = next((i for i in brand_items if i.get("monitor_id") == monitor_id), None) if monitor_id else None
     if monitor_id:
         entity = ((selected_brand or {}).get("config_json") or {}).get("company") or (selected_brand or {}).get("entity")
@@ -2967,6 +3267,9 @@ async def fact_check(monitor_id: str | None = None):
     elif scope_required:
         base["records"] = []
         base["company_name"] = None
+
+    if requested == ALL_SUBJECTS:
+        base["scope_monitor_id"] = ALL_SUBJECTS
 
     # 并发检测每条回答（企业知识库检索）——限前 10 条 + 并发 2（Ollama embedding ~4s/次，12s/检索）
     candidates = sorted(base["records"], key=lambda r: r.get("ts", ""), reverse=True)
@@ -3073,9 +3376,9 @@ async def fact_check(monitor_id: str | None = None):
         "question_rank": question_rank,
         "details": details[:100],
         "detail_total": len(details),
-        "monitor_id": monitor_id,
+        "monitor_id": base.get("scope_monitor_id", monitor_id),
         "scope_required": scope_required,
-        "scope": {"monitor_id": monitor_id, "scope_required": scope_required,
+        "scope": {"monitor_id": base.get("scope_monitor_id", monitor_id), "scope_required": scope_required,
                   "brands": _brand_scope_options()},
     })
 

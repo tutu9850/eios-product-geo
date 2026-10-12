@@ -310,7 +310,13 @@ def compare(
     # dim_map[dimension][brand] = [{evidence_id, mention_type, factor, quote, intent}...]
     dim_map: dict[str, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
     all_brands: set[str] = set()
+    unconfirmed_self_evidence: dict[str, set[str]] = {}
     for m in mentions:
+        if m["mention_type"] == "unconfirmed":
+            subject = m.get("subject_company") or company or ""
+            if aggregator._is_self(m.get("brand_name") or "", subject):
+                unconfirmed_self_evidence.setdefault(m.get("brand_name") or subject, set()).add(m["evidence_id"])
+            continue
         if m["mention_type"] == "missing":
             # missing（提到但未推荐）也是曝光：必须进品牌表，否则曝光率/样本量算错
             # （云启 18 条提及全是 missing → 之前被跳过 → 商业概览曝光 0%）
@@ -345,6 +351,10 @@ def compare(
                 sub_counts[sc] = sub_counts.get(sc, 0) + 1
         if sub_counts:
             subject = max(sub_counts, key=sub_counts.get)
+    if subject and unconfirmed_self_evidence:
+        # Preserve a zeroed selected-brand row so the UI can explain identity
+        # uncertainty instead of rendering an empty dataset.
+        all_brands.add(subject)
 
     # ── 构建认知矩阵 ──
     matrix_rows: list[dict] = []
@@ -441,11 +451,17 @@ def compare(
                 {"name": _brand, "is_self": aggregator._is_self(_brand, subject), "all_mentions": []},
             )
             _st["all_mentions"].extend(_ms)
+    for _brand in all_brands:
+        total_brand_stats.setdefault(
+            _brand,
+            {"name": _brand, "is_self": aggregator._is_self(_brand, subject), "all_mentions": []},
+        )
     for brand in sorted(all_brands):
         if brand not in total_brand_stats:
             continue  # 防御：无任何统计的品牌跳过（不应发生）
         brand_mentions_list = total_brand_stats[brand]["all_mentions"]
         levels = _cognition_levels(brand_mentions_list, intents)
+        unconfirmed_count = len(unconfirmed_self_evidence.get(brand, set()))
         # 认知状态（取最高态）
         states = [_cognition_state(_mention_level(m["mention_type"]),
                                    intents.get(m["evidence_id"], "other"))
@@ -470,8 +486,10 @@ def compare(
                 "recommended_evidence": levels["recommended"],
                 "mention_sample": levels["mention"],  # 样本量（公平分母标注）
                 "recommended_sample": levels["recommended"],
-                "exposure_rate": round(levels["mention"] / all_ev * 100, 1) if all_ev else 0.0,
-                "recommendation_rate": round(levels["recommended"] / all_ev * 100, 1) if all_ev else 0.0,
+                "exposure_rate": round(levels["mention"] / all_ev * 100, 1) if all_ev and not unconfirmed_count else None,
+                "recommendation_rate": round(levels["recommended"] / all_ev * 100, 1) if all_ev and not unconfirmed_count else None,
+                "unconfirmed_count": unconfirmed_count,
+                "identity_status": "unconfirmed" if unconfirmed_count and not levels["mention"] else "confirmed",
                 # 提及内推荐率（GPT 评审 D2："被提及≠被推荐"——AI 知道你但不主动选你）
                 "recommend_in_mention": round(levels["recommended"] / levels["mention"] * 100, 1) if levels["mention"] else 0.0,
                 "factors": sorted(factor_prop.values(), key=lambda x: -x["propagation"]),
@@ -881,6 +899,8 @@ def humanize(
     self_b = next((b for b in c.get("brands") or [] if b["is_self"]), None)
     exposure = (self_b or {}).get("exposure_rate", 0.0)
     recommend = (self_b or {}).get("recommendation_rate", 0.0)
+    identity_unconfirmed = (self_b or {}).get("identity_status") == "unconfirmed"
+    unconfirmed_count = int((self_b or {}).get("unconfirmed_count") or 0)
     # 2026-09-21 口径修正（Owner：「输出正常但不正确」）：`all_ev = 0` 时
     # exposure_rate 落在 0.0 是「分母没有」，不是「AI 没提到我们」。旧实现直接走
     # `elif exposure == 0` 分支，页面就会断言一句没发生过的结论：
@@ -896,6 +916,12 @@ def humanize(
         headline = {
             "main": "还没有可判断的解析样本",
             "sub": "先把监测回答做一轮解析，认知洞察才有依据；样本为 0 不代表 AI 没提到你",
+            "tone": "warning",
+        }
+    elif identity_unconfirmed:
+        headline = {
+            "main": "主体识别不足，暂不判断品牌曝光",
+            "sub": f"{unconfirmed_count} 条回答重复了名称，但同时表示无法确认对应企业；这类回答不会计入曝光或推荐率",
             "tone": "warning",
         }
     elif len(left) > 0 and recommend == 0:
@@ -930,10 +956,12 @@ def humanize(
     # ── ② 三数字 ──
     metrics = {
         # 0 样本时给 null（前端显示「—」）：0% 会被读成「回答里一次都没出现」。
-        "exposure_rate": None if sample_total == 0 else exposure,
-        "recommendation_rate": None if sample_total == 0 else recommend,
+        "exposure_rate": None if sample_total == 0 or identity_unconfirmed else exposure,
+        "recommendation_rate": None if sample_total == 0 or identity_unconfirmed else recommend,
         "gap_count": len(left),
         "gap_dimensions": sorted({x["dimension"] for x in left}),
+        "identity_status": "unconfirmed" if identity_unconfirmed else "confirmed",
+        "unconfirmed_count": unconfirmed_count,
     }
 
     # ── ③ 行动人话 ──
