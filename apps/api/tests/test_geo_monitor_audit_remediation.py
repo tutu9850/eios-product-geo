@@ -213,6 +213,29 @@ def test_overview_filters_to_selected_brand_and_recomputes_answer_metrics(monkey
     assert data["platforms"]["Kimi"][0]["mentioned"] == 0
 
 
+def test_overview_hides_metrics_when_controlled_identity_is_unconfirmed(monkeypatch):
+    from app.api.v1 import monitor
+
+    history = [{
+        "batch": True, "created_at": "2026-09-22T00:00:00Z",
+        "questions": [{"monitor_id": "brand-a", "question": "笔革家居是什么？", "engine_detail": [
+            {"engine_name": "DeepSeek", "answer": "笔革家居通常指某类家居品牌，无法确认具体企业。", "mentioned": True},
+        ]}],
+    }]
+    monkeypatch.setattr(monitor, "_load_history", lambda: history)
+    monkeypatch.setattr(monitor, "_load_items", lambda: [{
+        "monitor_id": "brand-a", "type": "brand", "status": "active", "config_json": {"company": "笔革家居"},
+    }])
+    monkeypatch.setattr(monitor, "_identity_gate_for_monitor_ids", lambda ids: "unconfirmed")
+
+    data = _run(monitor.overview(monitor_id="brand-a"))["data"]
+    assert data["recommend"]["value"] is None
+    assert data["rank"]["value"] is None
+    assert data["platforms"] == {}
+    assert data["scope"]["identity_status"] == "unconfirmed"
+    assert "还不能确认对应的是哪家企业" in data["scope"]["identity_note"]
+
+
 def test_overview_requires_brand_selection_when_multiple_brands_exist(monkeypatch):
     from app.api.v1 import monitor
 

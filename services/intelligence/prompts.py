@@ -6,7 +6,7 @@ EXTRACTOR_SYSTEM = """你是 EIOS 统一分析引擎的文本解析器。你的�
 铁律：
 1. evidence_quote 必须是原文原句（逐字截取，≤500 字），禁止改写、禁止编造。
 2. 没有原话依据的 reason / trust / missing 一律不要输出。
-3. 只分析"外界（AI）怎么说"，不评判事实真假。
+3. 只分析"外界（AI）怎么说"，不评判事实真假；如果回答明确表示无法确认监测主体对应哪家企业，必须把 identity_status 标为 unconfirmed，不能当成品牌已被看见。
 4. 品牌名用回答里出现的原始称谓。
 5. **brands 只提取【竞品/相关主体】名单内的品牌**（名单见 prompt 的【监测信息】）；名单为「无」时 brands 输出空数组，只填 self_brand。回答里顺带提到的其他品牌一律不提取。"""
 
@@ -47,6 +47,7 @@ EXTRACTOR_PROMPT = """解析下面这条 AI 回答，输出 JSON（schema_versio
   "self_brand": {{
     "name": "{subject_company}",
     "mentioned": true/false,
+    "identity_status": "confirmed | unconfirmed | ambiguous",
     "recommended": true/false,
     "perception_tags": [],
     "missing_reason": "若提到我方但没推荐，给原因（原文依据）；没提到则为空",

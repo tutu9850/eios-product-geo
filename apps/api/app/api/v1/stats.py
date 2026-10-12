@@ -56,6 +56,9 @@ async def overview():
         last_questions = history[-1].get("questions") or []
         if last_questions:
             answered = max(int(q.get("configured_count") or 0) for q in last_questions)
+    # 历史批次可能记录过当时能答复的模型，但当前部署目录已经没有登记模型。
+    # 不把旧计数和当前分母拼成「1 / 0」这种不可能的状态；总览只描述当前可用目录。
+    answered = min(answered, len(engines))
 
     # 企业知识库状态（H21：purge 后为空 → 前端据此提示"知识库为空，内容生成/缺口判定受限"）
     try:

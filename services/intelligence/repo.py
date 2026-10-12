@@ -101,7 +101,7 @@ def get_evidence(evidence_id: str, tenant_id: str | None = None) -> dict | None:
         return _row_to_dict(row) if row else None
 
 
-def list_evidence_pending(tenant_id: str | None = None) -> list[dict]:
+def list_evidence_pending(tenant_id: str | None = None, monitor_id: str | None = None) -> list[dict]:
     """无 succeeded extraction 的 evidence（启动重扫 / 补跑用）。
 
     排除最新为 failed 的：失败需手动指定重跑，避免 recover 死循环烧 token。
@@ -132,7 +132,20 @@ def list_evidence_pending(tenant_id: str | None = None) -> list[dict]:
             .order_by(GeoEvidence.observed_at.asc())
             .all()
         )
-        return [_row_to_dict(r) for r in rows]
+        records = [_row_to_dict(r) for r in rows]
+        if not monitor_id:
+            return records
+        scoped: list[dict] = []
+        for record in records:
+            context = record.get("context_json") or {}
+            if isinstance(context, str):
+                try:
+                    context = json.loads(context)
+                except json.JSONDecodeError:
+                    context = {}
+            if isinstance(context, dict) and str(context.get("monitor_id") or "") == str(monitor_id):
+                scoped.append(record)
+        return scoped
 
 
 # ── geo_extraction ──────────────────────────────────────────────────────────

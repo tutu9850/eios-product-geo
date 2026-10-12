@@ -17,6 +17,45 @@ class BattleIn(BaseModel):
     question: str
     rounds: int = 2  # 1 = 单轮对比，2-3 = 多轮辩论
     judge: bool = True
+    # 可选的监测主体只用于标明这次即时实验的观察范围；不会把回答写入监测统计。
+    monitor_id: str | None = None
+
+
+def _battle_scope(monitor_id: str | None) -> tuple[dict, str | None]:
+    """Resolve the optional subject without letting a battle guess a brand.
+
+    The battle endpoint is a Quick Check, not a Monitoring Run.  A selected
+    subject is therefore metadata only: it makes the UI/result auditable while
+    keeping the raw model answers out of the monitoring evidence tables.
+    """
+    picked = str(monitor_id or "").strip()
+    if not picked:
+        return {"mode": "unspecified", "monitor_id": None, "name": None}, None
+    if picked.lower() == "all":
+        return {"mode": "all", "monitor_id": "all", "name": None}, None
+    try:
+        from app.services.store import get_store
+
+        rows = get_store().load("monitor_items")
+    except Exception as exc:  # noqa: BLE001
+        return {}, f"监测主体读取失败：{str(exc)[:120]}"
+    row = next(
+        (
+            item
+            for item in rows
+            if str(item.get("monitor_id") or "") == picked
+            and item.get("type") == "brand"
+            and (item.get("status") or "active") == "active"
+        ),
+        None,
+    )
+    if not row:
+        return {}, "选中的监测主体不存在或当前未启用"
+    cfg = row.get("config_json") or {}
+    name = str(cfg.get("company") or row.get("entity") or "").strip()
+    if not name:
+        return {}, "选中的监测主体没有可显示的企业名称"
+    return {"mode": "selected", "monitor_id": picked, "name": name}, None
 
 
 @router.post("")
@@ -26,6 +65,9 @@ async def battle(payload: BattleIn):
 
     if not payload.question.strip():
         return err("empty_question", "请先输入问题")
+    scope, scope_error = _battle_scope(payload.monitor_id)
+    if scope_error:
+        return err("SUBJECT_SCOPE_INVALID", scope_error)
     rounds = max(1, min(payload.rounds, 3))
 
     # 有哪些引擎是**部署**的事（Owner 2026-09-21：「GEO 不再写死 6 个」／GEO 不持凭据）。
@@ -80,6 +122,7 @@ async def battle(payload: BattleIn):
     return ok(
         {
             "question": payload.question,
+            "scope": scope,
             "rounds": rounds_data,
             "judge": judge,
             "judge_skipped": payload.judge and judge is None,

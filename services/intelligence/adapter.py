@@ -61,7 +61,10 @@ def _resolve_subject(q: dict, history: dict) -> str:
 
 def build_evidence(history_id: str, q: dict, er: dict, history: dict) -> dict | None:
     """构造 evidence dict；answer 为空返回 None。"""
-    answer = (er.get("answer") or "").strip()
+    # Quick Check may intentionally return only a snippet to the client; the
+    # history adapter still needs the captured observation so it can be parsed
+    # through the same evidence chain as batch monitoring.
+    answer = (er.get("answer") or er.get("snippet") or "").strip()
     if not answer:
         return None
     engine_name = er.get("engine_name") or "unknown"
@@ -114,7 +117,12 @@ def _competitors_from(history: dict, q: dict) -> list[str]:
     return []
 
 
-def ingest_one_history(history_item: dict, enqueue_parsing: bool = True) -> int:
+def ingest_one_history(
+    history_item: dict,
+    enqueue_parsing: bool = True,
+    *,
+    auto_report: bool = True,
+) -> int:
     """处理单条 history（monitor 钩子用）：构造 evidence 幂等写入并入队。返回新入库数。"""
     h_id = history_item.get("id") or ""
     new = 0
@@ -127,7 +135,7 @@ def ingest_one_history(history_item: dict, enqueue_parsing: bool = True) -> int:
             if created_ok:
                 new += 1
                 if enqueue_parsing:
-                    queue.enqueue(ev["id"])
+                    queue.enqueue(ev["id"], auto_report=auto_report)
     return new
 
 
@@ -136,6 +144,7 @@ def ingest_from_history(
     since: str | None = None,
     limit: int | None = None,
     enqueue_parsing: bool = True,
+    auto_report: bool = True,
 ) -> dict:
     """从监测历史回填/补跑：构造新 evidence（幂等跳过已存在）并入队。
 
@@ -161,7 +170,7 @@ def ingest_from_history(
                 if created_ok:
                     new += 1
                     if enqueue_parsing:
-                        queue.enqueue(ev["id"])
+                        queue.enqueue(ev["id"], auto_report=auto_report)
                         enqueued += 1
                 else:
                     skipped += 1
