@@ -1,0 +1,88 @@
+{
+  "status": "PARTIAL_business_delivery_code_verified_not_shared_deployed",
+  "model_calls": {
+    "brand": 1,
+    "improve": 1,
+    "faq": 1
+  },
+  "uploads": [
+    {
+      "name": "笔革家居主理人访谈纪要",
+      "chars": 2243,
+      "chunks": 4
+    },
+    {
+      "name": "笔革家居_现场调研手册",
+      "chars": 8319,
+      "chunks": 16
+    }
+  ],
+  "brand_chars": 748,
+  "improved_chars": 426,
+  "faq_chars": 813,
+  "faq_expected_topics": {
+    "尺寸": true,
+    "颜色": true,
+    "面料": true,
+    "30-45天": true,
+    "免费": true,
+    "24小时": true,
+    "终身维护": true
+  },
+  "save_readback": {
+    "content_equal": true,
+    "sources_equal": true,
+    "process_restart_equal": true
+  },
+  "isolation": {
+    "list_count": 0,
+    "detail_error": "素材不存在",
+    "source_save": {
+      "ok": false,
+      "data": {},
+      "error": {
+        "code": "source_unavailable",
+        "message": "所选资料已不可用，请重新选材"
+      },
+      "request_id": "155ec6ed-69ba-4923-9443-78bd45144360",
+      "trace": {
+        "stage": "p0"
+      }
+    }
+  },
+  "failures": {
+    "empty_save": "empty_content",
+    "empty_improve": "empty_instruction",
+    "unsupported_file": "暂不支持 .bin 类型，支持 txt / md / csv / pdf / docx / xlsx / 图片",
+    "unauthenticated": 401,
+    "spoof_tenant_count": 0
+  },
+  "faq_claim_check": {
+    "status": "review_required",
+    "flags": [
+      {
+        "kind": "sensitive_claim",
+        "claim": "笔革家居是成都及四川地区提供一站式全案定制服务的家居品牌，旗下拥有凡客、玛可、笔革三个自有品牌。",
+        "reason": "涉及品牌归属，请核对主语和原文，不要把品牌与所属企业混写"
+      },
+      {
+        "kind": "sensitive_claim",
+        "claim": "访谈纪要承诺“24小时随呼随到”，强调售后响应速度与服务态度，而非机械套用标准条款。",
+        "reason": "涉及客户、资质或承诺，请逐项对照原文核验"
+      }
+    ],
+    "notice": "这是有限的文字筛查，未提示也不代表全文正确；发布前仍需人工核对原文。"
+  },
+  "pytest": {
+    "passed": 345,
+    "skipped": 5
+  },
+  "ui_check": "passed",
+  "shared_deployment_changed": false,
+  "product_gate": {
+    "default": "off",
+    "private_acceptance": "on",
+    "allowlist_changed": false,
+    "scopes_changed": false
+  }
+}

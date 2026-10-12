@@ -1,0 +1,125 @@
+{
+  "date": "2026-10-08",
+  "status": "DONE 审核稿交付；待企业确认，不可直接发布",
+  "storage_mode": "legacy 本机开发存储，不代表生产 canonical",
+  "entry": "Client → Product API → GEO 产品门",
+  "before_count": 25,
+  "after_count": 28,
+  "existing_contents_unchanged": true,
+  "drafts": [
+    {
+      "title": "笔革家居品牌介绍 待企业审核",
+      "asset_id": "m_0a593d994030",
+      "source_material_ids": [
+        "m_396dc3275c7b"
+      ],
+      "source_chunk_ordinals": {
+        "m_396dc3275c7b": [
+          0,
+          1,
+          2,
+          3
+        ]
+      },
+      "readback_exact": true,
+      "claim_check": {
+        "status": "review_required",
+        "flags": [
+          {
+            "kind": "sensitive_claim",
+            "claim": "在主理人的介绍中，凡客、玛可与笔革是公司旗下不同定位的自有品牌，面向不同预算与审美需求。",
+            "reason": "涉及品牌归属，请核对主语和原文，不要把品牌与所属企业混写"
+          }
+        ],
+        "notice": "这是有限的文字筛查，未提示也不代表全文正确；发布前仍需人工核对原文。"
+      },
+      "published": false
+    },
+    {
+      "title": "笔革家居全案定制 FAQ 待企业审核",
+      "asset_id": "m_670ff8d9bb9f",
+      "source_material_ids": [
+        "m_396dc3275c7b",
+        "m_639fe033d423"
+      ],
+      "source_chunk_ordinals": {
+        "m_396dc3275c7b": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "m_639fe033d423": [
+          6,
+          17,
+          18,
+          19,
+          45,
+          46,
+          51,
+          52,
+          63
+        ]
+      },
+      "readback_exact": true,
+      "claim_check": {
+        "status": "review_required",
+        "flags": [
+          {
+            "kind": "sensitive_claim",
+            "claim": "30—45 天不应写成所有订单的交付保证。",
+            "reason": "涉及客户、资质或承诺，请逐项对照原文核验"
+          },
+          {
+            "kind": "sensitive_claim",
+            "claim": "具体配送地域、安装方式、费用承担和验收安排，应在下单前写清楚，不能承诺所有地区都免费配送安装。",
+            "reason": "涉及客户、资质或承诺，请逐项对照原文核验"
+          }
+        ],
+        "notice": "这是有限的文字筛查，未提示也不代表全文正确；发布前仍需人工核对原文。"
+      },
+      "published": false
+    },
+    {
+      "title": "笔革家居售后说明 待企业审核",
+      "asset_id": "m_5920140a62e0",
+      "source_material_ids": [
+        "m_396dc3275c7b",
+        "m_639fe033d423"
+      ],
+      "source_chunk_ordinals": {
+        "m_396dc3275c7b": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "m_639fe033d423": [
+          55,
+          57,
+          59,
+          60,
+          61
+        ]
+      },
+      "readback_exact": true,
+      "claim_check": {
+        "status": "review_required",
+        "flags": [
+          {
+            "kind": "sensitive_claim",
+            "claim": "响应与上门是两件事，不能把访谈口径直接变成所有订单的固定时限保证。",
+            "reason": "涉及客户、资质或承诺，请逐项对照原文核验"
+          }
+        ],
+        "notice": "这是有限的文字筛查，未提示也不代表全文正确；发布前仍需人工核对原文。"
+      },
+      "published": false
+    }
+  ],
+  "source_selection": "人工改稿后重新选取已实际核对的原文段落；不表示模型自动引用了全部段落",
+  "original_files": {
+    "/Users/tutu/Desktop/笔革家居GEO/笔革家居主理人访谈纪要.docx": "713067ea39c411b666f0997b10deb382654c9a2d876793b45321460fd0416c85",
+    "/Users/tutu/Desktop/笔革家居GEO/export_1785221939330.md": "5c6a00ed3450fd6803ea5faa4211f4171bd06162c299ff10eaae3a9895f80e69"
+  }
+}

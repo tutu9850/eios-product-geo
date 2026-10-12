@@ -1,0 +1,37 @@
+
+> eios-product-geo@0.1.0 check:ui
+> npm run typecheck:ui && npm run build:ui
+
+
+> eios-product-geo@0.1.0 typecheck:ui
+> npm run typecheck --workspace @eios-product/geo
+
+
+> @eios-product/geo@0.1.0 typecheck
+> tsc --noEmit
+
+
+> eios-product-geo@0.1.0 build:ui
+> npm run build --workspace @eios-product/geo
+
+
+> @eios-product/geo@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 2147 modules transformed.
+rendering chunks...
+computing gzip size...
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/index.html                                              0.42 kB │ gzip:   0.28 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/index-Bgec3yE_.css                             136.85 kB │ gzip:  27.21 kB
+../../../../../../tmp/eios-test/geo-git-closeout-20261012/package-ui/assets/index-DjhGwqSd.js                              591.27 kB │ gzip: 172.49 kB
+
+✓ built in 198ms

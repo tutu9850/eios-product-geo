@@ -4,9 +4,12 @@
 
 ## 开始任务
 
-1. 先读本仓 `README.md`、`docs/GEO_PRODUCT_DOOR_MATRIX.md`（若任务涉及产品门）和任务 Card。
+1. 先读本仓 `README.md`、[`CURRENT_STATE.md`](CURRENT_STATE.md)、`docs/GEO_PRODUCT_DOOR_MATRIX.md`（若任务涉及产品门）和任务 Card。
 2. 检查 `git status --short --branch`；不覆盖已有未提交改动。
 3. 涉及 EIOS 身份、产品接线或 Foundation 数据时，先确认 `eios-product-api` 与 Foundation 的既有契约。
+4. 跨 EIOS 边界时阅读 Foundation 的[横向与纵向施工纪律](../eios-foundation/docs/engineering/EIOS-CONVERGENT-CONSTRUCTION-PROTOCOL-2026-10-05.md)：沿真实业务链证明首个偏离，进入责任模块最小修复，再回原链执行 WRITE → READ BACK → VERIFY。本文不复制该纪律，也不扩大当前用户授权。
+
+当前事实只更新 `CURRENT_STATE.md`；开发方向见[内容交付方案与计划](docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md)。计划和历史任务卡不自动授权代码、跨仓、部署或真实运行；已授权范围内的普通工程问题按现行纪律连续收口，不逐项重复请示。
 
 ## 边界
 

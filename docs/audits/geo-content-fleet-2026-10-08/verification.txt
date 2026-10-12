@@ -1,0 +1,8 @@
+GEO_DB_PATH=<任务临时库> GEO_MEDIA_DIR=<任务临时目录> PYTHONPATH=<Foundation auth:policy:contracts/generated/python> .venv/bin/python -m pytest -q
+345 passed, 5 skipped, 6 warnings in 3.62s
+
+GEO_UI_OUT_DIR=<任务临时制品目录> npm run check:ui
+TypeScript passed; Vite built in 252ms. Existing >500kB chunk warning remains.
+
+git diff --check
+passed
