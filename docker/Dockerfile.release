@@ -1,0 +1,41 @@
+# Source-protected GEO API with UI compiled in a discarded build stage.
+# EIOS_BASE_IMAGE must be the selected Base release's digest-pinned image.
+ARG EIOS_BASE_IMAGE
+FROM node:22-bookworm-slim AS ui
+WORKDIR /src
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/geo/package.json ./packages/geo/
+COPY packages/ui/package.json ./packages/ui/
+RUN npm ci --no-audit --no-fund
+COPY packages/geo ./packages/geo
+COPY packages/ui ./packages/ui
+RUN npm run build:ui
+FROM ${EIOS_BASE_IMAGE} AS compile
+ARG EIOS_NUITKA_VERSION=4.2.1
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential patchelf ccache && rm -rf /var/lib/apt/lists/*
+RUN python -c "import sys; assert sys.version_info[:2] == (3, 12), 'GEO lock requires verified Python 3.12 Base'"
+COPY docker/requirements.lock /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt "nuitka==${EIOS_NUITKA_VERSION}" && pip check
+WORKDIR /src
+COPY apps/api/app ./apps/api/app
+COPY services ./services
+COPY adapters ./adapters
+COPY docker/serve.py ./serve.py
+RUN mkdir -p /out/apps/api && cd /src/apps/api && python -m nuitka --module app --include-package=app --output-dir=/out/apps/api --no-progressbar --no-pyi-file --remove-output
+RUN cd /src && python -m nuitka --module services --include-package=services --output-dir=/out --no-progressbar --no-pyi-file --remove-output && python -m nuitka --module adapters --include-package=adapters --output-dir=/out --no-progressbar --no-pyi-file --remove-output
+RUN cd /src && python -m nuitka --module serve.py --output-dir=/out --no-progressbar --no-pyi-file --remove-output
+FROM ${EIOS_BASE_IMAGE} AS runtime
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+RUN apt-get update && apt-get install -y --no-install-recommends libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev fonts-noto-cjk libxcb1 libxcb-shm0 libxcb-xfixes0 libxcb-render0 libxcb-shape0 libgl1 libglib2.0-0 libsm6 libxext6 libxrender1 && rm -rf /var/lib/apt/lists/*
+RUN python -c "import sys; assert sys.version_info[:2] == (3, 12), 'GEO lock requires verified Python 3.12 Base'"
+COPY docker/requirements.lock /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt && pip check && rm /tmp/requirements.txt
+WORKDIR /opt/eios-product-geo
+COPY --from=compile /out ./py
+COPY --from=ui /src/packages/geo/dist /opt/eios-geo-ui
+ENV GEO_UI_DIR=/opt/eios-geo-ui
+ENV PYTHONPATH="/opt/eios-product-geo/py/apps/api:/opt/eios-product-geo/py:${PYTHONPATH}" GEO_DB_PATH=/var/lib/eios/geo/geo.db GEO_MEDIA_DIR=/var/lib/eios/geo/media
+RUN mkdir -p /var/lib/eios/geo/media /opt/eios-product-geo/py/apps/data && python -c "import app.main, serve; import eios_auth, eios_policy" && test -z "$(find /opt/eios-product-geo -name '*.py' -o -name '*.pyi' -o -name '*.pyc' -o -name '*.pyo')"
+EXPOSE 8091
+CMD ["python", "-c", "import uvicorn; from serve import app; uvicorn.run(app, host='0.0.0.0', port=8091, access_log=False)"]
