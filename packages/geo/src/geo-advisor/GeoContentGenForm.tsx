@@ -3,8 +3,9 @@ import { Check, Copy, Download } from 'lucide-react'
 import { Button, cn } from '@yayu/ui'
 import { geoGet, geoPost, type GeoPlan } from './geo-api'
 import { GeoButtonRow, GeoCardShell, GeoError, GeoLoading, useGeoNavParams } from './shared'
+import { MonitorSubjectPicker, useMonitorSubject } from './geo-monitor-subject'
 
-const GOALS = ['提升AI推荐概率', '推广产品', '建立行业权威', '回答客户问题', '对抗竞品', '发布企业动态']
+const GOALS = ['让模型更容易推荐', '让更多客户了解产品', '建立行业信任', '回答客户问题', '应对竞品比较', '发布企业最新动态']
 const CONTENT_TYPES = ['企业介绍', '行业解决方案', 'FAQ问答', '对比文章', '客户案例', '新闻动态']
 const STYLES = ['专业权威', '技术专家', '营销转化', '新闻报道', '白皮书']
 const LENGTHS = ['500字', '1500字', '3000字']
@@ -37,14 +38,14 @@ const PLATFORMS: Array<{ name: string; id: string | null }> = [
  */
 const MODES: Array<{ label: string; value: 'creative' | 'strict' | 'draft'; hint: string }> = [
   { label: '创作', value: 'creative', hint: '未验证的公司声明会标注「据企业宣传」，不写成已验证事实' },
-  { label: '严谨', value: 'strict', hint: '凡未在企业知识库 / 内容资产找到依据的声明 → 直接拒绝生成' },
+  { label: '严谨', value: 'strict', hint: '凡未在企业资料 / 内容资产找到依据的声明 → 直接拒绝生成' },
   { label: '草稿', value: 'draft', hint: '未验证声明按草稿构思处理，明确不代表企业已确认事实' },
 ]
 
-/** 认知编译器结构（后端 `structure`）：geo = 可抽取结构模板（五节，便于 AI 摘要引用） */
+/** 模型易读结构（后端 `structure`）：geo = 可抽取结构模板（五节，便于模型摘要引用） */
 const STRUCTURES: Array<{ label: string; value: 'free' | 'geo' }> = [
   { label: '自由长文', value: 'free' },
-  { label: 'GEO 结构（认知编译器）', value: 'geo' },
+  { label: '适合模型理解的结构', value: 'geo' },
 ]
 
 /** 后端 SEO_PLATFORM_CONFIGS 的 6 个平台：选中时展示 SEO 参数（keywords/密度/调性/受众） */
@@ -60,7 +61,12 @@ const SEO_PLATFORM_IDS = new Set([
 interface ContextSource {
   kind: string
   label: string
-  items: unknown[]
+  items: Array<Record<string, unknown>>
+}
+
+interface ClaimCheck {
+  status: 'review_required' | 'no_flags'
+  flags: Array<{ kind: string; claim: string; reason: string }>
 }
 
 interface FactCheckResult {
@@ -102,6 +108,10 @@ interface GenResult {
   company_name?: string
   materials_used?: number
   context_sources?: ContextSource[]
+  source_material_ids?: string[]
+  knowledge_status?: 'available' | 'empty' | 'unavailable' | 'unknown'
+  warnings?: string[]
+  claim_check?: ClaimCheck | null
   sections?: Record<string, string> | null
   fact_check?: FactCheckResult | null
   unverified_facts?: UnverifiedFact[]
@@ -130,6 +140,7 @@ interface QualityResult { total?: number; score?: number; suggestions?: string[]
  */
 export function GeoContentGenForm() {
   const { seed: navSeed, nonce: navNonce } = useGeoNavParams()
+  const { scopeQuery, subject } = useMonitorSubject()
   const [step, setStep] = useState(1)
   // 第 1 步：内容主题（内容计划点选 + 手输）
   const [plans, setPlans] = useState<GeoPlan[]>([])
@@ -174,7 +185,7 @@ export function GeoContentGenForm() {
   // 拉取内容计划（status=planned 的可生成主题）
   useEffect(() => {
     let cancelled = false
-    geoGet<{ items: GeoPlan[] }>('/distill/plans?status=planned&limit=20')
+    geoGet<{ items: GeoPlan[] }>(`/distill/plans?status=planned&limit=20${scopeQuery ? `&${scopeQuery}` : ''}`)
       .then((d) => {
         if (!cancelled) setPlans(d.items ?? [])
       })
@@ -187,7 +198,7 @@ export function GeoContentGenForm() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [scopeQuery])
 
   const generate = async () => {
     if (!topic.trim() || !goal || !contentType || !style) return
@@ -213,6 +224,7 @@ export function GeoContentGenForm() {
         length: length.replace('字', ''),
         platform: platformId,
         question: topic.trim(),
+        company_name: subject?.name || null,
         structure,
         mode,
         industry: industry.trim() || null,
@@ -234,6 +246,7 @@ export function GeoContentGenForm() {
           content: d.content ?? '',
           goal,
           question: topic.trim(),
+          company_name: subject?.name || null,
           platform: platformId,
         })
         setScore(s)
@@ -279,11 +292,14 @@ export function GeoContentGenForm() {
     setImproveNote(null)
     setSavedNote(null)
     try {
-      const d = await geoPost<{ title?: string; content?: string }>('/content/improve', {
+      const d = await geoPost<{ title?: string; content?: string; context_sources?: ContextSource[]; source_material_ids?: string[]; knowledge_status?: GenResult['knowledge_status']; warnings?: string[]; claim_check?: ClaimCheck | null }>('/content/improve', {
         title: result.title ?? '',
         content: result.content ?? '',
         instruction: improveText.trim(),
         question: topic.trim(),
+        company_name: subject?.name || null,
+        source_material_ids: result.source_material_ids ?? [],
+        context_sources: result.context_sources ?? [],
       })
       const nextTitle = (d.title ?? result.title ?? '').trim()
       const nextContent = (d.content ?? '').trim()
@@ -291,7 +307,17 @@ export function GeoContentGenForm() {
         setError('改进没有返回内容，原稿保持不变')
         return
       }
-      setResult({ ...result, title: nextTitle, content: nextContent })
+      setResult({
+        ...result,
+        title: nextTitle,
+        content: nextContent,
+        // 改稿响应代表新正文实际使用的来源；缺省时清空旧来源，不能沿用旧稿的来源声明。
+        context_sources: d.context_sources ?? [],
+        source_material_ids: d.source_material_ids ?? [],
+        knowledge_status: d.knowledge_status ?? 'unknown',
+        warnings: d.warnings ?? [],
+        claim_check: d.claim_check ?? null,
+      })
       setScore(null) // 改过之后原来的评分不再对应当前稿子
       setQuality(null)
       setImproveNote(`已按你的要求改过（要求：${improveText.trim().slice(0, 40)}）。改后的稿子需要重新评分。`)
@@ -309,12 +335,16 @@ export function GeoContentGenForm() {
     setError(null)
     setSavedNote(null)
     try {
-      const d = await geoPost<{ item?: { title?: string; chunks?: number } }>('/content/save', {
+      const d = await geoPost<{ item?: { title?: string; chunks?: number }; error?: string }>('/content/save', {
         title: result.title ?? '',
         content: result.content ?? '',
         question: topic.trim(),
+        context_sources: result.context_sources ?? [],
+        source_material_ids: result.source_material_ids ?? [],
       })
-      const item = d.item ?? {}
+      if (d.error) throw new Error(d.error)
+      const item = d.item
+      if (!item) throw new Error('保存没有确认成功，请稍后检查内容资产')
       setSavedNote(
         `已存入企业资料 · 生成内容：${item.title ?? result.title}${item.chunks ? `（切成 ${item.chunks} 段）` : ''}`,
       )
@@ -328,8 +358,8 @@ export function GeoContentGenForm() {
   const runQuality = async () => {
     if (!result) return
     setQualityLoading(true)
-    try { setQuality(await geoPost<QualityResult>('/content/quality', { content: result.content, question: topic })) }
-    catch (e) { setError(e instanceof Error ? e.message : 'AI 质检失败') }
+    try { setQuality(await geoPost<QualityResult>('/content/quality', { content: result.content, question: topic, company_name: subject?.name || null })) }
+    catch (e) { setError(e instanceof Error ? e.message : '内容检查失败') }
     finally { setQualityLoading(false) }
   }
 
@@ -343,6 +373,14 @@ export function GeoContentGenForm() {
 
   // 后端 score.total 是 0–1 权重和；此前直接 Math.round(0.85) → 显示「1 分」，与各维度百分比自相矛盾。
   const scoreTotalPct = score ? Math.round(score.total <= 1 ? score.total * 100 : score.total) : 0
+
+  const sourceItemText = (item: Record<string, unknown>) => {
+    for (const key of ['content', 'excerpt', 'text', 'chunk', 'fact', 'claim', 'name', 'title', 'question', 'summary']) {
+      const value = item[key]
+      if (typeof value === 'string' && value.trim()) return value.trim()
+    }
+    return ''
+  }
 
   const inputClass =
     'w-full rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]'
@@ -373,6 +411,7 @@ export function GeoContentGenForm() {
 
   return (
     <GeoCardShell title="内容制作台" className="geo-content-workbench">
+      <MonitorSubjectPicker note="内容计划和生成上下文按这里选择的主体筛选；“全部”显示账号汇总。" />
       <div className="flex items-center gap-1 text-[10px] text-[var(--yayu-faint)]">
         {['主题', '目标', '类型/风格', '长度/平台', '结果'].map((label, index) => (
           <span key={label} className="flex items-center gap-1">
@@ -414,7 +453,7 @@ export function GeoContentGenForm() {
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="例如：亚宇臻隆 GEO 服务能提升 AI 搜索可见度吗"
+            placeholder="例如：这项服务能提升品牌在模型回答中的出现率吗"
             className="w-full rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
           />
           <GeoButtonRow>
@@ -474,7 +513,7 @@ export function GeoContentGenForm() {
           {options(STRUCTURES.map((s) => s.label), STRUCTURES.find((s) => s.value === structure)?.label ?? null, (v) =>
             setStructure(STRUCTURES.find((s) => s.label === v)?.value ?? 'free'),
           )}
-          <div className="pt-1 text-[11px] text-muted">事实核验</div>
+          <div className="pt-1 text-[11px] text-muted">资料依据模式</div>
           {options(MODES.map((m) => m.label), activeMode?.label ?? null, (v) =>
             setMode(MODES.find((m) => m.label === v)?.value ?? 'creative'),
           )}
@@ -488,7 +527,7 @@ export function GeoContentGenForm() {
           />
           {seoPlatform ? (
             <div className="space-y-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
-              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">SEO 参数（当前平台为 SEO 站内页）</div>
+              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">搜索平台参数（当前平台需要额外设置）</div>
               <input
                 value={seoKeywords}
                 onChange={(e) => setSeoKeywords(e.target.value)}
@@ -541,7 +580,7 @@ export function GeoContentGenForm() {
                 ))}
               </ul>
               <p className="text-[10.5px] text-[var(--yayu-faint)]">
-                如这些声明是真实事实，请先补充到企业知识库 / 内容资产，或切换「创作」模式后重新生成。
+                如这些声明是真实事实，请先补充到企业资料 / 内容资产，或切换「创作」模式后重新生成。
               </p>
             </div>
           ) : null}
@@ -569,24 +608,41 @@ export function GeoContentGenForm() {
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10.5px] text-[var(--yayu-faint)]">
             {result.company_name ? <span>企业：{result.company_name}</span> : null}
-            <span>知识库引用：{result.materials_used ?? 0} 条</span>
-            <span>结构：{result.structure === 'geo' ? 'GEO 结构' : '自由长文'}</span>
+            {result.materials_used == null || result.materials_used === 0 ? null : <span>参考资料：{result.materials_used} 条</span>}
+            <span>结构：{result.structure === 'geo' ? '适合模型理解的结构' : '自由长文'}</span>
             <span>
-              事实核验：
+              资料依据：
               {MODES.find((m) => m.value === (result.mode ?? 'creative'))?.label ?? result.mode ?? '创作'}
             </span>
           </div>
           {result.context_sources && result.context_sources.length > 0 ? (
             <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
-              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">本篇引用的上下文来源</div>
-              <div className="mt-0.5 space-y-0.5">
+              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">本篇写作依据（实际选段）</div>
+              <div className="mt-1 space-y-1.5">
                 {result.context_sources.map((s) => (
-                  <div key={s.kind} className="flex items-center justify-between text-[10.5px] text-[var(--yayu-muted)]">
-                    <span>{s.label}</span>
-                    <span className="text-[var(--yayu-faint)]">{(s.items ?? []).length} 条</span>
-                  </div>
+                  (s.items ?? []).length ? <div key={s.kind} className="text-[10.5px] text-[var(--yayu-muted)]">
+                    <div>{s.label}（{s.items.length} 条）</div>
+                    <ul className="mt-0.5 space-y-0.5 text-[var(--yayu-faint)]">
+                      {s.items.slice(0, 5).map((item, i) => <li key={i}>· {sourceItemText(item) || '本条来源未提供可显示的原文片段'}</li>)}
+                    </ul>
+                  </div> : null
                 ))}
               </div>
+            </div>
+          ) : <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2 text-[10.5px] text-[var(--yayu-muted)]">本篇来源未记录。请人工核对正文依据。</div>}
+          {result.knowledge_status === 'unavailable' ? (
+            <p className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2 text-[10.5px] text-[var(--yayu-muted)]">企业知识库这次未读到，以下草稿仅按可用素材写成，请核对。</p>
+          ) : result.knowledge_status === 'empty' ? (
+            <p className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2 text-[10.5px] text-[var(--yayu-muted)]">本次未找到相关知识库资料。</p>
+          ) : result.knowledge_status === 'unknown' || (result.warnings?.length ?? 0) > 0 ? (
+            <p className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2 text-[10.5px] text-[var(--yayu-muted)]">知识库资料读取情况未能确认，请核对本篇来源。</p>
+          ) : null}
+          {result.claim_check ? (
+            <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
+              <div className="text-[11px] font-medium text-[var(--yayu-foreground)]">人工核验提醒</div>
+              {result.claim_check.status === 'no_flags' ? <p className="mt-0.5 text-[10.5px] text-[var(--yayu-muted)]">自动检查没有标出待核验说法；这不代表正文已经核实，请人工检查。</p> : (
+                <ul className="mt-0.5 space-y-0.5">{result.claim_check.flags.map((flag, i) => <li key={i} className="text-[10.5px] text-[var(--yayu-muted)]">· {flag.claim}：{flag.reason}</li>)}</ul>
+              )}
             </div>
           ) : null}
           {result.unverified_facts && result.unverified_facts.length > 0 ? (
@@ -600,17 +656,17 @@ export function GeoContentGenForm() {
                 ))}
               </ul>
               <p className="mt-0.5 text-[10.5px] text-[var(--yayu-faint)]">
-                这些声明未在企业知识库或内容资产中找到依据，正文中不得写成已验证事实。
+                这些声明未在企业资料或内容资产中找到依据，正文中不得写成已验证事实。
               </p>
             </div>
           ) : null}
           {result.market_signals?.available ? (
             <details className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
               <summary className="cursor-pointer text-[11px] font-medium text-[var(--yayu-foreground)]">
-                本篇依据的市场现状（
+                写作时参考的市场信号（
                 {[
-                  result.market_signals.ai_answers?.length ? `AI 当前回答 ${result.market_signals.ai_answers.length}` : null,
-                  result.market_signals.hallucinations?.length ? `AI 编造 ${result.market_signals.hallucinations.length}` : null,
+                  result.market_signals.ai_answers?.length ? `模型当前回答 ${result.market_signals.ai_answers.length}` : null,
+                  result.market_signals.hallucinations?.length ? `回答里缺少资料依据 ${result.market_signals.hallucinations.length}` : null,
                   result.market_signals.competitor_edges?.length ? `竞品优势 ${result.market_signals.competitor_edges.length}` : null,
                   result.market_signals.report_findings?.length ? `报告结论 ${result.market_signals.report_findings.length}` : null,
                 ]
@@ -621,7 +677,7 @@ export function GeoContentGenForm() {
               <div className="mt-1 space-y-1.5">
                 {result.market_signals.ai_answers?.length ? (
                   <div>
-                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">AI 现在这样回答客户</div>
+                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">模型现在这样回答客户</div>
                     {result.market_signals.ai_answers.slice(0, 4).map((a, i) => (
                       <div key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
                         · [{a.engine}] {a.mentioned ? '已提及本企业' : '未提及本企业'}：{a.question}
@@ -631,7 +687,7 @@ export function GeoContentGenForm() {
                 ) : null}
                 {result.market_signals.hallucinations?.length ? (
                   <div>
-                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">AI 编造过（正文须纠正）</div>
+                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">回答里缺少资料依据（正文须核对）</div>
                     {result.market_signals.hallucinations.map((h, i) => (
                       <div key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">· {h.claim}</div>
                     ))}
@@ -639,7 +695,7 @@ export function GeoContentGenForm() {
                 ) : null}
                 {result.market_signals.competitor_edges?.length ? (
                   <div>
-                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">竞品被夸而你没被夸</div>
+                    <div className="text-[10.5px] font-medium text-[var(--yayu-foreground)]">竞品被提到、我方缺席的地方</div>
                     {result.market_signals.competitor_edges.map((c, i) => (
                       <div key={i} className="text-[10.5px] leading-relaxed text-[var(--yayu-muted)]">
                         · {c.factor}
@@ -664,15 +720,15 @@ export function GeoContentGenForm() {
           {result.fact_check ? (
             <div className="space-y-1 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-[var(--yayu-foreground)]">事实密度</span>
+                <span className="text-[11px] font-medium text-[var(--yayu-foreground)]">资料依据覆盖</span>
                 <span className="text-[11px] font-semibold text-[var(--yayu-foreground)]">
-                  {Math.round((result.fact_check.score ?? 0) * 100)}%
+                  {result.fact_check.score == null ? '—' : `${Math.round(result.fact_check.score * 100)}%`}
                 </span>
               </div>
               {result.fact_check.needs_rewrite ? (
                 <>
                   <div className="text-[10.5px] text-[var(--yayu-muted)]">
-                    知识库里的带数据事实还没全部写进正文，建议补充：
+                    企业资料里的关键事实还没全部写进正文，建议补充：
                   </div>
                   <ul className="space-y-0.5">
                     {(result.fact_check.missing_facts ?? []).slice(0, 5).map((m, i) => (
@@ -686,14 +742,14 @@ export function GeoContentGenForm() {
                   ) : null}
                 </>
               ) : (
-                <div className="text-[10.5px] text-[var(--yayu-muted)]">已覆盖知识库中的带数据事实</div>
+                <div className="text-[10.5px] text-[var(--yayu-muted)]">已覆盖企业资料中的关键事实</div>
               )}
             </div>
           ) : null}
           {result.sections && Object.keys(result.sections).length > 0 ? (
             <details className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
               <summary className="cursor-pointer text-[11px] font-medium text-[var(--yayu-foreground)]">
-                结构化分节（{Object.keys(result.sections).length} 节，点击展开）
+                分段结构（{Object.keys(result.sections).length} 节，点击展开）
               </summary>
               <div className="mt-1 space-y-1.5">
                 {Object.entries(result.sections).map(([name, body]) => (
@@ -711,16 +767,17 @@ export function GeoContentGenForm() {
           {score ? (
             <div className="space-y-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-[var(--yayu-foreground)]">可发布度</span>
+                <span className="text-[11px] font-medium text-[var(--yayu-foreground)]">结构参考分（不代表事实已核实或可以发布）</span>
                 <span className="text-[12px] font-semibold text-[var(--yayu-foreground)]">{scoreTotalPct} 分</span>
               </div>
+              <p className="text-[10px] text-[var(--yayu-faint)]">此分数只供内容结构参考，不能证明正文事实或资料依据已经核实。</p>
               {(
                 [
-                  ['实体覆盖', score.entity_coverage],
-                  ['事实密度', score.fact_density],
-                  ['问题覆盖', score.question_coverage],
-                  ['结构完整', score.structure_completeness],
-                  ['引用潜力', score.citation_potential],
+                  ['企业信息覆盖', score.entity_coverage],
+                  ['资料依据覆盖', score.fact_density],
+                  ['客户问题覆盖', score.question_coverage],
+                  ['内容结构完整', score.structure_completeness],
+                  ['被引用可能', score.citation_potential],
                 ] as Array<[string, number]>
               ).map(([label, value]) => (
                 <div key={label} className="flex items-center gap-2">
@@ -766,7 +823,7 @@ export function GeoContentGenForm() {
                 {improving ? '改进中…' : '按此改进'}
               </Button>
               <Button variant="secondary" size="sm" disabled={saving} onClick={() => void saveToAssets()}>
-                {saving ? '保存中…' : '保存至企业资料'}
+                {saving ? '保存中…' : '保存为内容资产'}
               </Button>
               <span className="text-[10.5px] text-[var(--yayu-faint)]">
                 改进不会新增企业事实；保存后会出现在「企业资料 → 内容资产」
@@ -775,7 +832,7 @@ export function GeoContentGenForm() {
             {improveNote ? <p className="mt-1 text-[10.5px] text-[var(--yayu-muted)]">{improveNote}</p> : null}
             {savedNote ? <p className="mt-1 text-[10.5px] text-[var(--yayu-muted)]">{savedNote}</p> : null}
           </div>
-          {quality ? <div className="content-quality"><b>AI 质量检测 · {Math.round(quality.total ?? quality.score ?? 0)} 分</b>{quality.suggestions?.slice(0,4).map((s,i)=><p key={i}>· {s}</p>)}</div> : null}
+          {quality ? <div className="content-quality"><b>结构参考分 · {quality.total == null && quality.score == null ? '—' : `${Math.round(quality.total ?? quality.score ?? 0)} 分`}</b><p>评分供结构参考，不代表内容可以发布。</p>{quality.suggestions?.slice(0,4).map((s,i)=><p key={i}>· {s}</p>)}</div> : null}
           <GeoButtonRow>
             <Button size="sm" onClick={() => void copyResult()}>
               <Copy className="size-3.5" /> {copied ? '已复制' : '复制'}
@@ -784,7 +841,7 @@ export function GeoContentGenForm() {
               <Download className="size-3.5" /> 下载
             </Button>
             <Button variant="secondary" size="sm" disabled={qualityLoading} onClick={() => void runQuality()}>
-              {qualityLoading ? 'AI 质检中…' : 'AI 质量检测'}
+              {qualityLoading ? '内容检查中…' : '检查内容质量'}
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setStep(1)}>
               再生成一篇

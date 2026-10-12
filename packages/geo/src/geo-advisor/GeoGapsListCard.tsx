@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoGet, geoPost, type GeoGap } from './geo-api'
-import { GeoCardShell, GeoError, GeoList, GeoLoading } from './shared'
+import { GeoCardShell, GeoError, GeoList, GeoLoading, geoPriorityLabel } from './shared'
+import { ALL_SUBJECTS, MonitorSubjectPicker, useMonitorSubject } from './geo-monitor-subject'
 
 /** 缺口影响×紧急度（规则：关键词映射客户阶段 + 优先级） */
 function gapPriority(g: GeoGap): { level: 'P0' | 'P1' | 'P2'; stage: string } {
@@ -15,61 +16,73 @@ function gapPriority(g: GeoGap): { level: 'P0' | 'P1' | 'P2'; stage: string } {
 
 const LEVEL_ORDER: Record<string, number> = { P0: 0, P1: 1, P2: 2 }
 
-/** 知识缺口卡：重新生成缺口（重新分析）+ 列表展示（含影响×紧急度） */
+/** 资料缺口卡：重新检查缺口（重新分析）+ 列表展示（含影响×紧急度） */
 export function GeoGapsListCard() {
   const [items, setItems] = useState<GeoGap[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [regenerating, setRegenerating] = useState(false)
   const [regenerateMsg, setRegenerateMsg] = useState<string | null>(null)
+  const [gapsOpen, setGapsOpen] = useState(false)
+  const { scopeQuery, value: subjectValue } = useMonitorSubject()
+  const loadVersion = useRef(0)
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current
     setLoading(true)
     setError(null)
     try {
-      const d = await geoGet<{ items: GeoGap[]; total: number }>('/distill/gaps?limit=50')
-      setItems(d.items)
+      const d = await geoGet<{ items: GeoGap[]; total: number }>(`/distill/gaps?limit=50${scopeQuery ? `&${scopeQuery}` : ''}`)
+      if (version === loadVersion.current) setItems(d.items)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '知识缺口加载失败')
+      if (version === loadVersion.current) setError(e instanceof Error ? e.message : '资料缺口加载失败')
     } finally {
-      setLoading(false)
+      if (version === loadVersion.current) setLoading(false)
     }
-  }, [])
+  }, [scopeQuery])
 
   useEffect(() => {
     void load()
   }, [load])
 
+  useEffect(() => {
+    setGapsOpen((items ?? []).length <= 8)
+  }, [items?.length])
+
   const regenerate = async () => {
     setRegenerating(true)
     setRegenerateMsg(null)
     try {
-      const d = await geoPost<{ added: number; total: number; plans_added: number }>('/distill/gaps')
-      setRegenerateMsg(`重新分析完成：新增 ${d.added} 个缺口，共 ${d.total} 个`)
+      const d = await geoPost<{ added: number; total: number; plans_added: number }>(`/distill/gaps?limit=30${scopeQuery ? `&${scopeQuery}` : ''}`)
+      setRegenerateMsg(`重新检查完成：新增 ${d.added} 个缺口，共 ${d.total} 个`)
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : '重新生成失败')
+      setError(e instanceof Error ? e.message : '重新检查失败')
     } finally {
       setRegenerating(false)
     }
   }
 
-  if (loading) return <GeoLoading text="知识缺口加载中…" />
+  if (loading) return <GeoLoading text="资料缺口加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
   return (
-    <GeoCardShell title="知识缺口" className="geo-growth-workbench">
+    <GeoCardShell title="资料缺口" className="geo-growth-workbench">
+      <MonitorSubjectPicker note="资料缺口按这里选择的主体筛选；“全部”显示账号汇总。" />
       <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={() => void regenerate()} disabled={regenerating}>
-          <RefreshCw className={`size-3.5 ${regenerating ? 'animate-spin' : ''}`} /> {regenerating ? '分析中…' : '重新筛选'}
+          <RefreshCw className={`size-3.5 ${regenerating ? 'animate-spin' : ''}`} /> {regenerating ? '检查中…' : '重新检查'}
         </Button>
         {regenerateMsg ? <span className="text-[11px] text-[var(--yayu-muted)]">{regenerateMsg}</span> : null}
       </div>
       {!items || items.length === 0 ? (
-        <p className="text-[12px] text-[var(--yayu-muted)]">暂无缺口，点「重新筛选」分析一次。</p>
+        <p className="text-[12px] text-[var(--yayu-muted)]">{subjectValue !== ALL_SUBJECTS ? '当前主体还没有已绑定的资料缺口；先完成问题判定，再重新检查。' : '暂无资料缺口，点「重新检查」再看一次。'}</p>
       ) : (
-        <GeoList
-          items={[...items]
+        <details className="geo-long-list" open={gapsOpen} onToggle={(event) => setGapsOpen(event.currentTarget.open)}>
+          <summary><span>资料缺口</span><small>{items.length} 条，默认收起长列表</small></summary>
+          <div className="geo-long-list-body">
+            <GeoList
+              items={[...items]
             .sort((a, b) => LEVEL_ORDER[gapPriority(a).level] - LEVEL_ORDER[gapPriority(b).level])
             .map((g) => {
               const p = gapPriority(g)
@@ -91,18 +104,20 @@ export function GeoGapsListCard() {
                   ? `缺什么：${what}`
                   : '缺什么：尚未判明（这次没有模型能给出「需要补哪类信息」）',
                 meta: [
-                  `${p.level} · ${p.stage}阶段`,
+                  `${geoPriorityLabel(p.level)} · ${p.stage}阶段`,
                   ...(fromCoverage
                     ? ['来源：内容覆盖分析（把现有内容与客户问题逐条对了一遍，不是查企业知识库）']
                     : [
-                        g.judge_basis === 'fact_triple' ? '按知识库事实判定' : '按知识库文档文本推断',
+                        g.judge_basis === 'fact_triple' ? '按企业事实判定' : '按企业资料推断',
                         g.matched_terms?.length ? `命中「${g.matched_terms.slice(0, 3).join('/')}」` : '',
-                        '来源：企业知识库',
+                        '来源：企业资料',
                       ]),
                 ].filter(Boolean).join(' · '),
               }
-            })}
-        />
+              })}
+            />
+          </div>
+        </details>
       )}
     </GeoCardShell>
   )
