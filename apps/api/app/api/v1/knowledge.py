@@ -219,6 +219,13 @@ async def get_material(material_id: str):
     mat = next((m for m in items if m.get("id") == material_id), None)
     if not mat:
         return ok({"error": "素材不存在"})
+    sources = mat.get("context_sources") or []
+    if any(g.get("kind") == "canonical_fact" for g in sources):
+        from adapters.eios import EIOSKnowledgeError, validate_formal_content_sources
+        try:
+            await validate_formal_content_sources(sources)
+        except EIOSKnowledgeError as exc:
+            return err(exc.code, exc.message)
     from app.api.v1.monitor import _material_effects_sync
 
     effects = _material_effects_sync(material_id)

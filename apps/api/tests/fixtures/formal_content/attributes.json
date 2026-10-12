@@ -1,0 +1,51 @@
+{
+  "contract": "eios.canonical_attribute_list_result/v1",
+  "object_id": "ko_pzrilzflnlgx6tsv",
+  "object_version": 1,
+  "definition_id": "atr_department",
+  "definition_read_state": "available",
+  "limit": 20,
+  "items": [
+    {
+      "fact_id": "fact_d2icuf2vowvjiazp",
+      "fact_kind": "attribute",
+      "from_ko": {"id": "ko_pzrilzflnlgx6tsv", "version": 1},
+      "field_ref": {"id": "atr_department", "version": 2},
+      "value": {"value_type": "text", "raw_text": "会销中心", "needs_basis": false},
+      "qualifiers": {"surface": "陈礼所在部门是会销中心。"},
+      "valid_from": null,
+      "valid_to": null,
+      "lifecycle": "active",
+      "assertion_origin": "machine_asserted",
+      "evidence": [
+        {
+          "evidence_id": "evi_abcdefghijklmnopqrstuvwx12",
+          "relation_kind": "source",
+          "document_id": "doc_org_chart",
+          "document_version": 3,
+          "is_current": true,
+          "paragraph_id": "p0001",
+          "start": 0,
+          "end": 12,
+          "span_text_hash": "sha256:35d097ec43ac8f279aef1b865fb6b7757441ce112ded9f0af86476448061e0da",
+          "quote": "陈礼所在部门是会销中心。"
+        },
+        {
+          "evidence_id": "evi_bcdefghijklmnopqrstuvwxy123",
+          "relation_kind": "contradicts",
+          "document_id": "doc_other_source",
+          "document_version": 2,
+          "is_current": true,
+          "paragraph_id": "p0002",
+          "start": 0,
+          "end": 10,
+          "span_text_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "quote": "另一来源记录不同。"
+        }
+      ]
+    }
+  ],
+  "next_cursor": null,
+  "total": 1,
+  "notes": []
+}

@@ -1,0 +1,188 @@
+{
+  "contract": "eios.canonical_incident_relation_list_result/v5",
+  "object_id": "ko_h6rotyc7wgku5vc4",
+  "object_version": 1,
+  "definition_read_state": "available",
+  "limit": 20,
+  "items": [
+    {
+      "fact_id": "fact_abcdefghijklmnop",
+      "fact_kind": "edge",
+      "from_ko": {
+        "id": "ko_h6rotyc7wgku5vc4",
+        "version": 1
+      },
+      "from_object": {
+        "id": "ko_h6rotyc7wgku5vc4",
+        "version": 1,
+        "name": "对象甲",
+        "identity_qualification": {
+          "contract": "eios.knowledge_source_instance_qualification/v1",
+          "scope_kind": "document_version_anchor",
+          "state": "ESTABLISHED",
+          "ko_ref": {
+            "id": "ko_h6rotyc7wgku5vc4",
+            "version": 1
+          },
+          "owner": {
+            "deployment_id": "dep_docx_isolated",
+            "enterprise_id": "enterprise_docx_isolated"
+          },
+          "source_ref": {
+            "document_id": "doc_source_a",
+            "document_version_id": "dver_source_a_v1",
+            "version": 1,
+            "source_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "anchor": {
+            "paragraph_id": "p0001",
+            "start": 0,
+            "end": 3,
+            "mention_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "type_ref": {
+            "definition_id": "ent_person",
+            "version": 1,
+            "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "role": "business_type"
+          },
+          "identity_evidence_ids": [
+            "evi_incident_from"
+          ],
+          "qualification_hash": "sha256:4696fbb32e0e489e2300df1026addaaab74539621c282a120ac70b510c00edbb"
+        }
+      },
+      "se_ref": {
+        "id": "rel_fixture_relation",
+        "version": 3,
+        "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "to_ko": {
+        "id": "ko_vadeiqsylg2njo5n",
+        "version": 1
+      },
+      "to_object": {
+        "id": "ko_vadeiqsylg2njo5n",
+        "version": 1,
+        "name": "对象乙",
+        "identity_qualification": {
+          "contract": "eios.knowledge_source_instance_qualification/v1",
+          "scope_kind": "document_version_anchor",
+          "state": "ESTABLISHED",
+          "ko_ref": {
+            "id": "ko_vadeiqsylg2njo5n",
+            "version": 1
+          },
+          "owner": {
+            "deployment_id": "dep_docx_isolated",
+            "enterprise_id": "enterprise_docx_isolated"
+          },
+          "source_ref": {
+            "document_id": "doc_source_a",
+            "document_version_id": "dver_source_a_v1",
+            "version": 1,
+            "source_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          "anchor": {
+            "paragraph_id": "p0001",
+            "start": 4,
+            "end": 7,
+            "mention_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "type_ref": {
+            "definition_id": "ent_person",
+            "version": 1,
+            "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "role": "business_type"
+          },
+          "identity_evidence_ids": [
+            "evi_incident_to"
+          ],
+          "qualification_hash": "sha256:bee84d75a02ae894453014e02a6c92bcdac194b998f15bd80e0a31265b2c981c"
+        }
+      },
+      "qualifiers": {
+        "modality": "asserted"
+      },
+      "valid_from": null,
+      "valid_to": null,
+      "lifecycle": "active",
+      "assertion_origin": "machine_asserted",
+      "evidence": [
+        {
+          "evidence_id": "evi_abcdefghijklmnopqrstuvwx12",
+          "relation_kind": "source",
+          "document_id": "doc_fixture_source",
+          "document_version": 1,
+          "is_current": true,
+          "paragraph_id": "p0001",
+          "start": 0,
+          "end": 10,
+          "span_text_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "quote": "Fixture A leads Fixture B."
+        },
+        {
+          "evidence_id": "evi_bcdefghijklmnopqrstuvwxy123",
+          "relation_kind": "contradicts",
+          "document_id": "doc_fixture_other",
+          "document_version": 1,
+          "is_current": true,
+          "paragraph_id": "p0002",
+          "start": 0,
+          "end": 10,
+          "span_text_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "quote": "Other current evidence."
+        }
+      ],
+      "polarity": "assert",
+      "modality": "asserted",
+      "quotation_scope": "none",
+      "subject_type_ref": {
+        "object_id": "ent_company",
+        "version": 1
+      },
+      "object_type_ref": {
+        "object_id": "ent_person",
+        "version": 2
+      },
+      "from_type_assertions": [
+        {
+          "id": "ota_source",
+          "version": 1,
+          "type_ref": {
+            "object_id": "ent_company",
+            "version": 1
+          }
+        }
+      ],
+      "to_type_assertions": [
+        {
+          "id": "ota_target",
+          "version": 1,
+          "type_ref": {
+            "object_id": "ent_person",
+            "version": 2
+          }
+        }
+      ],
+      "task_schema_bindings": [
+        {
+          "document_id": "doc_A",
+          "document_version_id": "dver_A",
+          "document_version": 1,
+          "job_id": "xjob_A",
+          "generation": 1,
+          "run_id": "xrun_A",
+          "schema_id": "schem_A",
+          "version": 3,
+          "hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      ],
+      "task_schema_read_state": "available",
+      "task_schema_unavailable_reason": null,
+      "definition_name": "正式关系"
+    }
+  ],
+  "next_cursor": null,
+  "notes": []
+}

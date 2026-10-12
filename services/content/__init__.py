@@ -1007,6 +1007,42 @@ async def build_context(
     }
 
 
+async def build_formal_context(*, question: str = "", company_name: str | None = None) -> dict:
+    """Keep exact Authority projections as draft provenance, not enterprise truth."""
+    from adapters.eios import EIOSKnowledgeError, read_formal_content_sources
+    items = await read_formal_content_sources()
+    if not items:
+        raise EIOSKnowledgeError("FORMAL_FACTS_EMPTY", "当前正式读口没有可用事实，尚不能生成正式依据稿", 409)
+    if company_name and not any(item["object_name"] == company_name.strip() for item in items):
+        raise EIOSKnowledgeError("FORMAL_SUBJECT_NOT_FOUND", "指定名称不在本次正式事实的对象中，不能冒用其他企业身份", 409)
+    if question.strip():
+        from services.embed import n_gram_scores
+        scores = n_gram_scores(question, [{"id": str(i), "title": item["object_name"], "content": item["fact"]}
+                                        for i, item in enumerate(items)], title_key="title", content_key="content")
+        items = [item for i, item in sorted(enumerate(items), key=lambda pair: -scores.get(str(pair[0]), 0))
+                 if scores.get(str(i), 0) > 0][:_MAX_TOPIC_FACTS]
+    else:
+        items = items[:_MAX_TOPIC_FACTS]
+    if not items:
+        raise EIOSKnowledgeError("FORMAL_FACTS_EMPTY", "未找到与题目相关的正式事实，请调整题目", 409)
+    if len(json.dumps(items, ensure_ascii=False)) > 60000:
+        raise EIOSKnowledgeError("FORMAL_SOURCE_TOO_LARGE", "本篇精确来源超过现有保存上限，请缩小取材范围", 409)
+    return {"company_name": company_name or "当前企业", "materials": [item["fact"] for item in items],
+            "faq_assets": [], "other_assets": [], "pool_questions": [], "signals": {},
+            "context_sources": [{"kind": "canonical_fact", "label": "生成时读取的正式事实与精确出处（当前资格须重读）", "items": items}],
+            "source_material_ids": [], "uploaded_sources": [], "knowledge_status": "available",
+            "knowledge_error": None, "warnings": []}
+
+
+async def generate_formal(**kwargs) -> dict:
+    """The product generation entry consumes only formally readable facts."""
+    from adapters.eios import EIOSKnowledgeError
+    if kwargs.get("materials_extra") or kwargs.get("source_material_ids"):
+        raise EIOSKnowledgeError("FORMAL_SOURCE_REQUIRED", "正式依据稿不能使用自上传或外部素材代替正式事实", 409)
+    context = await build_formal_context(question=kwargs.get("question", ""), company_name=kwargs.get("company_name"))
+    return await generate(**kwargs, context=context)
+
+
 _IMPROVE_SYSTEM = (
     "你是 GEO 内容编辑。你的唯一任务是**按用户给的修改要求改这份稿子**，"
     "不是重写、不是另外写一篇。不得新增企业事实、数据、案例。"
@@ -1052,7 +1088,7 @@ async def improve(
         )
         facts = "\n".join(ctx["materials"][:30]) or "（本轮没有检索到相关资料；不能据此断言企业没有资料）"
         used_sources = [s for s in ctx.get("context_sources", [])
-                        if s.get("kind") in ("enterprise_fact", "document_chunk", "entity", "uploaded_material", "faq_asset", "asset")]
+                        if s.get("kind") in ("enterprise_fact", "document_chunk", "entity", "uploaded_material", "faq_asset", "asset", "canonical_fact")]
         # Match the provenance projection to what improve actually consumes, including
         # original hand-written material/FAQ. Monitoring signals are not rewrite facts.
         for source in used_sources:
@@ -1063,7 +1099,7 @@ async def improve(
         # API has checked these excerpts against the current cabinet/read contract.
         # Render the exact prior projection; never re-rank or silently add sources.
         used_sources = [s for s in context_sources if s.get("kind") in (
-            "enterprise_fact", "document_chunk", "entity", "uploaded_material", "faq_asset", "asset")]
+            "enterprise_fact", "document_chunk", "entity", "uploaded_material", "faq_asset", "asset", "canonical_fact")]
         lines = []
         for source in used_sources:
             for item in source.get("items") or []:
@@ -1125,16 +1161,17 @@ async def generate(
     structure: str = "free",  # 认知编译器：free（自由长文，默认）/ geo（可抽取结构模板）
     materials_extra: list[dict] | None = None,  # H19：外部个人素材并入生成上下文
     source_material_ids: list[str] | None = None,
+    context: dict | None = None,
 ) -> dict:
     # Resolve and validate explicitly selected files before any early return from Fact Gate.
     if not tenant_id:
         from app.services.store import current_tenant
 
         tenant_id = current_tenant() or "tenant_corp_01"
-    ctx = await build_context(question=question, company_name=company_name, tenant_id=tenant_id,
-                              source_material_ids=source_material_ids)
+    ctx = context if context is not None else await build_context(
+        question=question, company_name=company_name, tenant_id=tenant_id, source_material_ids=source_material_ids)
     # 0) Fact Gate：提取用户声明 → 多路验证（正式知识库 / 当前柜原始素材 / 无依据）
-    fg = await _fact_gate(question)
+    fg = {"unverified": []} if context is not None else await _fact_gate(question)
     if fg["unverified"] and mode == "strict":
         return {
             "ok": False,
@@ -1173,7 +1210,7 @@ async def generate(
 
     # 认知编译器（structure=geo）：企业画像提前构建——材料与 fact_check 同源（审计 P1-4），只查一次知识库
     profile = None
-    if structure == "geo":
+    if structure == "geo" and context is None:
         from app.services.company_profile import build_company_profile
 
         profile = await build_company_profile(auto_name or "", tenant_id=tenant_id)
@@ -1374,7 +1411,8 @@ async def generate(
         sections = parse_sections(text)
         # 复用已构建的 profile（与 prompt 材料同源——审计 P1-4）
         profile = profile or {}
-        fact_check = score_fact_density(text, profile.get("facts", []))
+        if context is None:
+            fact_check = score_fact_density(text, profile.get("facts", []))
 
     return {
         "ok": True,

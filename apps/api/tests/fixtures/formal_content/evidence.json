@@ -1,0 +1,28 @@
+{
+  "contract": "eios.evidence_detail/v2",
+  "evidence": {
+    "id": "evi_fixture",
+    "kind": "document_span",
+    "validity_status": "valid",
+    "observed_at": "2026-10-10T00:00:00Z",
+    "content_hash": "sha256:354b28c85333456866931a77eacdf6cd18d80b79981ccf1f4ca927b84fd99302"
+  },
+  "source": {
+    "state": "available",
+    "anchor": {
+      "document_id": "doc_fixture",
+      "document_version_id": "dver_fixture",
+      "document_version": 1,
+      "chunk_id": "chk_fixture",
+      "source_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "chunk_content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "location": {
+      "coordinate": "paragraph_chars",
+      "start": 0,
+      "end": 2,
+      "quote": "原文",
+      "paragraph_id": "p0001"
+    }
+  }
+}

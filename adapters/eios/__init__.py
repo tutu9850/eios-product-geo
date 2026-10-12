@@ -1,5 +1,8 @@
 """EIOS Foundation 知识库只读适配层 — GEO 读企业知识的唯一入口。
 
+正式内容读取走 read_formal_content_sources：绑定已验证读者并复用正式读口；
+不从旧目录或快照补资格。下述手动同步规则仍限历史调用者，不适用于该正式取材入口。
+
 **读闸门（Owner 2026-09-22，代拍 · 待 Owner 复核）**：``除了手动的知识库同步以外，
 不让 GEO 去知识库里找东西``。所以本模块默认**不放行实时读**：``_request`` 会抛
 ``KnowledgeReadBlocked``；各个读函数在闸门关着时改读 **GEO 自己柜里的快照**
@@ -70,6 +73,12 @@ class EIOSKnowledgeError(RuntimeError):
     def _category(code: str, status: int) -> str:
         """Stable user-facing class while preserving the authority's original code."""
         normalized = str(code or "").upper()
+        if normalized == "FORMAL_FACTS_EMPTY":
+            return "empty"
+        if normalized == "FORMAL_READER_NOT_BOUND":
+            return "not_synced"
+        if normalized == "FORMAL_READ_PARTIAL":
+            return "partial"
         if normalized == "KNOWLEDGE_INVALID_RESPONSE":
             return "invalid_response"
         if status in (401, 403, 404, 409, 410) or any(
@@ -979,3 +988,160 @@ __all__ = [
     "search_relations",
     "write_candidate",
 ]
+
+
+async def read_formal_content_sources(object_ids: list[str] | None = None) -> list[dict[str, Any]]:
+    """Read canonical facts without candidate/snapshot fallback or qualification replay.
+
+    The existing signer must already represent the verified reader. This consumer
+    cannot turn a deployment-wide system ticket into delegated user authority.
+    All pages share a five-second read deadline; no partial result is promoted.
+    """
+    import asyncio
+    import json
+    import re
+    import time
+    from app.product.session import current_product_session
+
+    deadline = time.monotonic() + 5.0
+    session = current_product_session()
+    claims = _deployment_claims()
+    if session is None or any((claims[key] != value) for key, value in (
+        ("deployment_id", session.deployment_id if session else ""),
+        ("enterprise_id", session.enterprise_id if session else ""),
+        ("subject", session.principal_id if session else ""),
+    )):
+        raise EIOSKnowledgeError("FORMAL_READER_NOT_BOUND", "正式读取尚未绑定当前用户及企业，不能使用部署级身份代读", 403)
+    try:
+        import eios_contracts as contracts
+        models = {name: getattr(contracts, name) for name in (
+            "KnowledgeObjectListResultV2", "KnowledgeObjectV2",
+            "CanonicalAttributeListResultV1", "CanonicalIncidentRelationListResultV5",
+            "EvidenceDetailV2",
+        )}
+    except (ImportError, AttributeError) as exc:
+        raise EIOSKnowledgeError("FORMAL_CONTRACT_UNAVAILABLE", "部署尚未提供正式消费合同生成物", 503) from exc
+
+    async def read(path: str, params: dict, model: str) -> dict:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise EIOSKnowledgeError("FORMAL_READ_TIMEOUT", "正式知识读取已超过截止时间", 504)
+        try:
+            with knowledge_read_grant("formal_content"):
+                raw = await asyncio.wait_for(_request("GET", path, params=params), remaining)
+            result = models[model].model_validate(raw).model_dump(mode="json")
+            if time.monotonic() >= deadline:
+                raise EIOSKnowledgeError("FORMAL_READ_TIMEOUT", "正式知识读取已超过截止时间", 504)
+            return result
+        except asyncio.TimeoutError as exc:
+            raise EIOSKnowledgeError("FORMAL_READ_TIMEOUT", "正式知识读取已超过截止时间", 504) from exc
+        except EIOSKnowledgeError:
+            raise
+        except ValueError as exc:
+            raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "正式读口响应不符合现行合同", 502) from exc
+
+    async def pages(path: str, contract: str, model: str) -> list[dict]:
+        cursor = None
+        seen: set[str] = set()
+        result = []
+        for _ in range(20):
+            query = {"response_contract": contract, "limit": 20}
+            if cursor:
+                query["cursor"] = cursor
+            page = await read(path, query, model)
+            if page.get("definition_read_state") == "unavailable":
+                raise EIOSKnowledgeError("FORMAL_READ_UNAVAILABLE", "正式事实依赖不可核对", 503)
+            result.append(page)
+            cursor = page["next_cursor"]
+            if cursor is None:
+                return result
+            if cursor in seen:
+                raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "正式读口游标重复", 502)
+            seen.add(cursor)
+        raise EIOSKnowledgeError("FORMAL_READ_PARTIAL", "正式资料分页未完整读取，不用部分结果冒充完整取材", 503)
+
+    if object_ids is None:
+        catalog = await pages("/api/v1/knowledge/objects", "eios.knowledge_object_list_result/v2", "KnowledgeObjectListResultV2")
+        objects = [item for page in catalog for item in page["items"]]
+        if any(o["enterprise_id"] != session.enterprise_id or o["deployment_id"] != session.deployment_id for o in objects):
+            raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "对象目录返回其他企业资料", 502)
+        object_ids = [o["id"] for o in objects]
+    if len(object_ids) > 400 or any(not isinstance(i, str) or re.fullmatch(r"ko_[A-Za-z0-9_]+", i) is None for i in object_ids):
+        raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "正式对象引用格式不完整", 502)
+    sources: list[dict] = []
+    seen_facts: dict[str, dict] = {}
+    evidence_cache: dict[str, dict] = {}
+    for object_id in dict.fromkeys(object_ids):
+        obj = await read(f"/api/v1/knowledge/objects/{object_id}", {"response_contract": "eios.knowledge_object/v2"}, "KnowledgeObjectV2")
+        if (obj["status"] != "active" or obj["id"] != object_id or obj["enterprise_id"] != session.enterprise_id
+                or obj["deployment_id"] != session.deployment_id):
+            raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "正式对象锚点与当前企业不一致", 502)
+        for suffix, contract, model in (
+            ("canonical-attributes", "eios.canonical_attribute_list_result/v1", "CanonicalAttributeListResultV1"),
+            ("canonical-relations", "eios.canonical_incident_relation_list_result/v5", "CanonicalIncidentRelationListResultV5"),
+        ):
+            for page in await pages(f"/api/v1/knowledge/objects/{object_id}/{suffix}", contract, model):
+                if page["object_id"] != object_id or page["object_version"] != obj["version"]:
+                    raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "事实页返回其他对象或版本", 502)
+                for fact in page["items"]:
+                    anchor_ref = {"id": object_id, "version": obj["version"]}
+                    if fact["lifecycle"] != "active" or anchor_ref not in (fact.get("from_ko"), fact.get("to_ko")):
+                        raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "当前正式读口返回非生效事实或错误对象引用", 502)
+                    if fact["fact_id"] in seen_facts:
+                        if seen_facts[fact["fact_id"]] != fact:
+                            raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "同一事实返回冲突内容", 502)
+                        continue
+                    seen_facts[fact["fact_id"]] = fact
+                    details = []
+                    for reference in fact["evidence"]:
+                        if reference.get("is_current") is not True:
+                            raise EIOSKnowledgeError("FORMAL_SOURCE_UNAVAILABLE", "事实引用的证据已失效，不作为当前取材依据", 409)
+                        eid = reference["evidence_id"]
+                        if eid not in evidence_cache:
+                            evidence_cache[eid] = await read(f"/api/v1/evidence/{eid}", {"response_contract": "eios.evidence_detail/v2"}, "EvidenceDetailV2")
+                        detail = evidence_cache[eid]
+                        if detail["evidence"]["id"] != eid:
+                            raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "证据详情返回其他证据", 502)
+                        if detail["evidence"]["validity_status"] != "valid":
+                            raise EIOSKnowledgeError("FORMAL_SOURCE_UNAVAILABLE", "证据已失效，不作为当前取材依据", 409)
+                        source = detail["source"]
+                        if source["state"] != "available":
+                            raise EIOSKnowledgeError("FORMAL_SOURCE_UNAVAILABLE", "本篇事实的精确原文不可读", 503)
+                        anchor, location = source["anchor"], source["location"]
+                        if (anchor.get("document_id") != reference["document_id"]
+                                or anchor.get("document_version") != reference["document_version"]
+                                or location.get("quote") != reference["quote"]
+                                or location.get("start") != reference["start"]
+                                or location.get("end") != reference["end"]
+                                or location.get("paragraph_id") != reference.get("paragraph_id")):
+                            raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "证据原文与事实引用不一致", 502)
+                        details.append(detail)
+                    sources.append({"fact_id": fact["fact_id"], "object_id": object_id,
+                        "object_version": obj["version"], "object_name": obj["canonical_name"], "enterprise_id": session.enterprise_id,
+                        "deployment_id": session.deployment_id, "read_contract": contract,
+                        "fact": json.dumps({key: value for key, value in fact.items() if key in {
+                            "fact_id", "fact_kind", "from_ko", "from_object", "field_ref", "value",
+                            "se_ref", "definition_name", "to_ko", "to_object", "qualifiers",
+                            "valid_from", "valid_to", "lifecycle", "assertion_origin", "polarity",
+                            "modality", "quotation_scope"}}, ensure_ascii=False, sort_keys=True),
+                        "canonical_fact": fact, "evidence_details": details})
+    if time.monotonic() >= deadline:
+        raise EIOSKnowledgeError("FORMAL_READ_TIMEOUT", "正式知识读取已超过截止时间", 504)
+    return sources
+
+
+async def validate_formal_content_sources(groups: list[dict]) -> list[dict]:
+    """Compare draft references with current Authority reads, never rerank them."""
+    if not isinstance(groups, list) or any(not isinstance(g, dict) for g in groups):
+        raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "正式稿来源分组格式不完整", 502)
+    formal = [g for g in groups if g.get("kind") == "canonical_fact"]
+    if not formal:
+        return groups
+    supplied = [i for g in formal for i in g.get("items", [])]
+    if not supplied or any(not isinstance(i, dict) or not isinstance(i.get("object_id"), str) for i in supplied):
+        raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "正式稿来源引用不完整", 502)
+    current = await read_formal_content_sources(list(dict.fromkeys(i["object_id"] for i in supplied)))
+    by_id = {i["fact_id"]: i for i in current}
+    if any(by_id.get(i.get("fact_id")) != i for i in supplied):
+        raise EIOSKnowledgeError("FORMAL_SOURCE_CHANGED", "原稿事实或证据已变化/不可读，请重新取材", 409)
+    return groups

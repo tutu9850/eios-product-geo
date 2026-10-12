@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 from app.core.envelope import ok, err
 from adapters.llm import LLMNotConfiguredError, LLMError, bounded_content_call
+from adapters.eios import EIOSKnowledgeError, validate_formal_content_sources
 
 
 class _SourceUnavailable(ValueError):
@@ -59,7 +60,7 @@ def _cabinet(explicit: str | None) -> str:
 @router.post("/generate")
 async def generate(req: GenerateRequest):
     """生成 GEO 内容草稿（自动读企业资料；不自动发布）"""
-    from services.content import generate as generate_impl
+    from services.content import generate_formal as generate_impl
 
     try:
         result = await bounded_content_call(lambda: generate_impl(
@@ -78,6 +79,8 @@ async def generate(req: GenerateRequest):
             materials_extra=req.materials_extra,
             source_material_ids=req.source_material_ids,
         ))
+    except EIOSKnowledgeError as exc:
+        return err(exc.code, exc.message)
     except LLMNotConfiguredError as exc:
         return err("llm_not_configured", str(exc))
     except LLMError as exc:
@@ -221,7 +224,11 @@ async def improve(req: ImproveIn):
     try:
         async def run_improve():
             sources = None
-            if req.context_sources is not None:
+            if req.context_sources is None:
+                from services.content import build_formal_context
+                context = await build_formal_context(question=req.question or req.title, company_name=req.company_name)
+                sources = context["context_sources"]
+            else:
                 try:
                     sources, _ = await _validate_saved_sources(SaveIn(
                         title=req.title, content=req.content, question=req.question,
@@ -241,6 +248,8 @@ async def improve(req: ImproveIn):
             )
 
         result = await bounded_content_call(run_improve)
+    except EIOSKnowledgeError as exc:
+        return err(exc.code, exc.message)
     except LLMNotConfiguredError as exc:
         return err("llm_not_configured", str(exc))
     except LLMError as exc:
@@ -269,6 +278,8 @@ async def save(req: SaveIn):
     title = (req.title or "").strip() or (req.question or "").strip()[:40] or "未命名生成内容"
     try:
         sources, ids = await _validate_saved_sources(req)
+    except EIOSKnowledgeError as exc:
+        return err(exc.code, exc.message)
     except ValueError as exc:
         return err("source_unavailable", str(exc))
     from services.content.claim_check import check_claims
@@ -295,13 +306,18 @@ async def _validate_saved_sources(req: SaveIn) -> tuple[list[dict] | None, list[
         if req.source_material_ids:
             raise ValueError("本篇出处未完整传回，请重新生成或改稿后保存")
         return None, None
+    import json
+    if len(req.context_sources) > 32 or len(json.dumps(req.context_sources, ensure_ascii=False)) > 60000:
+        raise ValueError("本篇出处过大，请重新生成")
+    if any(g.get("kind") == "canonical_fact" for g in req.context_sources):
+        if any(g.get("kind") != "canonical_fact" for g in req.context_sources) or req.source_material_ids:
+            raise EIOSKnowledgeError("FORMAL_SOURCE_REQUIRED", "正式稿不能混入未经治理的材料来源", 409)
+        return await validate_formal_content_sources(req.context_sources), []
     import hashlib
     import json
     from app.services.store import get_store
     from services.content import build_context
 
-    if len(req.context_sources) > 32 or len(json.dumps(req.context_sources, ensure_ascii=False)) > 60000:
-        raise ValueError("本篇出处过大，请重新生成")
     assets = {m.get("id"): m for m in get_store().load("kb")}
     ids = list(dict.fromkeys(req.source_material_ids or []))
     if len(ids) > 20 or any(i not in assets or assets[i].get("source_type") == "generated" for i in ids):

@@ -1,0 +1,49 @@
+{
+  "contract": "eios.knowledge_object/v2",
+  "id": "ko_h6rotyc7wgku5vc4",
+  "deployment_id": "dep_beichen_dev",
+  "enterprise_id": "enterprise_beichen",
+  "type": "entity",
+  "canonical_name": "经销商返利管理办法",
+  "semantic_object_id": null,
+  "status": "active",
+  "evidence_ids": [
+    "evi_01P0REBATESPAN"
+  ],
+  "version": 1,
+  "identity_qualification": {
+    "contract": "eios.knowledge_source_instance_qualification/v1",
+    "scope_kind": "document_version_anchor",
+    "state": "ESTABLISHED",
+    "ko_ref": {
+      "id": "ko_h6rotyc7wgku5vc4",
+      "version": 1
+    },
+    "owner": {
+      "deployment_id": "dep_docx_isolated",
+      "enterprise_id": "enterprise_docx_isolated"
+    },
+    "source_ref": {
+      "document_id": "doc_source_a",
+      "document_version_id": "dver_source_a_v1",
+      "version": 1,
+      "source_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "anchor": {
+      "paragraph_id": "p0001",
+      "start": 0,
+      "end": 3,
+      "mention_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "type_ref": {
+      "definition_id": "ent_person",
+      "version": 1,
+      "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "role": "business_type"
+    },
+    "identity_evidence_ids": [
+      "evi_anchor"
+    ],
+    "qualification_hash": "sha256:ab0ea5aa11db9ea728e4884dc006a6bf3b4c672048f5179514da2eb9c6840063"
+  }
+}
