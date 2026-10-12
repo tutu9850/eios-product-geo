@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { FlaskConical } from 'lucide-react'
 import { geoGet } from './geo-api'
-import { GeoCardShell, GeoError, GeoFormattedAnswer, GeoLoading, monitorTypeText, sentimentText, shortDay, stripAnswerMarkdown } from './shared'
+import { GeoCardShell, GeoError, GeoFormattedAnswer, GeoLoading, monitorTypeText, sentimentText, shortDay, stripAnswerMarkdown, useGeoDemoMode } from './shared'
+import { GEO_DEMO_MONITOR_ANSWERS, GEO_DEMO_NOTICE } from './demo-fixtures'
+import { ALL_SUBJECTS, MonitorSubjectPicker, useMonitorSubject } from './geo-monitor-subject'
 
 export interface MonitorAnswer {
   ts: string
@@ -80,11 +83,14 @@ function positionOf(a: { mentioned: boolean | null; rank_est: number | null; rec
 }
 
 function sampleSentiment(a: { sentiment: string; recognition?: string | null; sentiment_status?: string | null }): string {
-  return a.recognition === 'not_recognised' || a.sentiment_status === 'unknown' ? '未判定' : sentimentText(a.sentiment)
+  if (a.recognition === 'not_recognised' || a.sentiment_status === 'unknown') return '评价语气：未判定'
+  return `评价语气：${sentimentText(a.sentiment)}`
 }
 
-/** 监测报告卡（拆自原监测卡后半）：AI 回答 + 情绪分析 + 引用 + 来源，维度 tab 切换 */
+/** 模型回答卡：模型回答 + 评价语气 + 内容引用 + 来源，维度 tab 切换 */
 export function GeoMonitorReportCard() {
+  const { enabled: demoMode } = useGeoDemoMode()
+  const { value: subjectValue, query: subjectQuery, loaded: subjectsLoaded } = useMonitorSubject()
   const [tab, setTab] = useState<ReportTab>('answers')
   const [groups, setGroups] = useState<MonitorAnswerGroup[]>([])
   const [itemNames, setItemNames] = useState<Record<string, string>>({})
@@ -98,6 +104,7 @@ export function GeoMonitorReportCard() {
   const [citations, setCitations] = useState<Array<Record<string, unknown>>>([])
   const [sources, setSources] = useState<Array<Record<string, unknown>>>([])
   const [sourceNote, setSourceNote] = useState('')
+  const [loadedSourceScope, setLoadedSourceScope] = useState('')
   const [reasons, setReasons] = useState<{ reasons: Array<{ query: string; engine: string; snippet: string }>; missing_evidence: string[] } | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -110,6 +117,15 @@ export function GeoMonitorReportCard() {
   const load = async (nextPage = 1, append = false) => {
     if (append) { setLoadingMore(true); setLoadMoreError('') }
     else { setLoading(true); setError(null) }
+    if (demoMode) {
+      const demoGroups = GEO_DEMO_MONITOR_ANSWERS.groups as unknown as MonitorAnswerGroup[]
+      setGroups(append ? [...groups, ...demoGroups] : demoGroups)
+      setItemNames({ 'demo-brand': '笔革家居' })
+      setPage(1); setPages(1); setGroupTotal(demoGroups.length); setItemTypes(['all', 'brand'])
+      setReasons({ reasons: [{ query: '成都适合年轻家庭的家居品牌有哪些？', engine: 'DeepSeek', snippet: '笔革家居可以按户型和预算提供空间规划建议。' }], missing_evidence: ['交付周期', '售后响应'] })
+      setLoading(false); setLoadingMore(false)
+      return
+    }
     try {
       const [a, m] = await Promise.all([
         geoGet<MonitorAnswerPage>(`/monitor/answers?page=${nextPage}&page_size=20${answerType !== 'all' ? `&item_type=${answerType}` : ''}${selectedMonitorIds.length ? `&monitor_ids=${encodeURIComponent(selectedMonitorIds.join(','))}` : ''}`),
@@ -135,7 +151,7 @@ export function GeoMonitorReportCard() {
       const types = ['all', ...new Set((m.items ?? []).map((i) => i.type))]
       setItemTypes(types)
     } catch (e) {
-      const message = e instanceof Error ? e.message : '监测报告加载失败'
+      const message = e instanceof Error ? e.message : '模型回答加载失败'
       if (append) setLoadMoreError(message)
       else setError(message)
     } finally {
@@ -145,9 +161,15 @@ export function GeoMonitorReportCard() {
   }
 
   useEffect(() => {
+    if (!demoMode && !subjectsLoaded) return
     void load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [answerType, selectedMonitorIds])
+  }, [answerType, selectedMonitorIds, demoMode, subjectsLoaded])
+
+  useEffect(() => {
+    if (!subjectsLoaded) return
+    setSelectedMonitorIds(subjectValue && subjectValue !== ALL_SUBJECTS ? [subjectValue] : [])
+  }, [subjectValue, subjectsLoaded])
 
   useEffect(() => {
     const onSelection = (event: Event) => {
@@ -160,29 +182,49 @@ export function GeoMonitorReportCard() {
 
   // 维度数据按 tab 懒加载
   useEffect(() => {
+    if (demoMode) {
+      if (tab === 'sentiment') {
+        setSentiment({ overview: { total: 36, positive: 14, negative: 10, neutral: 12, pos_pct: 39, neg_pct: 28, neu_pct: 33 }, trend: [], questions: [], top_words: [{ word: '交付', count: 6 }, { word: '售后', count: 5 }], negative_samples: [], unknown_count: 0 })
+      }
+      if (tab === 'citations') setCitations([{ title: '演示·品牌手册 v1', count: 8 }, { title: '演示·产品目录 v3', count: 6 }])
+      if (tab === 'sources') { setSources([{ label: 'DeepSeek', count: 12, share: 40 }, { label: 'Kimi', count: 10, share: 33 }, { label: '豆包', count: 8, share: 27 }]); setSourceNote(GEO_DEMO_NOTICE) }
+      setLoadedSourceScope('demo')
+      return
+    }
     if (tab === 'answers' && !reasons) {
       geoGet<{ reasons: Array<{ query: string; engine: string; snippet: string }>; missing_evidence: string[] }>('/cognition/reasons')
         .then(setReasons)
         .catch(() => undefined)
     }
-    if (tab === 'citations' && citations.length === 0) {
-      geoGet<{ items: Array<Record<string, unknown>> }>('/monitor/citations')
-        .then((d) => setCitations(d.items ?? []))
+    const scopeChanged = loadedSourceScope !== subjectQuery
+    if (scopeChanged) {
+      setCitations([])
+      setSources([])
+      setSourceNote('')
+    }
+    if (tab === 'citations' && (citations.length === 0 || scopeChanged)) {
+      geoGet<{ items: Array<Record<string, unknown>> }>(`/monitor/citations${subjectQuery ? `?${subjectQuery}` : ''}`)
+        .then((d) => {
+          setCitations(d.items ?? [])
+          setLoadedSourceScope(subjectQuery)
+        })
         .catch(() => undefined)
     }
-    if (tab === 'sources' && sources.length === 0) {
-      geoGet<{ items: Array<Record<string, unknown>>; note?: string }>('/cognition/sources')
+    if (tab === 'sources' && (sources.length === 0 || scopeChanged)) {
+      geoGet<{ items: Array<Record<string, unknown>>; note?: string }>(`/cognition/sources${subjectQuery ? `?${subjectQuery}` : ''}`)
         .then((d) => {
           setSources(d.items ?? [])
           setSourceNote(d.note ?? '')
+          setLoadedSourceScope(subjectQuery)
         })
         .catch(() => undefined)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+  }, [tab, demoMode, subjectQuery, loadedSourceScope])
 
   useEffect(() => {
     if (tab !== 'sentiment') return
+    if (demoMode) return
     let cancelled = false
     setSentiment(null)
     const brandId = selectedMonitorIds.length === 1 ? selectedMonitorIds[0] : ''
@@ -190,24 +232,27 @@ export function GeoMonitorReportCard() {
       .then((result) => { if (!cancelled) setSentiment(result) })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [tab, selectedMonitorIds])
+  }, [tab, selectedMonitorIds, demoMode])
 
   const visibleGroups = useMemo(() => groups.map((group) => [group, group.answers.map((answer) => ({ ...answer, monitor_id: group.monitor_id, query: group.query, ts: group.ts, item_type: group.item_type }))] as const), [groups])
 
-  if (loading) return <GeoLoading text="监测报告加载中…" />
+  if (loading) return <GeoLoading text="模型回答加载中…" />
   if (error) return <GeoError message={error} onRetry={() => void load()} />
 
   const tabs: Array<{ key: ReportTab; label: string }> = [
-    { key: 'answers', label: 'AI 回答' },
-    { key: 'sentiment', label: '情绪分析' },
-    { key: 'citations', label: '引用' },
-    { key: 'sources', label: '来源' },
+    { key: 'answers', label: '原始回答' },
+    { key: 'sentiment', label: '评价语气' },
+    { key: 'citations', label: '是否引用内容' },
+    { key: 'sources', label: '回答来自哪里' },
   ]
 
   const ov = sentiment?.overview
 
   return (
-    <GeoCardShell title="📈 监测报告" className="sm:flex-1">
+    <GeoCardShell title="📈 模型回答" className="sm:flex-1">
+      {demoMode && <div className="geo-demo-banner mb-1.5"><FlaskConical /><span><b>内测演示数据已开启</b>　{GEO_DEMO_NOTICE}</span></div>}
+      {demoMode && <p className="geo-note">本页展示 2 组示例回答，用来讲解如何核对模型原话；总览和分析指标使用 36 条固定演示回答，示例不构成完整明细。</p>}
+      {!demoMode ? <MonitorSubjectPicker note="模型回答、评价语气和引用明细都会按这里选择的主体筛选；“全部”只看账号汇总。" /> : null}
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
         {tabs.map((t) => (
           <button
@@ -224,13 +269,14 @@ export function GeoMonitorReportCard() {
           </button>
         ))}
       </div>
+      <p className="geo-note mb-1.5">这里保存模型的原始回答：每组对应一个监测问题在一批国产模型中的回答。先核对“它说了什么、说的是不是这家企业”，再把可靠结果带入认知洞察；原始回答本身不等于企业事实。</p>
 
       {tab === 'answers' ? (
         <>
-          {/* 推荐理由/证据链（AI 为什么提到我们） */}
+          {/* 先展示模型原话和缺失依据，再进入详细观测。 */}
           {reasons && (reasons.reasons.length > 0 || reasons.missing_evidence.length > 0) ? (
             <div className="mb-1.5 rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-1.5">
-              <div className="mb-2 text-[11px] font-semibold text-[var(--yayu-foreground)]">AI 为什么提到你 <span className="font-normal text-[var(--yayu-muted)]">· 真实回答样本</span></div>
+              <div className="mb-2 text-[11px] font-semibold text-[var(--yayu-foreground)]">模型怎样提到你 <span className="font-normal text-[var(--yayu-muted)]">· 原始观察，未核实为企业事实</span></div>
               {reasons.reasons.length > 0 ? (
                 <div className="space-y-1">
                   {reasons.reasons.slice(0, 3).map((r, i) => (
@@ -246,7 +292,7 @@ export function GeoMonitorReportCard() {
               ) : null}
               {reasons.missing_evidence.length > 0 ? (
                 <p className="pt-1 text-[10.5px] text-[var(--yayu-faint)]">
-                  缺失证据：{reasons.missing_evidence.join('、')}——资料里有但 AI 回答没引用
+                  {demoMode ? '待补依据' : '缺失证据'}：{reasons.missing_evidence.join('、')}{demoMode ? '——演示资料还不足以支持确定结论' : '——资料里有但模型回答没引用'}
                 </p>
               ) : null}
             </div>
@@ -271,14 +317,20 @@ export function GeoMonitorReportCard() {
             ))}
           </div>
           {/* 2026-09-21：把「第 N 句提及」的口径写在页面上，别让用户把它读成 AI 给的推荐排名 */}
-          {selectedMonitorIds.length ? <p className="mb-1 rounded bg-[var(--yayu-surface-raised)] px-2 py-1 text-[10px] text-[var(--yayu-muted)]">报告范围：所选监测对象（{selectedMonitorIds.length} 个）</p> : <p className="mb-1 text-[10px] text-[var(--yayu-faint)]">报告范围：全部监测对象</p>}
-          <p className="mb-1 text-[10px] leading-relaxed text-[var(--yayu-faint)]">
-            口径：「第 N 句提及」= 企业名第一次出现在回答的第几句话（位置，不是 AI 给的推荐排名）；按监测对象、批次和问题分组，点平台按钮切换。
-          </p>
+          <details className="report-context-note">
+            <summary>统计范围与判断说明</summary>
+            <div>
+              <p>{selectedMonitorIds.length ? `当前范围：所选监测对象（${selectedMonitorIds.length} 个）` : '当前范围：全部监测对象'}</p>
+              <p>“第 N 句提及”只是企业名第一次出现的句序，不是推荐排名。</p>
+              <p>每条内容先看主体是否确认；没有证据支持时只保留为模型原话，不升级为企业事实。</p>
+            </div>
+          </details>
           {visibleGroups.length === 0 ? (
             <p className="text-[11px] text-[var(--yayu-faint)]">暂无监测回答，先运行一次监测。</p>
           ) : (
-            <div className="space-y-2">
+            <details className="monitor-list-collapsible report-answer-collapsible" open={visibleGroups.length <= 3}>
+            <summary><span>原始回答</span><small>{groupTotal} 组问题回答，默认只看摘要</small></summary>
+              <div className="monitor-list-collapsible-body space-y-2">
               {visibleGroups.map(([group, list]) => {
                 const query = group.query
                 const groupKey = group.group_id
@@ -333,6 +385,7 @@ export function GeoMonitorReportCard() {
                           {pos ? <span className={`rounded px-1.5 py-0.5 ${pos.cls}`}>{pos.label}</span> : null}
                           {current.rank_est !== null ? <span>企业名在第 {current.rank_est} 句首次出现</span> : null}
                           <span>{sampleSentiment(current)}</span>
+                          <span title="这段内容只代表模型当时的回答，尚未由企业资料或来源核实，不能作为企业事实" className="rounded bg-[var(--yayu-input)] px-1.5 py-0.5 text-[10px] text-[var(--yayu-muted)]">未核实 · 仅模型原话</span>
                           {body ? <span className="ml-auto">{body.length} 字</span> : null}
                         </div>
                         {/* 全文放进一个框里滚动看，不把整页撑长（Owner：「用页面滑轮去调整」） */}
@@ -363,16 +416,17 @@ export function GeoMonitorReportCard() {
                   </div>
                 )
               })}
-              <div className="flex items-center justify-between pt-1 text-[10.5px] text-[var(--yayu-faint)]"><span>已显示 {groups.length}/{groupTotal} 组完整观测</span>{page < pages ? <button className="underline" disabled={loadingMore} onClick={() => void load(page + 1, true)}>{loadingMore ? '正在加载…' : '加载更多'}</button> : null}</div>
+              <div className="flex items-center justify-between pt-1 text-[10.5px] text-[var(--yayu-faint)]"><span>已查看 {groups.length}/{groupTotal} 组回答</span>{page < pages ? <button className="underline" disabled={loadingMore} onClick={() => void load(page + 1, true)}>{loadingMore ? '正在加载…' : '加载更多'}</button> : null}</div>
               {loadMoreError ? <p className="text-[10.5px] text-[var(--yayu-muted)]">后续页面加载失败：{loadMoreError} <button className="underline" onClick={() => void load(page + 1, true)}>重试</button></p> : null}
-            </div>
+              </div>
+            </details>
           )}
         </>
       ) : null}
 
       {tab === 'sentiment' ? (
         sentiment?.scope?.scope_required ? (
-          <p className="text-[11px] text-[var(--yayu-faint)]">请在左侧只勾选一个企业品牌监测对象，再查看该主体的情绪分析。</p>
+          <p className="text-[11px] text-[var(--yayu-faint)]">请在上方选择一个企业品牌监测主体，再查看该主体的评价语气。</p>
         ) : ov && ov.total > 0 ? (
           <div className="space-y-2">
             <div className="flex h-2 w-full overflow-hidden rounded-full bg-[var(--yayu-surface-raised)]">
@@ -388,7 +442,7 @@ export function GeoMonitorReportCard() {
             {/* 2026-09-21：口径如实写在页面上。原来的「负面 N%」会被读成「N% 的人在骂我们」，
                 实际是词表统计——模型答「我无法判断，建议你查工商信息/警惕风险」也会算负面。 */}
             <p className="text-[10px] leading-relaxed text-[var(--yayu-faint)]">
-              正、负、中为规则估算结果；无法确认企业主体或态度的回答单列为未判定，不计入正负中占比。
+              这里先按回答中的表达做快速归类，不能代替人工确认；无法确认企业主体或态度的回答单列为待判定，不计入正负中占比。
               {sentiment.unknown_count != null ? ` 未判定 ${sentiment.unknown_count} 条。` : ''}
             </p>
             {sentiment?.top_words && sentiment.top_words.length > 0 ? (
@@ -411,7 +465,7 @@ export function GeoMonitorReportCard() {
             ) : null}
           </div>
         ) : (
-          <p className="text-[11px] text-[var(--yayu-faint)]">暂无情绪数据，先运行监测。</p>
+          <p className="text-[11px] text-[var(--yayu-faint)]">暂无评价语气数据，先运行监测。</p>
         )
       ) : null}
 
@@ -422,7 +476,8 @@ export function GeoMonitorReportCard() {
           <div className="space-y-1.5">
             {citations.map((c, index) => (
               <div key={index} className="rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[11px] text-[var(--yayu-muted)]">
-                {String(c.title ?? c.url ?? c.query ?? '')}
+                <div>{String(c.title ?? c.url ?? c.query ?? '')}</div>
+                {c.count != null ? <div className="mt-0.5 text-[10px] text-[var(--yayu-faint)]">被当前主体的模型回答引用 {String(c.count)} 次</div> : null}
               </div>
             ))}
           </div>
