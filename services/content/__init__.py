@@ -5,8 +5,10 @@
 流程：企业知识(自动) + 用户问题 + 内容目标/类型 + 平台 → GEO Prompt 编译 → 生成
 """
 import json
+import hashlib
 import logging
 import re
+from contextvars import ContextVar
 
 from adapters.eios import hits_of, search_knowledge
 from adapters.llm import chat
@@ -16,10 +18,10 @@ _SYSTEM = (
     "GEO 写作规则：\n"
     "1. 明确企业身份：开头清晰交代企业是谁、做什么（名称/行业/定位）。\n"
     "2. 只使用提供的企业事实，禁止编造数据、案例、客户。\n"
-    "3. 有事实就亮事实：产品、服务、优势、可验证的细节（来源为企业知识库）。\n"
+    "3. 有资料就使用相关细节；必须保留其来源属性，知识库正式事实与企业自行提供的素材不能混称。\n"
     "4. 内容结构清晰（小标题/列表/FAQ），让 AI 摘要能直接截取关键句。\n"
     "5. 语气符合平台要求；字数接近目标；中文输出。\n"
-    "6. 不要写营销空话；每个论断尽量有企业知识库里的依据支撑。\n"
+    "6. 不要写营销空话；每个论断尽量回指本轮提供的相关资料选段，未检索到不能说企业没有。\n"
     "7. 只提国内大模型（DeepSeek、豆包、文心一言、通义千问、Kimi、智谱清言），涉及 AI 搜索场景统一说'国内主流 AI 助手'；严禁出现任何国外大模型名称（ChatGPT、Perplexity、Gemini、Claude、GPT 等）和国外搜索引擎（Google、Bing 等）。"
 )
 
@@ -346,6 +348,10 @@ def _materials_from_hits(hits: list[dict]) -> tuple[list[str], list[str]]:
     chunks: dict[str, str] = {}
     entities: list[str] = []
     for hit in hits or []:
+        # Only governed Knowledge hits may be presented as formal enterprise material.
+        # Candidate/material layer is useful elsewhere, but is not an approved fact source.
+        if str(hit.get("layer") or "").strip().lower() != "governed":
+            continue
         text = " ".join(str(hit.get("snippet") or hit.get("value") or "").split())
         chunk_id = str(hit.get("chunk_id") or "").strip()
         if chunk_id and text and chunk_id not in chunks:
@@ -377,7 +383,8 @@ def _chunk_lines_from_snapshot(question: str, *, need: int) -> list[str]:
     try:
         from app.services.knowledge_snapshot import all_chunks
 
-        rows = all_chunks(limit=2000)
+        rows = [row for row in all_chunks(limit=2000)
+                if str(row.get("layer") or "").strip().lower() == "governed"]
     except Exception:  # noqa: BLE001 — 台账读不到 ≠ 没有资料，如实为空
         return []
     if not rows:
@@ -495,7 +502,11 @@ async def _fact_gate(text: str) -> dict:
     try:
         from app.services.store import get_store
 
-        asset_blob = " ".join((m.get("content") or "") for m in get_store().load("kb"))
+        source_assets = get_store().load("kb")
+        asset_blob = " ".join(
+            str(m.get("content") or "") for m in source_assets
+            if m.get("source_type") in ("file", "text", "url")
+        )
     except Exception:  # noqa: BLE001
         asset_blob = ""
     results = []
@@ -575,6 +586,92 @@ def _asset_excerpt(question: str, asset: dict, limit: int) -> dict:
     return {"text": chunk_text[:limit], "chunk_id": chunk.get("id"), "chunk_ordinal": chunk.get("ordinal")}
 
 
+_MAX_FILE_CHUNKS = 8
+_MAX_FILE_CHARS = 9000
+
+
+def _question_queries(question: str, pool_questions: list[dict] | None = None) -> list[str]:
+    """Split multi-part prompts into focused queries without inventing fallback topics."""
+    parts = re.split(r"[？?。；;\n]+|以及|同时|另外|还有", str(question or ""))
+    queries = [p.strip(" ，,、") for p in parts if p.strip(" ，,、")]
+    for item in pool_questions or []:
+        q = str(item.get("question") or "").strip()
+        if q and q not in queries:
+            queries.append(q)
+    return queries or ([str(question).strip()] if str(question or "").strip() else [])
+
+
+def _selected_file_chunks(question: str, asset: dict, queries: list[str]) -> list[dict]:
+    """Return only positively related complete chunks, ranked across each sub-question."""
+    from services.embed import material_chunks, n_gram_scores
+
+    chunks = material_chunks(asset)
+    if not chunks:
+        text = str(asset.get("content") or "").strip()
+        return ([{"id": None, "ordinal": None, "text": text}] if text and any(
+            _asset_relevance(q, str(asset.get("title") or ""), text) > 0 for q in queries
+        ) else [])
+    docs = [{"id": str(c.get("id") or i), "title": "", "content": str(c.get("text") or "")}
+            for i, c in enumerate(chunks)]
+    scores: dict[str, float] = {}
+    for query in queries:
+        scores_for_query = n_gram_scores(query, docs, title_key="title", content_key="content")
+        for cid, score in scores_for_query.items():
+            scores[cid] = max(scores.get(cid, 0.0), score)
+    ranked = [(scores.get(str(c.get("id") or i), 0.0), i, c) for i, c in enumerate(chunks)]
+    return [dict(c, ordinal=c.get("ordinal", i), _score=score) for score, i, c in
+            sorted((row for row in ranked if row[0] > 0), key=lambda row: (-row[0], row[1]))[:_MAX_FILE_CHUNKS]]
+
+
+def _asset_relevance(query: str, title: str, content: str) -> float:
+    from services.embed import n_gram_scores
+
+    return n_gram_scores(query, [{"id": "a", "title": title, "content": content}]).get("a", 0.0)
+
+
+def _file_material_selection(question: str, assets: list[dict], queries: list[str] | None = None) -> tuple[list[str], list[dict]]:
+    """Build one bounded source set shared by generation and improve."""
+    from services.embed import n_gram_scores
+
+    queries = queries or _question_queries(question)
+    selected_ids: list[str] = []
+    sources: list[dict] = []
+    used_chars = 0
+    for asset in assets:
+        chunks = _selected_file_chunks(question, asset, queries)
+        chosen = []
+        for chunk in chunks:
+            text = str(chunk.get("text") or "")
+            if not text or used_chars + len(text) > _MAX_FILE_CHARS:
+                continue
+            chosen.append(chunk)
+            used_chars += len(text)
+        if not chosen:
+            continue
+        asset_id = str(asset.get("id") or "")
+        if asset_id:
+            selected_ids.append(asset_id)
+        source = {"kind": "uploaded_material", "label": "用户上传资料（相关原文选段，未经独立核验）", "items": []}
+        for chunk in chosen:
+            text = str(chunk["text"])
+            source["items"].append({
+                "id": asset_id, "title": asset.get("title"), "source_type": "file",
+                "chunk_id": chunk.get("id"), "chunk_ordinal": chunk.get("ordinal"),
+                "content": text, "source_digest": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            })
+        sources.append(source)
+    return selected_ids, sources
+
+
+def _source_material_prompt(sources: list[dict]) -> str:
+    lines = []
+    for source in sources:
+        for item in source.get("items") or []:
+            where = f"（第 {int(item['chunk_ordinal']) + 1} 段）" if item.get("chunk_ordinal") is not None else ""
+            lines.append(f"- [用户上传资料：{item.get('title')}{where}] {item.get('content')}")
+    return "\n".join(lines)
+
+
 TOPIC_RULE_HEADER = "## 主题纪律（最高优先级）"
 
 
@@ -590,13 +687,13 @@ def topic_rule(question: str, company_name: str | None) -> str:
         return ""
     lines = [
         TOPIC_RULE_HEADER,
-        f"- 这篇文章的题目就是「{topic}」，整篇围绕它写，标题也照它写。",
+        f"- 这篇文章围绕「{topic}」写；标题应简短提炼主题，不要把整段要求原样抄成标题。",
         "- 下面的企业资料只用来支撑这个题目：提供事实、口径与细节，**它本身不是文章的主题**。",
         "- 除非题目本身就是在介绍这家企业，否则不要写「X 是一家……」这类企业介绍式开头，",
         "  也不要把与题目无关的企业信息写进正文。",
         "- **不得把资料里的事实安到题目问的另一个对象身上**：资料讲的是哪家/哪个产品，就只能"
         "挂在哪家/哪个产品上。",
-        "- 题目问到的事资料里没有，就如实写「资料中没有」，不用别的资料顶替，也不编造。",
+        "- 先检索并阅读本轮提供的全部相关选段。若本轮检索到的资料没有提及所问内容，只能说「本轮检索到的资料未提及」，不能推断企业没有这项服务或信息。",
     ]
     if company_name:
         lines.append(
@@ -622,9 +719,12 @@ def _asset_source_item(question: str, asset: dict, limit: int) -> dict:
 _MAX_TOPIC_FACTS = 8
 #: 事实进上下文的最低相关分（与 ``_relevance_order`` 同一套 n-gram 口径）。
 _FACT_MIN_SCORE = 2.0
+_fact_context_status: ContextVar[tuple[str, list[str]]] = ContextVar(
+    "geo_content_fact_context_status", default=("empty", [])
+)
 
 
-async def _official_fact_lines(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> list[str]:
+async def _official_fact_context(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> tuple[list[str], str, list[str]]:
     """正式企业事实（Knowledge ``type=fact`` 的 active 对象）→ 生成用的一行一句。
 
     为什么必须单独拉：事实的 ``canonical_name`` 是一句三元组，通常不含企业名，
@@ -645,11 +745,12 @@ async def _official_fact_lines(question: str = "", limit: int = _MAX_TOPIC_FACTS
         facts = [str(f.get("canonical_name") or "").strip() for f in await list_enterprise_facts()]
         facts = [name for name in facts if name]
         if not facts:
-            return []
+            return [], "empty", []
 
         topic = (question or "").strip()
         if not topic:
-            return [f"- [正式事实] {name}" for name in facts[:limit]]
+            selected = [f"- [正式事实] {name}" for name in facts[:limit]]
+            return selected, ("available" if selected else "empty"), []
 
         try:
             from services.embed import n_gram_scores
@@ -658,16 +759,24 @@ async def _official_fact_lines(question: str = "", limit: int = _MAX_TOPIC_FACTS
             scores = n_gram_scores(topic, docs, title_key="title", content_key="content")
         except Exception:  # noqa: BLE001 — 打分不可用时不猜相关性，宁可一条不给
             logging.getLogger("eios.geo.content").warning("事实相关性打分不可用，本轮不注入正式事实")
-            return []
+            return [], "unavailable", ["official_facts_relevance_unavailable"]
 
         ranked = sorted(
             ((scores.get(str(i), 0.0), name) for i, name in enumerate(facts)),
             key=lambda pair: -pair[0],
         )
-        return [f"- [正式事实] {name}" for score, name in ranked if score >= _FACT_MIN_SCORE][:limit]
+        selected = [f"- [正式事实] {name}" for score, name in ranked if score >= _FACT_MIN_SCORE][:limit]
+        return selected, ("available" if selected else "empty"), []
     except Exception as e:  # noqa: BLE001 — 读不到 ≠ 没有事实，由来源面板如实体现
         logging.getLogger("eios.geo.content").warning("正式事实读取失败: %s", e)
-        return []
+        return [], "unavailable", ["official_facts_read_failed"]
+
+
+async def _official_fact_lines(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> list[str]:
+    """Compatibility wrapper for existing callers that consume only the fact lines."""
+    lines, status, warnings = await _official_fact_context(question, limit)
+    _fact_context_status.set((status, warnings))
+    return lines
 
 
 async def build_context(
@@ -678,12 +787,13 @@ async def build_context(
     max_faq: int = 3,
     max_assets: int = 2,
     max_pool: int = 5,  # 问题池串联（认知编译器）：相关性排序取前 N，按类型分组
+    source_material_ids: list[str] | None = None,
 ) -> dict:
     """Content Context Builder：按权重聚合内容生成上下文
 
     1. 正式企业事实 + 知识库文档切块 + 知识库实体（最高权重，带出处）
     2. GEO FAQ 资产（store.kb source_type=faq，按相关性）
-    3. 历史内容资产（source_type=generated/text/url）
+    3. 原始内容资产（text/url）及用户上传资料（file）；历史生成稿不作事实
     4. 客户问题池（store.questions，客户在问什么 → 文章结构参考）
 
     返回 {"company_name", "materials", "faq_assets", "other_assets", "pool_questions", "context_sources"}
@@ -699,21 +809,46 @@ async def build_context(
     # 正式企业事实（Knowledge 的 active fact）：Owner 2026-09-21 拍板「fact 接进内容生成」。
     # 原样注入、排在切块之前 —— 事实是权威给的句子，GEO 不改写。
     official_facts = await _official_fact_lines(question)
+    fact_status, fact_warnings = _fact_context_status.get()
+    knowledge_status = fact_status
+    context_warnings = list(fact_warnings)
     # 切块是从哪读到的不许含糊：实时检索给的 vs GEO 同步时存下的快照 —— 后者要在面板上说出来。
     chunks_from_snapshot = False
     if company_name:
-        # 2026-08-19 用户拍板：GEO 消息来源含部门库浅抽深抽的 candidate（未发布也算），
-        # 显式包含候选——此前写死 False 导致候选知识读不到
-        res = await search_knowledge(company_name, tenant_id=tenant_id, include_candidates=True)
-        chunk_lines, entity_names = _materials_from_hits(hits_of(res))
+        # 内容草稿的企业依据只取 governed；候选仍由原治理流程负责。
+        try:
+            res = await search_knowledge(company_name, tenant_id=tenant_id, include_candidates=False)
+            chunk_lines, entity_names = _materials_from_hits(hits_of(res))
+            context_warnings.extend(str(w) for w in (res.get("warnings") or []))
+            if res.get("provenance") or res.get("layers"):
+                has_knowledge = bool(chunk_lines or entity_names or official_facts)
+                knowledge_status = (
+                    "partial" if fact_status == "unavailable" and has_knowledge
+                    else "unavailable" if fact_status == "unavailable"
+                    else "available" if has_knowledge else "empty"
+                )
+        except Exception as exc:  # Knowledge unavailable must remain distinct from an empty result.
+            logging.getLogger("eios.geo.content").warning("知识检索失败: %s", exc)
+            knowledge_status = "partial" if official_facts else "unavailable"
+            context_warnings.append("knowledge_search_failed")
     else:
         # 没给企业名时先认出「本公司」，再按同一口径取材料（切块 + 实体）。
         auto_name = await _resolve_self_company(tenant_id)
         if auto_name:
             try:
-                res = await search_knowledge(auto_name, tenant_id=tenant_id, include_candidates=True)
+                res = await search_knowledge(auto_name, tenant_id=tenant_id, include_candidates=False)
                 chunk_lines, entity_names = _materials_from_hits(hits_of(res))
-            except Exception:  # noqa: BLE001 — 读不到 ≠ 没有资料，来源面板如实为空
+                context_warnings.extend(str(w) for w in (res.get("warnings") or []))
+                if res.get("provenance") or res.get("layers"):
+                    has_knowledge = bool(chunk_lines or entity_names or official_facts)
+                    knowledge_status = (
+                        "partial" if fact_status == "unavailable" and has_knowledge
+                        else "unavailable" if fact_status == "unavailable"
+                        else "available" if has_knowledge else "empty"
+                    )
+            except Exception:  # noqa: BLE001 — 读不到 ≠ 没有资料
+                knowledge_status = "partial" if official_facts else "unavailable"
+                context_warnings.append("knowledge_search_failed")
                 chunk_lines, entity_names = [], []
     # 实时检索没给够切块正文时，补上**同步时已经存进 GEO 自己柜**的那些（Owner 2026-09-22）。
     if len(chunk_lines) < _MAX_CHUNKS:
@@ -735,11 +870,18 @@ async def build_context(
     except Exception:  # noqa: BLE001
         assets = []
     faq_assets = [a for a in assets if a.get("source_type") == "faq"]
-    # 上传的文件（source_type=file）也要进来 —— 以前这里只收 generated/text/url，
-    # 于是「上传了资料，生成时用不上」（2026-09-21 修）。
-    other_assets = [
-        a for a in assets if a.get("source_type") in ("generated", "text", "url", "file")
-    ]
+    # generated 是历史生成稿，不是独立企业事实来源；只让明确的原始资产进入取材。
+    other_assets = [a for a in assets if a.get("source_type") in ("text", "url")]
+    file_assets = [a for a in assets if a.get("source_type") == "file"]
+    if source_material_ids is not None:
+        requested = list(dict.fromkeys(str(mid).strip() for mid in source_material_ids if str(mid).strip()))
+        by_id = {str(a.get("id") or ""): a for a in file_assets}
+        missing = [mid for mid in requested if mid not in by_id]
+        if missing:
+            raise ValueError("所选资料不存在、已失效或不在当前素材柜")
+        file_assets = [by_id[mid] for mid in requested]
+    else:
+        file_assets = _relevance_order(question, file_assets, "title")
     faq_assets = _relevance_order(question, faq_assets, "title")[:max_faq]
     other_assets = _relevance_order(question, other_assets, "title")[:max_assets]
 
@@ -759,6 +901,12 @@ async def build_context(
             q["pool_type"] = "决策"
         else:
             q["pool_type"] = "用户会问"
+
+    queries = _question_queries(question, pool_questions)
+    selected_material_ids, uploaded_sources = _file_material_selection(question, file_assets, queries)
+    file_prompt = _source_material_prompt(uploaded_sources)
+    if file_prompt:
+        materials.append("## 用户上传资料（企业提供口径，原文选段）\n" + file_prompt)
 
     # 市场现状信号（审计 A6 · Owner 2026-09-21 拍板）：AI 现在怎么答 / 引用过什么 /
     # 编造过什么 / 竞品被夸在哪 / 周期报告结论。只读自己的库，不写、不调 LLM。
@@ -784,11 +932,12 @@ async def build_context(
             {"name": name} for name in entity_names
         ]},
         {"kind": "faq_asset", "label": "FAQ 内容资产", "items": [
-            _asset_source_item(question, a, 200) for a in faq_assets
+            _asset_source_item(question, a, 300) for a in faq_assets
         ]},
-        {"kind": "asset", "label": "历史内容资产（含上传的文件）", "items": [
-            _asset_source_item(question, a, 150) for a in other_assets
+        {"kind": "asset", "label": "原始内容资产", "items": [
+            _asset_source_item(question, a, 400) for a in other_assets
         ]},
+        *uploaded_sources,
         {"kind": "question_pool", "label": "客户问题池", "items": [
             {"question": q.get("question"), "priority": q.get("priority")} for q in pool_questions
         ]},
@@ -813,6 +962,10 @@ async def build_context(
         "other_assets": other_assets,
         "pool_questions": pool_questions,
         "context_sources": context_sources,
+        "source_material_ids": selected_material_ids,
+        "uploaded_sources": uploaded_sources,
+        "knowledge_status": knowledge_status,
+        "warnings": context_warnings,
         "signals": signals,
     }
 
@@ -834,6 +987,8 @@ async def improve(
     question: str = "",
     company_name: str | None = None,
     tenant_id: str | None = None,
+    source_material_ids: list[str] | None = None,
+    context_sources: list[dict] | None = None,
 ) -> dict:
     """按用户的自然语言要求改这一篇（Owner 2026-09-22）。
 
@@ -851,14 +1006,38 @@ async def improve(
         from app.services.store import current_tenant
 
         tenant_id = current_tenant() or "tenant_corp_01"
-    ctx = await build_context(
-        question=(question or title or instruction).strip(),
-        company_name=company_name,
-        tenant_id=tenant_id,
-    )
-    facts = "\n".join(ctx["materials"][:30]) or "（企业知识库里暂无该企业的资料）"
+    if context_sources is None:
+        ctx = await build_context(
+            question=(question or title or instruction).strip(),
+            company_name=company_name,
+            tenant_id=tenant_id,
+            source_material_ids=source_material_ids,
+        )
+        facts = "\n".join(ctx["materials"][:30]) or "（本轮没有检索到相关资料；不能据此断言企业没有资料）"
+        used_sources = [s for s in ctx.get("context_sources", [])
+                        if s.get("kind") in ("enterprise_fact", "document_chunk", "entity", "uploaded_material", "faq_asset", "asset")]
+        # Match the provenance projection to what improve actually consumes, including
+        # original hand-written material/FAQ. Monitoring signals are not rewrite facts.
+        for source in used_sources:
+            if source.get("kind") in ("faq_asset", "asset"):
+                for item in source.get("items") or []:
+                    facts += f"\n- [用户素材，未经独立核验：{item.get('title')}] {item.get('content') or ''}"
+    else:
+        # API has checked these excerpts against the current cabinet/read contract.
+        # Render the exact prior projection; never re-rank or silently add sources.
+        used_sources = [s for s in context_sources if s.get("kind") in (
+            "enterprise_fact", "document_chunk", "entity", "uploaded_material", "faq_asset", "asset")]
+        lines = []
+        for source in used_sources:
+            for item in source.get("items") or []:
+                value = item.get("content") or item.get("fact") or item.get("chunk") or item.get("name")
+                if value:
+                    lines.append(f"- [{source.get('label') or source.get('kind')}] {value}")
+        facts = "\n".join(lines) or "（原稿没有记录可用依据，不得新增企业事实）"
+        ctx = {"source_material_ids": source_material_ids or [], "knowledge_status": "unknown",
+               "warnings": ["rewrite_uses_original_sources"]}
     prompt = (
-        "企业事实（唯一事实来源，禁止编造）：\n" + facts
+        "可用依据（严格区分正式知识库与企业自行提供的素材，不得混称；禁止编造）：\n" + facts
         + "\n\n当前稿子\n标题：" + (title or "（无标题）")
         + "\n正文：\n" + content[:_IMPROVE_CONTENT_LIMIT]
         + "\n\n修改要求（用户原话）：\n" + instruction
@@ -885,6 +1064,10 @@ async def improve(
         "title": str(parsed.get("title") or title or "").strip(),
         "content": new_content,
         "source_title": title or "",
+        "source_material_ids": list(ctx.get("source_material_ids") or []),
+        "context_sources": used_sources,
+        "knowledge_status": ctx.get("knowledge_status", "unknown"),
+        "warnings": list(ctx.get("warnings") or []),
     }
 
 
@@ -903,8 +1086,16 @@ async def generate(
     mode: str = "creative",  # Fact Gate 模式：strict（严谨）/ creative（创作，默认）/ draft（草稿）
     structure: str = "free",  # 认知编译器：free（自由长文，默认）/ geo（可抽取结构模板）
     materials_extra: list[dict] | None = None,  # H19：外部个人素材并入生成上下文
+    source_material_ids: list[str] | None = None,
 ) -> dict:
-    # 0) Fact Gate：提取用户声明 → 多路验证（知识库强 / 素材 中 / 无依据）
+    # Resolve and validate explicitly selected files before any early return from Fact Gate.
+    if not tenant_id:
+        from app.services.store import current_tenant
+
+        tenant_id = current_tenant() or "tenant_corp_01"
+    ctx = await build_context(question=question, company_name=company_name, tenant_id=tenant_id,
+                              source_material_ids=source_material_ids)
+    # 0) Fact Gate：提取用户声明 → 多路验证（正式知识库 / 当前柜原始素材 / 无依据）
     fg = await _fact_gate(question)
     if fg["unverified"] and mode == "strict":
         return {
@@ -915,13 +1106,12 @@ async def generate(
                 + "\n\n如该事实真实存在，请先补充资料到知识库/内容资产后再生成。"
             ),
             "unverified_facts": fg["unverified"],
+            "source_material_ids": list(ctx.get("source_material_ids") or []),
+            "context_sources": ctx.get("context_sources") or [],
+            "knowledge_status": ctx.get("knowledge_status", "unknown"),
+            "warnings": list(ctx.get("warnings") or []),
         }
     # 1) Content Context Builder：聚合 正式事实/文档切块/实体 + FAQ 资产 + 历史素材 + 问题池
-    if not tenant_id:
-        from app.services.store import current_tenant
-
-        tenant_id = current_tenant() or "tenant_corp_01"
-    ctx = await build_context(question=question, company_name=company_name, tenant_id=tenant_id)
     auto_name = ctx["company_name"]
     materials = ctx["materials"]
     # H19：外部素材（如 yayu BFF 个人空间上传）并入上下文——个人素材对生成可见
@@ -962,19 +1152,24 @@ async def generate(
     company_block = f"企业名称：{auto_name or '（未识别到企业，请用「某企业」占位，不编造具体企业信息）'}"
     if industry:
         company_block += f"\n行业场景：{industry}"
-    company_block += "\n企业事实（来自企业知识库，唯一事实来源，禁止编造）：\n"
-    company_block += "\n".join(materials) if materials else "（知识库暂无该企业资料，只能写通用内容，明确告知读者这是通用介绍）"
+    company_block += "\n可用资料（严格区分正式知识库与企业自行提供的素材，不得混称）：\n"
+    if materials:
+        company_block += "\n".join(materials)
+    elif ctx.get("knowledge_status") == "unavailable":
+        company_block += "（知识库本次读取不可用；不能据此断言企业没有资料。没有可用事实时只写不含企业事实的通用内容。）"
+    else:
+        company_block += "（本次检索没有找到相关企业事实；不能据此断言企业没有资料。没有可用事实时只写不含企业事实的通用内容。）"
 
     # 内容资产引用层（FAQ/历史素材 → 补充素材；问题池 → 文章结构参考）
     asset_lines = []
     if ctx["faq_assets"]:
-        asset_lines.append("GEO FAQ 资产（已有问答，可复用其答案，来源：内容资产）：")
+        asset_lines.append("历史 FAQ 内容（只作问题结构参考，不能单独证明企业事实）：")
         for a in ctx["faq_assets"]:
             ex = _asset_excerpt(question, a, 300)
             where = f"（第 {int(ex['chunk_ordinal']) + 1} 段）" if ex["chunk_ordinal"] is not None else ""
             asset_lines.append(f"- Q：{a.get('title')}\n  A{where}：{ex['text']}")
     if ctx["other_assets"]:
-        asset_lines.append("历史内容素材（含上传的文件；可参考不可照抄，来源：内容资产）：")
+        asset_lines.append("其他原始内容素材（可参考不可照抄，不能单独证明企业事实，来源：内容资产）：")
         for a in ctx["other_assets"]:
             # 注入问句最贴的那一段，而不是整篇开头固定 150 字（Owner 2026-09-21）。
             ex = _asset_excerpt(question, a, 400)
@@ -993,6 +1188,15 @@ async def generate(
     market_block = render_market_signals(ctx.get("signals") or {})
     if market_block:
         company_block += "\n\n" + market_block
+
+    prompt_materials_used = (
+        len(materials)
+        + max(0, sum(len(s.get("items") or []) for s in ctx.get("uploaded_sources") or []) - 1)
+        + len(ctx.get("faq_assets") or [])
+        + len(ctx.get("other_assets") or [])
+        + len(ctx.get("pool_questions") or [])
+        + (1 if market_block else 0)
+    )
 
     # 3) Fact Gate 模式约束：未验证声明按模式处理（写进 prompt）
     if fg["unverified"]:
@@ -1108,9 +1312,10 @@ async def generate(
     elif first_line.startswith("**") and first_line.endswith("**"):
         title = first_line.strip("*").strip()
     elif first_line.startswith("【标题】") or first_line.startswith("【SEO标题】"):
+        title = re.sub(r"^【(?:SEO)?标题】\s*", "", first_line).strip()
         lines = text.strip().split("\n")
-        if len(lines) > 1:
-            title = lines[1].strip()
+        if not title:
+            title = next((line.strip() for line in lines[1:] if line.strip()), "")
 
     # 认知编译器：结构解析 + 事实密度校验（structure="geo" 时）
     sections = None
@@ -1129,8 +1334,11 @@ async def generate(
         "title": title or question or content_type,
         "content": text,
         "company_name": auto_name,
-        "materials_used": len(materials),
+        "materials_used": prompt_materials_used,
         "context_sources": ctx["context_sources"],
+        "source_material_ids": list(ctx.get("source_material_ids") or []),
+        "knowledge_status": ctx.get("knowledge_status", "unknown"),
+        "warnings": list(ctx.get("warnings") or []),
         "goal": goal,
         "content_type": content_type,
         "question": question,

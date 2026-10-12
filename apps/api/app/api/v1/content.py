@@ -22,6 +22,7 @@ class GenerateRequest(BaseModel):
     mode: str = "creative"  # Fact Gate：strict（严谨）/ creative（创作，默认）/ draft（草稿）
     structure: str = "free"  # 认知编译器：free（自由长文）/ geo（可抽取结构模板）
     materials_extra: list[dict] | None = None  # H19：外部（如 yayu BFF 个人空间）素材并入生成上下文
+    source_material_ids: list[str] | None = None
 
 
 class ScoreIn(BaseModel):
@@ -71,11 +72,16 @@ async def generate(req: GenerateRequest):
             mode=req.mode,
             structure=req.structure,
             materials_extra=req.materials_extra,
+            source_material_ids=req.source_material_ids,
         )
     except LLMNotConfiguredError as exc:
         return err("llm_not_configured", str(exc))
     except LLMError as exc:
         return err(exc.code, exc.message)
+    except ValueError as exc:
+        return err("source_unavailable", str(exc))
+    from services.content.claim_check import check_claims
+    result["claim_check"] = check_claims(result.get("content", ""), result.get("context_sources", []))
     return ok(result)
 
 
@@ -179,6 +185,8 @@ class ImproveIn(BaseModel):
     question: str = ""
     company_name: str | None = None
     tenant_id: str | None = None
+    source_material_ids: list[str] | None = None
+    context_sources: list[dict] | None = None
 
 
 class SaveIn(BaseModel):
@@ -187,6 +195,8 @@ class SaveIn(BaseModel):
     title: str = ""
     content: str
     question: str = ""
+    source_material_ids: list[str] | None = None
+    context_sources: list[dict] | None = None
 
 
 class QualityIn(BaseModel):
@@ -204,14 +214,25 @@ async def improve(req: ImproveIn):
         return err("empty_content", "没有可改的内容")
     if not req.instruction.strip():
         return err("empty_instruction", "请先写清楚要改什么")
+    sources = None
+    if req.context_sources is not None:
+        try:
+            sources, _ = await _validate_saved_sources(SaveIn(
+                title=req.title, content=req.content, question=req.question,
+                source_material_ids=req.source_material_ids, context_sources=req.context_sources,
+            ))
+        except ValueError as exc:
+            return err("source_unavailable", str(exc))
     try:
         result = await improve_impl(
             title=req.title,
             content=req.content,
             instruction=req.instruction,
+            context_sources=sources,
             question=req.question,
             company_name=req.company_name,
             tenant_id=_cabinet(req.tenant_id),
+            source_material_ids=req.source_material_ids,
         )
     except LLMNotConfiguredError as exc:
         return err("llm_not_configured", str(exc))
@@ -219,6 +240,8 @@ async def improve(req: ImproveIn):
         return err(exc.code, exc.message)
     except ValueError as exc:
         return err("improve_failed", str(exc))
+    from services.content.claim_check import check_claims
+    result["claim_check"] = check_claims(result.get("content", ""), result.get("context_sources", []))
     return ok(result)
 
 
@@ -235,9 +258,72 @@ async def save(req: SaveIn):
     if not content:
         return err("empty_content", "没有可保存的内容")
     title = (req.title or "").strip() or (req.question or "").strip()[:40] or "未命名生成内容"
-    body = await add_material(MaterialIn(title=title, content=content, source_type="generated"))
+    try:
+        sources, ids = await _validate_saved_sources(req)
+    except ValueError as exc:
+        return err("source_unavailable", str(exc))
+    from services.content.claim_check import check_claims
+    body = await add_material(MaterialIn(
+        title=title, content=content, source_type="generated",
+        context_sources=sources, source_material_ids=ids,
+        claim_check=check_claims(content, sources or []),
+    ))
+    if not body or not body.get("ok"):
+        return body or err("save_failed", "保存失败，请重试")
     item = ((body or {}).get("data") or {}).get("item") or {}
+    if not item.get("id"):
+        return err("save_failed", "保存未返回草稿，请重试")
     return ok({"item": item, "source": "generated"})
+
+
+async def _validate_saved_sources(req: SaveIn) -> tuple[list[dict] | None, list[str] | None]:
+    """Re-read the current cabinet before accepting a client-side source projection.
+
+    This preserves draft excerpts, not canonical Evidence or a certification. Old
+    callers without provenance remain usable, with sources explicitly unrecorded.
+    """
+    if req.context_sources is None:
+        if req.source_material_ids:
+            raise ValueError("本篇出处未完整传回，请重新生成或改稿后保存")
+        return None, None
+    import hashlib
+    import json
+    from app.services.store import get_store
+    from services.content import build_context
+
+    if len(req.context_sources) > 32 or len(json.dumps(req.context_sources, ensure_ascii=False)) > 60000:
+        raise ValueError("本篇出处过大，请重新生成")
+    assets = {m.get("id"): m for m in get_store().load("kb")}
+    ids = list(dict.fromkeys(req.source_material_ids or []))
+    if len(ids) > 20 or any(i not in assets or assets[i].get("source_type") == "generated" for i in ids):
+        raise ValueError("所选资料已不可用，请重新选材")
+    # Local excerpts are validated against stored chunks, independently of ranking.
+    for group in req.context_sources:
+        if group.get("kind") != "uploaded_material":
+            continue
+        group["label"] = "用户上传资料（相关原文选段，未经独立核验）"
+        for item in group.get("items") or []:
+            if not isinstance(item, dict):
+                raise ValueError("资料出处格式不完整")
+            asset = assets.get(item.get("id"))
+            if not asset or item.get("id") not in ids or asset.get("source_type") != "file" or item.get("source_type") != "file":
+                raise ValueError("资料已不可用，请重新选材")
+            chunks = asset.get("text_chunks") or []
+            text = item.get("content")
+            valid = any(c.get("text") == text and c.get("ordinal") == item.get("chunk_ordinal")
+                        and c.get("id") == item.get("chunk_id") for c in chunks)
+            if not chunks:
+                valid = text == asset.get("content") and item.get("chunk_id") is None
+            if not valid or item.get("title") != asset.get("title") or item.get("source_digest") != hashlib.sha256(str(text).encode()).hexdigest():
+                raise ValueError("资料内容已变化或出处不匹配，请重新生成")
+    others = [g for g in req.context_sources if g.get("kind") != "uploaded_material" and g.get("items")]
+    if others:
+        fresh = await build_context(question=req.question, tenant_id=_cabinet(None), source_material_ids=ids)
+        for group in others:
+            matches = [g for g in fresh.get("context_sources", []) if g.get("kind") == group.get("kind")]
+            if not matches or any(item not in [i for g in matches for i in g.get("items", [])] for item in group.get("items", [])):
+                raise ValueError("企业资料出处已不可用或变化，请重新取材")
+    return req.context_sources, ids
 
 
 @router.post("/quality")
