@@ -338,7 +338,14 @@ async def kb_init_scan():
             "不勾选也能点上面的按钮初始化工作空间 —— 这些对象和正式事实会一并带回 GEO 自己的柜。"
         )
     elif empty:
-        empty_hint = detect.get("hint") or "知识库里没有可用的公司 / 产品 / 文档。"
+        # Foundation 会按当前登录主体、企业和文档 visibility_scope 过滤结果。
+        # 这里不能把「当前账号看不到」说成「Foundation 没有资料」，更不能为了让
+        # 卡片有数据而跨账号读取 personal 文档。把权限范围写进空态，用户才能知道
+        # 应该切换账号、共享/发布文档，还是去排查服务连接。
+        empty_hint = (
+            "当前登录账号没有可导入的 Foundation 企业资料（只显示你有权限看到的文档）。"
+            "请确认登录账号，或在 Foundation 将资料发布/共享后重新查找。"
+        )
     else:
         empty_hint = ""
     return ok(
@@ -373,6 +380,10 @@ async def kb_init_scan():
             "industry": detect.get("industry"),
             "empty": empty,
             "objects_in_knowledge": objects_in_knowledge,
+            "visibility_note": (
+                "候选只来自当前登录账号在 Foundation 有权限读取的企业和文档；"
+                "其他账号的私有资料、未共享或未发布的文档不会出现在这里。"
+            ),
             "error": doc_error,
             "hint": empty_hint or detect.get("hint"),
         }
@@ -440,6 +451,13 @@ async def kb_init_apply(payload: KbInitApplyIn):
         "documents": merged_documents,
     }
     outcome = knowledge_snapshot.record(kind=PROFILE_KIND, payload=stored, source_url="")
+    # 同步完成后让企业资料体检丢弃“未同步”缓存，下一次读取只看新快照。
+    try:
+        from app.api.v1.enterprise_profile import _clear_cache
+
+        _clear_cache()
+    except Exception as exc:  # noqa: BLE001 — 同步成功不能被展示缓存失败拖成失败
+        logger.warning("clear enterprise profile cache after kb sync failed: %s", exc)
 
     added_companies = [n for n in companies if n not in set(prev["companies"])]
     added_products = [n for n in products if n not in set(prev["products"])]

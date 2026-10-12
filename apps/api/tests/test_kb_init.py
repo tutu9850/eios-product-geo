@@ -297,6 +297,24 @@ def test_scan_tells_the_truth_when_the_base_has_objects_but_no_candidate(monkeyp
     assert "不勾选" in data["hint"]
 
 
+def test_scan_empty_state_explains_current_foundation_visibility(monkeypatch, tenant):
+    """空候选不能把「当前账号不可见」误报成 Foundation 没有资料。"""
+    from app.api.v1 import kb_init
+
+    _patch_kb(
+        monkeypatch,
+        detect={**DETECT, "company": [], "products": [], "services": [], "hint": "旧的空库提示"},
+        documents=[],
+        entities=[],
+    )
+    data = asyncio.run(kb_init.kb_init_scan())["data"]
+
+    assert data["empty"] is True
+    assert "当前登录账号" in data["hint"]
+    assert "发布/共享" in data["hint"]
+    assert "当前登录账号" in data["visibility_note"]
+
+
 def test_apply_refuses_to_store_document_titles_it_could_not_verify(monkeypatch, tenant):
     """文档标题要 GEO 自己去知识库核：核不了就明确失败，而不是把客户端传的当权威存下。"""
     from app.api.v1 import kb_init

@@ -275,19 +275,35 @@ def _merged_question_rules(iid: str, q_rules: list[str]) -> list[str]:
 
 
 def _seed_items() -> list[dict]:
-    """首次种子：48 子项写入 store。已有子项保留（可扩展第 49 项）。"""
+    """返回资料评估的系统子项模板。
+
+    这些 48 个子项是产品定义，不是账号数据。旧实现按当前租户为空就把
+    固定 ID 再写入 SQLite；而 ``enterprise_profile_items.id`` 在库中是全局
+    唯一键，于是第二个账号第一次打开资料页就会触发 UNIQUE constraint，
+    整个资料接口变成 500。优先读取当前租户已有的扩展项；没有时复用默认
+    柜的模板，最后才在内存中构造，绝不跨租户重复写固定 ID。
+    """
     from app.services.store import get_store
 
     store = get_store()
     existing = store.load("enterprise_profile_items")
-    existing_ids = {i["id"] for i in existing}
+    if existing:
+        return existing
+
+    # 系统模板已经在历史默认柜中存在时，作为只读定义复用；这些行不属于
+    # 当前账号，也不把它们写入当前租户，避免全局 id 冲突和跨租户污染。
+    canonical = store.load("enterprise_profile_items", tenant_id="tenant_corp_01")
+    if canonical:
+        logger.info("enterprise_profile_items 使用系统模板 %d 项（当前柜无自定义项）", len(canonical))
+        return canonical
+
+    # 测试库/全新开发库没有默认模板时仍能工作；系统定义保持在内存，首次
+    # 读取不产生写入副作用。
     now = datetime.now(timezone.utc).isoformat()
-    added = 0
+    seeded: list[dict] = []
     for it in _SEED_ITEMS:
         cat, iid, name, desc, q_rules, k_rules = it
-        if iid in existing_ids:
-            continue
-        store.insert("enterprise_profile_items", {
+        seeded.append({
             "id": iid,
             "category": cat,
             "name": name,
@@ -297,10 +313,8 @@ def _seed_items() -> list[dict]:
             "status": "active",
             "created_at": now,
         })
-        added += 1
-    if added:
-        logger.info("enterprise_profile_items 种子 %d 项", added)
-    return store.load("enterprise_profile_items")
+    logger.info("enterprise_profile_items 使用内存系统模板 %d 项", len(seeded))
+    return seeded
 
 
 def _category_of(item_id: str) -> str:
@@ -470,6 +484,14 @@ async def _cached_knowledge_check(question: str, entities: list[str] | None, int
     _load_eval_cache()  # 首次调用时载入持久层（含进程重启后的恢复）
     if key in _kcheck_cache:
         return _kcheck_cache[key]
+    # Product session 下没有完成 kb-init 时，不能再调用 distill 的实时知识库检索；
+    # “还没同步”是资料未就绪，不是该问题已经判定为缺口。
+    knowledge = await _load_knowledge()
+    if "_knowledge_ready" in knowledge and not knowledge.get("_knowledge_ready"):
+        kc = {"status": "NOT_READY", "best_score": None, "refs": [], "judge_basis": "not_synced"}
+        _kcheck_cache[key] = kc
+        _save_eval(key, kc)
+        return kc
     from app.api.v1.distill import _knowledge_check
     try:
         kc = await _knowledge_check(question, entities, intent)
@@ -492,12 +514,17 @@ async def _assess_item(item: dict, questions: list[dict]) -> dict:
     partial_qs = []   # PARTIAL
     uncovered_qs = [] # GAP / UNRELATED
     weight_sum = 0.0
+    not_ready = False
     for q in related:
         qt = q.get("question") or ""
         if not qt:
             continue
         kc = await _cached_knowledge_check(qt, q.get("related_entities") or [], q.get("intent") or None)
         st = kc.get("status", "UNRELATED")
+        if st == "NOT_READY":
+            not_ready = True
+            uncovered_qs.append({"question": qt, "status": st})
+            continue
         if st == "COVERED":
             covered_qs.append({"question": qt, "status": st})
             weight_sum += 1.0
@@ -509,8 +536,14 @@ async def _assess_item(item: dict, questions: list[dict]) -> dict:
 
     n_related = len(related)
     coverage = round(weight_sum / n_related * 100) if n_related else None
+    # 没有完成同步时，单独显示“未同步”，不能把所有问题算成太少/0%。
+    if not_ready:
+        level = "未同步"
+        related_state = "not_ready"
+        coverage = None
+        reason = "还没有同步企业资料，暂不能判断这一项是否有依据"
     # 档位：有相关问题 → 按覆盖率；无相关问题 → 太少（关联状态区分）
-    if n_related == 0:
+    elif n_related == 0:
         level = "太少"
         related_state = "none"   # 暂无相关客户问题
         reason = "暂无相关客户问题，暂无法验证 GEO 支撑能力"
@@ -607,7 +640,57 @@ async def _load_knowledge() -> dict:
     except Exception as e:
         logger.warning("load knowledge cache failed: %s", e)
 
-    # 3) 拉 企业知识库
+    # 3) Product session 下只读 GEO 自己保存的知识快照。
+    #    运行时绕过 kb-init 直接扫企业知识库，会把同一账号里别的企业/工作区事实带进来；
+    #    没有完成一次手动同步时，必须如实返回空资料，而不是把“账号里有知识”当成“这家企业有资料”。
+    if current_scope is not None:
+        from app.services import knowledge_snapshot
+
+        profile_rows = knowledge_snapshot.list_recent(kind="kb_initialization", limit=1)
+        if not profile_rows:
+            _knowledge_cache = {
+                "entities": [],
+                "facts": [],
+                "relations": [],
+                "_knowledge_scope": current_scope,
+                "_knowledge_ready": False,
+            }
+        else:
+            snapshot_objects = knowledge_snapshot.objects(limit=400)
+            entities = [
+                item for item in snapshot_objects
+                if str(item.get("object_type") or item.get("type") or "") == "entity"
+                and (item.get("status") or "active") == "active"
+            ]
+            facts = [
+                {
+                    **item,
+                    "predicate": item.get("predicate"),
+                    "value": item.get("value") or "",
+                    "evidence_ids": list(item.get("evidence_ids") or []),
+                }
+                for item in snapshot_objects
+                if str(item.get("object_type") or item.get("type") or "") == "fact"
+                and (item.get("status") or "active") == "active"
+            ]
+            _knowledge_cache = {
+                "entities": entities,
+                "facts": facts,
+                "relations": knowledge_snapshot.relations(limit=200),
+                "_knowledge_scope": current_scope,
+                "_knowledge_ready": True,
+            }
+        _knowledge_cache_at = now
+        try:
+            from app.services.store import get_store
+
+            get_store().save(_KNOWLEDGE_TABLE, [{"id": "all", "_key": "all", "data": _knowledge_cache, "cached_at": now}])
+        except Exception as e:
+            logger.warning("save snapshot knowledge cache failed: %s", e)
+        return _knowledge_cache
+
+    # 4) Legacy/local mode without a Product session keeps the old adapter path for tests and
+    #    local development. It is never used by the Client product session above.
     from adapters.eios import get_entities, hits_of, search_knowledge, search_relations
 
     entities: list[dict] = []
@@ -694,11 +777,13 @@ async def profile_overview():
     enough = [a for a in assessed if a["level"] == "足够"]
     partial = [a for a in assessed if a["level"] == "部分"]
     too_little = [a for a in assessed if a["level"] == "太少"]
+    knowledge = await _load_knowledge()
+    knowledge_ready = knowledge.get("_knowledge_ready", True)
     # 总体覆盖率 = 全部有效问题中可被支撑的比例（跨子项去重问题）
     # 2026-09-21 修正：分母只数**真的参与判定**的问题。旧实现把没有正文的问题也留在分母里
     # （循环里 continue 掉、却仍除以 len(questions)），覆盖率会被莫名拉低。
     all_questions = [q for q in questions if (q.get("question") or "").strip()]
-    if all_questions:
+    if all_questions and knowledge_ready:
         total_w = 0.0
         for q in all_questions:
             qt = q.get("question")
@@ -708,12 +793,26 @@ async def profile_overview():
         overall = round(total_w / len(all_questions) * 100)
     else:
         overall = None
+    # 评估框架和企业事实是两个资源域：把当前可读资料状态一起返回，
+    # 让前端不会把 48/56 个规则子项误读成“系统已经编好的企业资料”。
+    knowledge = await _load_knowledge()
+    knowledge_facts = knowledge.get("facts") or []
+    semantic_linked = sum(1 for fact in knowledge_facts if str(fact.get("semantic_object_id") or "").strip())
     return ok({
         "overall_coverage_pct": overall,
         "total_items": n,
         "enough_count": len(enough),
         "partial_count": len(partial),
         "too_little_count": len(too_little),
+        "not_ready_count": n if not knowledge_ready else 0,
+        "data_status": {
+            "questions_count": len(all_questions),
+            "knowledge_entities_count": len(knowledge.get("entities") or []),
+            "knowledge_facts_count": len(knowledge_facts),
+            "semantic_linked_count": semantic_linked,
+            "relations_count": len(knowledge.get("relations") or []),
+            "knowledge_ready": knowledge_ready,
+        },
         "note": "总体覆盖率 = 全部客户问题中可被知识支撑的比例（COVERED=1/部分=0.5，规则估算）；三档 = 子项相关问题覆盖率 ≥70% 足够 / ≥30% 部分 / <30% 太少",
     })
 
@@ -773,27 +872,39 @@ async def profile_item(item_id: str):
     k_facts = _match_knowledge(knowledge.get("facts") or [], k_rules)
     k_relations = _match_knowledge(knowledge.get("relations") or [], k_rules)
 
-    # 相关文档块：按子项关键词语义检索（补结构化盲区）
+    # 相关文档块：运行时从 GEO 已保存的快照读取；没有 Product session 时保留
+    # legacy/local 测试路径。这样“企业资料总览”不会绕过 kb-init 再次扫知识库。
     doc_chunks: list[dict] = []
     try:
-        # ``hits_of`` 以前没 import —— 这一段每次都在 ``NameError`` 上被下面的 except 吞掉，
-        # 于是企业资料的每个子项「相关文档」**恒为空**（geo.log 里堆着
-        # 「search doc chunks failed: name 'hits_of' is not defined」）。审计 B5 修过字段名，
-        # 却没发现这行压根没跑起来过。
-        from adapters.eios import hits_of, search_knowledge
+        from app.product.session import current_product_session
 
         kws = (k_rules.get("keywords") or [])[:2]
-        if kws:
+        if kws and current_product_session() is not None:
+            from app.services import knowledge_snapshot
+
+            seen = set()
+            for h in knowledge_snapshot.all_chunks(limit=2000):
+                txt = str(h.get("text") or h.get("snippet") or h.get("value") or "").strip()
+                if not h.get("document_id") or not txt:
+                    continue
+                if not any(kw and kw in txt for kw in kws):
+                    continue
+                if txt in seen:
+                    continue
+                seen.add(txt)
+                doc_chunks.append({
+                    "text": txt[:160],
+                    "score": h.get("score"),
+                    "source": h.get("document_id") or h.get("source") or "",
+                })
+        elif kws:
+            from adapters.eios import hits_of, search_knowledge
+
             res = await search_knowledge(" ".join(kws), top_k=8)
             seen = set()
             for h in hits_of(res):
-                # 审计 B5：命中里放正文的是 ``value``/``snippet``（``_map_hit`` 的字段），
-                # 旧代码读 ``text``/``content`` → 相关文档块恒空。
                 txt = (h.get("value") or h.get("snippet") or "").strip()
                 score = h.get("score")
-                # 搜索接口会返回低相关度的兜底命中；它们不能冒充当前
-                # 子项的企业资料。至少要求命中带文档来源、具备可比较分数，
-                # 且正文包含当前子项关键词之一。
                 if not h.get("document_id"):
                     continue
                 try:
@@ -812,7 +923,7 @@ async def profile_item(item_id: str):
                     "source": h.get("document_id") or h.get("source") or "",
                 })
     except Exception as e:
-        logger.warning("search doc chunks failed: %s", e)
+        logger.warning("read profile document snapshot failed: %s", e)
 
     n_ent = len(k_entities)
     n_fac = len(k_facts)
