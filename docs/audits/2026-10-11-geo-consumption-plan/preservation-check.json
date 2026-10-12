@@ -1,0 +1,13 @@
+{
+  "existing_out_of_scope_changed": [],
+  "existing_missing": [],
+  "baseline_files": 271,
+  "allowed_existing_paths": [
+    "CURRENT_STATE.md",
+    "adapters/eios/__init__.py",
+    "apps/api/app/api/v1/content.py",
+    "apps/api/app/api/v1/knowledge.py",
+    "docs/audits/2026-10-11-geo-consumption-plan/方案.md",
+    "services/content/__init__.py"
+  ]
+}

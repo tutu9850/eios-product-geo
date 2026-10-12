@@ -1,12 +1,21 @@
 # EIOS Product GEO Working Agreement
 
+## EIOS 治理入口
+
+本仓遵守 EIOS 统一治理：[Foundation AI 入口](../eios-foundation/AGENTS.md)与[文档导航](../eios-foundation/docs/README.md#task-routing)。冲突时以 Foundation 施工纪律、设计方法、分支/Worktree/多会话规范为准；本仓施工卡、证据与跨会话请求登记在 Foundation 控制面。直接用户授权仍以当前会话范围为准。
+
+本仓导航见 [docs/README.md](docs/README.md)。旧计划和验收只作历史参考；当前主轴、有效裁决及正式读口版本从 Foundation 现行入口读取，不在 GEO 复制规范正文。以下 GEO 特有规则保留。
+
 本仓是独立 GEO 产品域，包含 GEO API、域内 services/adapters 和自带 UI。
 
 ## 开始任务
 
-1. 先读本仓 `README.md`、`docs/GEO_PRODUCT_DOOR_MATRIX.md`（若任务涉及产品门）和任务 Card。
+1. 先读本仓 `README.md`、[`CURRENT_STATE.md`](CURRENT_STATE.md)、`docs/GEO_PRODUCT_DOOR_MATRIX.md`（若任务涉及产品门）和任务 Card。
 2. 检查 `git status --short --branch`；不覆盖已有未提交改动。
 3. 涉及 EIOS 身份、产品接线或 Foundation 数据时，先确认 `eios-product-api` 与 Foundation 的既有契约。
+4. 跨 EIOS 边界时阅读 Foundation 的[横向与纵向施工纪律](../eios-foundation/docs/engineering/EIOS-CONVERGENT-CONSTRUCTION-PROTOCOL-2026-10-05.md)：沿真实业务链证明首个偏离，进入责任模块最小修复，再回原链执行 WRITE → READ BACK → VERIFY。本文不复制该纪律，也不扩大当前用户授权。
+
+当前事实只更新 `CURRENT_STATE.md`；开发方向见[内容交付方案与计划](docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md)。计划和历史任务卡不自动授权代码、跨仓、部署或真实运行；已授权范围内的普通工程问题按现行纪律连续收口，不逐项重复请示。
 
 ## 边界
 

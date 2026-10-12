@@ -1,0 +1,84 @@
+## codex/geo-ui-layout...origin/codex/geo-ui-layout [ahead 1]
+ M AGENTS.md
+ M README.md
+ M adapters/eios/__init__.py
+ M adapters/llm.py
+ M adapters/model_entry.py
+ M apps/api/app/api/v1/battle.py
+ M apps/api/app/api/v1/cognition.py
+ M apps/api/app/api/v1/content.py
+ M apps/api/app/api/v1/distill.py
+ M apps/api/app/api/v1/enterprise_profile.py
+ M apps/api/app/api/v1/intelligence.py
+ M apps/api/app/api/v1/kb_init.py
+ M apps/api/app/api/v1/monitor.py
+ M apps/api/app/api/v1/stats.py
+ M apps/api/app/services/company_profile.py
+ M apps/api/app/services/knowledge_snapshot.py
+ M apps/api/tests/test_geo_answer_denominator_audit.py
+ M apps/api/tests/test_geo_chunk_channel.py
+ M apps/api/tests/test_geo_full_report.py
+ M apps/api/tests/test_geo_knowledge_consumer.py
+ M apps/api/tests/test_geo_monitor_audit_remediation.py
+ M apps/api/tests/test_kb_init.py
+ M docs/GEO_PRODUCT_DOOR_MATRIX.md
+ M packages/geo/src/geo-advisor/AutoConfigFlow.tsx
+ M packages/geo/src/geo-advisor/GeoActionPlanCard.tsx
+ M packages/geo/src/geo-advisor/GeoAdvancedTools.tsx
+ M packages/geo/src/geo-advisor/GeoAssetsListCard.tsx
+ M packages/geo/src/geo-advisor/GeoBattleCard.tsx
+ M packages/geo/src/geo-advisor/GeoCognitionCard.tsx
+ M packages/geo/src/geo-advisor/GeoCognitionMap.tsx
+ M packages/geo/src/geo-advisor/GeoContentGenForm.tsx
+ M packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx
+ M packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx
+ M packages/geo/src/geo-advisor/GeoGapsListCard.tsx
+ M packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx
+ M packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx
+ M packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx
+ M packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx
+ M packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx
+ M packages/geo/src/geo-advisor/GeoPlansListCard.tsx
+ M packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx
+ M packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx
+ M packages/geo/src/geo-advisor/GeoReportCard.tsx
+ M packages/geo/src/geo-advisor/geo-api.ts
+ M packages/geo/src/geo-advisor/geo-monitor-subject.tsx
+ M packages/geo/src/geo-advisor/index.tsx
+ M packages/geo/src/geo-advisor/shared.tsx
+ M packages/geo/src/index.css
+ M packages/geo/src/main.tsx
+ M packages/geo/vite.config.ts
+ M scripts/run_dev.sh
+ M services/content/__init__.py
+ M services/intelligence/adapter.py
+ M services/intelligence/aggregator.py
+ M services/intelligence/cognition.py
+ M services/intelligence/prompts.py
+ M services/intelligence/queue.py
+ M services/intelligence/repo.py
+?? CURRENT_STATE.md
+?? apps/api/tests/test_content_budget.py
+?? apps/api/tests/test_content_cold_read.py
+?? apps/api/tests/test_content_read_status.py
+?? apps/api/tests/test_geo_stats.py
+?? apps/api/tests/test_intelligence_queue_tenant.py
+?? apps/api/tests/test_intelligence_subject_scope.py
+?? apps/api/tests/test_monitor_analysis_scope.py
+?? docs/README.md
+?? docs/architecture/
+?? docs/archive/
+?? docs/audits/2026-10-11-geo-consumption-plan/
+?? docs/audits/2026-10-11-geo-docs-alignment/
+?? docs/audits/geo-content-fleet-2026-10-08/
+?? docs/audits/geo-content-walkthrough-2026-10-08/
+?? docs/audits/geo-local-seams-2026-10-09/
+?? docs/audits/geo-product-health-check-2026-09-26.md
+?? docs/audits/geo-rewrite-seam-2026-10-08/
+?? docs/audits/geo-shared-update-2026-10-08/
+?? docs/decisions/
+?? docs/engineering/
+?? packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx
+?? packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx
+?? packages/geo/src/geo-advisor/GeoProductGuide.tsx
+?? packages/geo/src/geo-advisor/demo-fixtures.ts

@@ -1,0 +1,313 @@
+[
+  {
+    "tree": "current",
+    "group": "content-read-budget",
+    "commit": "37a6693ab7f8ef3a70e20daae21032146edb0994",
+    "message": "fix(content): bound model calls and preserve knowledge read failure states",
+    "paths": [
+      "adapters/eios/__init__.py",
+      "adapters/llm.py",
+      "adapters/model_entry.py",
+      "apps/api/app/api/v1/content.py",
+      "apps/api/app/services/knowledge_snapshot.py",
+      "apps/api/tests/test_content_budget.py",
+      "apps/api/tests/test_content_cold_read.py",
+      "apps/api/tests/test_content_read_status.py",
+      "apps/api/tests/test_geo_chunk_channel.py",
+      "apps/api/tests/test_geo_knowledge_consumer.py",
+      "services/content/__init__.py"
+    ],
+    "index_preimages": {
+      "adapters/eios/__init__.py": "/Users/tutu/eios-product-geo/docs/audits/2026-10-11-geo-consumption-plan/backend-before/adapters/eios/__init__.py",
+      "services/content/__init__.py": "/Users/tutu/eios-product-geo/docs/audits/2026-10-11-geo-consumption-plan/backend-before/services/content/__init__.py",
+      "apps/api/app/api/v1/content.py": "/Users/tutu/eios-product-geo/docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/content.py"
+    }
+  },
+  {
+    "tree": "current",
+    "group": "monitor-intelligence",
+    "commit": "73a4bf9e85c7c70526a3f1b63154f54352a545df",
+    "message": "fix(geo): preserve scoped monitor analytics and tenant-aware parsing",
+    "paths": [
+      "apps/api/app/api/v1/battle.py",
+      "apps/api/app/api/v1/cognition.py",
+      "apps/api/app/api/v1/intelligence.py",
+      "apps/api/app/api/v1/monitor.py",
+      "apps/api/app/api/v1/stats.py",
+      "apps/api/tests/test_geo_answer_denominator_audit.py",
+      "apps/api/tests/test_geo_monitor_audit_remediation.py",
+      "apps/api/tests/test_geo_stats.py",
+      "apps/api/tests/test_intelligence_queue_tenant.py",
+      "apps/api/tests/test_intelligence_subject_scope.py",
+      "apps/api/tests/test_monitor_analysis_scope.py",
+      "services/intelligence/adapter.py",
+      "services/intelligence/aggregator.py",
+      "services/intelligence/cognition.py",
+      "services/intelligence/prompts.py",
+      "services/intelligence/queue.py",
+      "services/intelligence/repo.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "current",
+    "group": "profile-planning",
+    "commit": "3c7808eddaaf1bc49fd526e9282e94066003cb30",
+    "message": "fix(geo): scope profile and growth planning to selected subjects",
+    "paths": [
+      "apps/api/app/api/v1/distill.py",
+      "apps/api/app/api/v1/enterprise_profile.py",
+      "apps/api/app/api/v1/kb_init.py",
+      "apps/api/app/services/company_profile.py",
+      "apps/api/tests/test_geo_full_report.py",
+      "apps/api/tests/test_kb_init.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "current",
+    "group": "formal-content",
+    "commit": "100a412e3f9e911b4507b510cf2ac63d43a4c0ab",
+    "message": "feat(content): preserve formal fact provenance and reject unbound readers",
+    "paths": [
+      "adapters/eios/__init__.py",
+      "apps/api/app/api/v1/content.py",
+      "apps/api/app/api/v1/knowledge.py",
+      "apps/api/tests/fixtures/formal_content/attributes.json",
+      "apps/api/tests/fixtures/formal_content/evidence.json",
+      "apps/api/tests/fixtures/formal_content/object.json",
+      "apps/api/tests/fixtures/formal_content/objects.json",
+      "apps/api/tests/fixtures/formal_content/relations.json",
+      "apps/api/tests/test_geo_formal_content.py",
+      "services/content/__init__.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "current",
+    "group": "ui-host-demo",
+    "commit": "4412207323be3fcf99ef15adb7595d7671e7e966",
+    "message": "feat(ui): preserve guided navigation and explicit demo data boundaries",
+    "paths": [
+      "package.json",
+      "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx",
+      "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx",
+      "packages/geo/src/geo-advisor/GeoProductGuide.tsx",
+      "packages/geo/src/geo-advisor/demo-fixtures.ts",
+      "packages/geo/src/geo-advisor/demo-monitor-samples.ts",
+      "packages/geo/src/geo-advisor/geo-api.ts",
+      "packages/geo/src/geo-advisor/geo-monitor-subject.tsx",
+      "packages/geo/src/geo-advisor/index.tsx",
+      "packages/geo/src/geo-advisor/shared.tsx",
+      "packages/geo/src/index.css",
+      "packages/geo/src/main.tsx",
+      "packages/geo/tests/demo-monitor.test.mjs",
+      "packages/geo/vite.config.ts"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "current",
+    "group": "ui-monitor-insight",
+    "commit": "5d12dc72747e07f2657d12a77d9ac0bb9933403e",
+    "message": "feat(ui): preserve monitor evidence and insight workspaces",
+    "paths": [
+      "packages/geo/src/geo-advisor/GeoBattleCard.tsx",
+      "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+      "packages/geo/src/geo-advisor/GeoCognitionMap.tsx",
+      "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+      "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+      "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+      "packages/geo/src/geo-advisor/GeoReportCard.tsx"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "current",
+    "group": "ui-content-growth",
+    "commit": "79dd2f120acbed416b1c0eec34a26aec33afa441",
+    "message": "feat(ui): preserve profile and content action flows",
+    "paths": [
+      "packages/geo/src/geo-advisor/AutoConfigFlow.tsx",
+      "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx",
+      "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx",
+      "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx",
+      "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+      "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoGapsListCard.tsx",
+      "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx",
+      "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoPlansListCard.tsx",
+      "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "identity-filter",
+    "commit": "ffed0f2339e2e1b5d39841999850a19fc214b0a2",
+    "message": "fix(identity): reject template phrases during company detection",
+    "paths": [
+      "apps/api/app/api/v1/onboard.py",
+      "apps/api/tests/test_geo_company_identity.py",
+      "services/company_identity.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "content-source-docx",
+    "commit": "e2fc5a9663390da71fbaee518a29244fe18bc279",
+    "message": "fix(content): preserve selected draft sources and DOCX table text",
+    "paths": [
+      "apps/api/app/api/v1/content.py",
+      "apps/api/app/api/v1/knowledge.py",
+      "apps/api/tests/test_geo_chunk_retrieval.py",
+      "apps/api/tests/test_geo_content_improve_save.py",
+      "apps/api/tests/test_geo_content_provenance.py",
+      "apps/api/tests/test_geo_content_source_context.py",
+      "apps/api/tests/test_geo_docx_upload_tables.py",
+      "apps/api/tests/test_geo_fact_consumption.py",
+      "apps/api/tests/test_geo_own_materials.py",
+      "services/content/__init__.py",
+      "services/content/claim_check.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "monitor-intelligence",
+    "commit": "415ef9b35e71cb2b8dfe42ca38af28789fe3c97c",
+    "message": "fix(geo): preserve scoped monitor analytics and tenant-aware parsing",
+    "paths": [
+      "apps/api/app/api/v1/battle.py",
+      "apps/api/app/api/v1/cognition.py",
+      "apps/api/app/api/v1/intelligence.py",
+      "apps/api/app/api/v1/monitor.py",
+      "apps/api/app/api/v1/stats.py",
+      "apps/api/tests/test_geo_answer_denominator_audit.py",
+      "apps/api/tests/test_geo_monitor_audit_remediation.py",
+      "apps/api/tests/test_geo_stats.py",
+      "apps/api/tests/test_intelligence_queue_tenant.py",
+      "apps/api/tests/test_intelligence_subject_scope.py",
+      "apps/api/tests/test_monitor_analysis_scope.py",
+      "services/intelligence/adapter.py",
+      "services/intelligence/aggregator.py",
+      "services/intelligence/cognition.py",
+      "services/intelligence/prompts.py",
+      "services/intelligence/queue.py",
+      "services/intelligence/repo.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "profile-planning",
+    "commit": "c9fff0f81d63c1977596a63d94cf2afff5dad783",
+    "message": "fix(geo): scope profile and growth planning to selected subjects",
+    "paths": [
+      "apps/api/app/api/v1/distill.py",
+      "apps/api/app/api/v1/enterprise_profile.py",
+      "apps/api/app/api/v1/kb_init.py",
+      "apps/api/app/services/company_profile.py",
+      "apps/api/tests/test_geo_full_report.py",
+      "apps/api/tests/test_kb_init.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "ui-host-demo",
+    "commit": "a109b0221a79262aad42edadacacf8ab87c5a2fa",
+    "message": "feat(ui): preserve guided navigation and explicit demo data boundaries",
+    "paths": [
+      "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx",
+      "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx",
+      "packages/geo/src/geo-advisor/GeoProductGuide.tsx",
+      "packages/geo/src/geo-advisor/demo-fixtures.ts",
+      "packages/geo/src/geo-advisor/geo-api.ts",
+      "packages/geo/src/geo-advisor/geo-monitor-subject.tsx",
+      "packages/geo/src/geo-advisor/index.tsx",
+      "packages/geo/src/geo-advisor/shared.tsx",
+      "packages/geo/src/index.css",
+      "packages/geo/src/main.tsx",
+      "packages/geo/vite.config.ts"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "ui-monitor-insight",
+    "commit": "b5ce232b00089417e5f668cf809ffefd7e6349d5",
+    "message": "feat(ui): preserve monitor evidence and insight workspaces",
+    "paths": [
+      "packages/geo/src/geo-advisor/GeoBattleCard.tsx",
+      "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+      "packages/geo/src/geo-advisor/GeoCognitionMap.tsx",
+      "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+      "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+      "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+      "packages/geo/src/geo-advisor/GeoReportCard.tsx"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "ui-content-growth",
+    "commit": "6dd6e0b9e9226ce954e60e3af80b757dff99afcd",
+    "message": "feat(ui): preserve profile and content action flows",
+    "paths": [
+      "packages/geo/src/geo-advisor/AutoConfigFlow.tsx",
+      "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx",
+      "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx",
+      "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx",
+      "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+      "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoGapsListCard.tsx",
+      "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx",
+      "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoPlansListCard.tsx",
+      "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx",
+      "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "package-runtime",
+    "commit": "9c7a11a4fd587d457dbace7b555d8c541e3bb157",
+    "message": "build(geo): preserve source-protected product packaging inputs",
+    "paths": [
+      ".dockerignore",
+      "apps/api/tests/test_geo_package_entry.py",
+      "docker/Dockerfile",
+      "docker/Dockerfile.release",
+      "docker/requirements.lock",
+      "docker/serve.py"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "current",
+    "group": "dev-runtime",
+    "commit": "7b2540dae9075aec2cf142d80fdbf022b34626b4",
+    "message": "chore(dev): preserve explicit Foundation identity configuration",
+    "paths": [
+      "scripts/run_dev.sh"
+    ],
+    "index_preimages": {}
+  },
+  {
+    "tree": "package",
+    "group": "dev-runtime",
+    "commit": "76a718d12153b7b201a44fb831cd9e7407701c09",
+    "message": "chore(dev): preserve explicit Foundation identity configuration",
+    "paths": [
+      "scripts/run_dev.sh"
+    ],
+    "index_preimages": {}
+  }
+]

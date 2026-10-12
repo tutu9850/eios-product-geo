@@ -2,6 +2,16 @@
 
 GEO 产品**自己的**仓：后端与自带界面都在这里，不再寄生在别的仓里。
 
+## 从这里开始
+
+- [EIOS 工程规范与 GEO 阅读路径](docs/README.md)：2026-10-11 治理入口、统一主轴、设计/施工/协作/验收规范。
+- [当前工作现场](CURRENT_STATE.md)：当前目标、源码基线、验证结果、未完成事项与下一张施工卡的唯一现场入口。
+- [资料驱动内容交付开发方案与计划](docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md)：历史方向与已有成果索引；与 2026-10-11 主轴冲突的范围和顺序不再作施工依据。
+- [AI 工作规则](AGENTS.md)：开工、范围、产品门和验证要求。
+- [产品门矩阵](docs/GEO_PRODUCT_DOOR_MATRIX.md)：允许的产品路由；历史验收不等于当前部署已验收。
+
+开始任务先核对当前现场及任务卡。以下旧版状态、启动说明和历史完成清单仅作背景，不证明当前部署可用，也不自动授权新施工。
+
 > 2026-09-20 从老 GEO 仓的干净提交 `5afbf48`（+ 产品门 `b8cbe3f` / `0bf2491`）原样导入，
 > 界面从老 Client 的 `geo-advisor/frontend` 原样搬入。`main` 仍是导入出来的一次性提交，
 > **历史在 `legacy/eios-geo/*` 这组冻结分支里**（见 `docs/LEGACY-REFS.md`）：老仓
@@ -42,8 +52,8 @@ cd apps/api && GEO_PRODUCT_DOOR=on GEO_DB_PATH=<db> "$EIOS_PRODUCT_PY" -m uvicor
 python -m pip install -r apps/api/requirements-dev.txt
 python -m pytest
 
-# 前端类型检查和生产构建
-npm run check:ui
+# 前端隔离验证：输出任务临时目录，不覆盖正在服务的 packages/geo/dist
+GEO_UI_OUT_DIR=/tmp/eios-test/<任务名>/ui npm run check:ui
 ```
 
 根目录的 `pyproject.toml` 为 pytest 配置 `apps/api` 和仓库根目录两个

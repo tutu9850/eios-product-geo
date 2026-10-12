@@ -1,0 +1,149 @@
+{
+  "date": "2026-10-08 Asia/Shanghai",
+  "scope": "isolated GEO + Product API, existing deployed GEO UI; not shared deployment acceptance",
+  "ports": {
+    "client": 34173,
+    "product_api": 38090,
+    "geo": 38091,
+    "model": 8094,
+    "geo_ui": 18093
+  },
+  "geo_head": "4cb07251e10601d2294b826ee5bdcb6d5f22aa83",
+  "product_api_worktree": "/Users/tutu/eios-product-api-kn-v5",
+  "product_api_head": "6e7c2304de8ef4d95354ae0980d4bda83076d23b",
+  "source_files": [
+    {
+      "file": "笔革家居主理人访谈纪要.docx",
+      "sha256": "713067ea39c411b666f0997b10deb382654c9a2d876793b45321460fd0416c85",
+      "uploaded_chars": 2243,
+      "paragraph_text_exact": true,
+      "tables": 0,
+      "missing_table_cells": 0,
+      "missing_sample": []
+    },
+    {
+      "file": "笔革家居_现场调研手册.docx",
+      "sha256": "25b6080c9f7ed65c54d4e00c73bc6a113885485dd972f26600bcc0e067cb81e9",
+      "uploaded_chars": 7288,
+      "paragraph_text_exact": true,
+      "tables": 3,
+      "missing_table_cells": 69,
+      "missing_sample": [
+        "核心任务",
+        "09:00-10:30",
+        "企业基础档案：工商信息、品牌资产、现有数字化资产"
+      ]
+    }
+  ],
+  "faq": {
+    "status": 200,
+    "seconds": 3.45,
+    "materials_used": 0,
+    "source_counts": {
+      "enterprise_fact": 0,
+      "document_chunk": 0,
+      "entity": 0,
+      "faq_asset": 0,
+      "asset": 2,
+      "question_pool": 0,
+      "market_signal": 0
+    },
+    "claims_missing_in_isolated_prompt": [
+      "客户可参与DIY",
+      "30-45天",
+      "目前设计服务免费",
+      "终身维护服务"
+    ]
+  },
+  "saved_draft": {
+    "id": "m_63cf1a3976c9",
+    "chars": 320,
+    "fields": [
+      "id",
+      "title",
+      "content",
+      "source_type",
+      "url",
+      "coverage_questions",
+      "published_at",
+      "status",
+      "chunks",
+      "vectors",
+      "created_at",
+      "text_chunks",
+      "chunked_at",
+      "chunk_chars"
+    ]
+  },
+  "restart_readback": {
+    "status": 200,
+    "draft_id": "m_63cf1a3976c9",
+    "same_content": true,
+    "sha256": "dfbbd80500f30a643e005e2c0acc24fb29f14e5c8aeffb711f6f5006a5ea9ad8",
+    "source_metadata_present": false
+  },
+  "failures": [
+    {
+      "case": "empty_save",
+      "http": 200,
+      "envelope_ok": false,
+      "error": {
+        "code": "empty_content",
+        "message": "没有可保存的内容"
+      },
+      "visible_items": 0
+    },
+    {
+      "case": "empty_improve",
+      "http": 200,
+      "envelope_ok": false,
+      "error": {
+        "code": "empty_content",
+        "message": "没有可改的内容"
+      },
+      "visible_items": 0
+    },
+    {
+      "case": "unsupported_upload",
+      "http": 200,
+      "envelope_ok": true,
+      "error": "暂不支持 .bin 类型，支持 txt / md / csv / pdf / docx / xlsx / 图片",
+      "visible_items": 0
+    },
+    {
+      "case": "missing_material",
+      "http": 200,
+      "envelope_ok": true,
+      "error": "素材不存在",
+      "visible_items": 0
+    },
+    {
+      "case": "other_list",
+      "http": 200,
+      "envelope_ok": true,
+      "error": null,
+      "visible_items": 0
+    },
+    {
+      "case": "other_reads_draft",
+      "http": 200,
+      "envelope_ok": true,
+      "error": "素材不存在",
+      "visible_items": 0
+    },
+    {
+      "case": "tenant_header_cannot_switch",
+      "http": 200,
+      "envelope_ok": true,
+      "error": null,
+      "visible_items": 0
+    },
+    {
+      "case": "unauthenticated",
+      "http": 401,
+      "envelope_ok": null,
+      "error": "UNAUTHENTICATED",
+      "visible_items": 0
+    }
+  ]
+}

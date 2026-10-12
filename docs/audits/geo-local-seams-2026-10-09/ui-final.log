@@ -1,0 +1,46 @@
+
+> eios-product-geo@0.1.0 check:ui
+> npm run typecheck:ui && npm run build:ui
+
+
+> eios-product-geo@0.1.0 typecheck:ui
+> npm run typecheck --workspace @eios-product/geo
+
+
+> @eios-product/geo@0.1.0 typecheck
+> tsc --noEmit
+
+
+> eios-product-geo@0.1.0 build:ui
+> npm run build --workspace @eios-product/geo
+
+
+> @eios-product/geo@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 2147 modules transformed.
+
+(!) outDir /tmp/eios-test/geo-seams-20261009/ui-final is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+rendering chunks...
+computing gzip size...
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/index.html                                              0.42 kB │ gzip:   0.28 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/index-Bgec3yE_.css                             136.85 kB │ gzip:  27.21 kB
+../../../../../tmp/eios-test/geo-seams-20261009/ui-final/assets/index-CHDrD9wF.js                              592.99 kB │ gzip: 172.97 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 253ms

@@ -1,0 +1,12 @@
+{
+  "scenario": "isolated browser test Host and local static files",
+  "demo_api_requests_before_switching_off": 0,
+  "demo_subject_selection_preserved": "real-subject-preserve",
+  "after_switching_off": {
+    "demo": "off",
+    "leaked_demo": false,
+    "subject": "all",
+    "backend": "local 503 stub"
+  },
+  "independent_acceptance": false
+}

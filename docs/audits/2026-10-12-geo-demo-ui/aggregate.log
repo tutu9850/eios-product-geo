@@ -1,0 +1,1 @@
+{"status": "PASS", "scope": "isolated local aggregates only; identity gate mocked; no model/knowledge request", "groups": 9, "slots": 36, "sentiment": {"total": 28, "positive": 13, "negative": 5, "neutral": 10, "pos_pct": 46, "neg_pct": 18, "neu_pct": 36}, "unknown": 3, "recommend": {"value": 100, "delta": null}, "rank": {"value": 1.0, "delta": null}}

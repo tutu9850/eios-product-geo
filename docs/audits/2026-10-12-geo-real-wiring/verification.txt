@@ -1,0 +1,8 @@
+Isolated probe (fresh temporary database required):
+env GEO_RUNTIME_MODE=baseline GEO_DB_PATH=/tmp/eios-test/geo-wiring-20261012/probe.db PYTHONPATH=apps/api:.:/Users/tutu/eios-foundation/packages/auth:/Users/tutu/eios-foundation/packages/policy:/Users/tutu/.codex/worktrees/runtime-repair-alignment/eios-foundation/packages/contracts/generated/python .venv/bin/python docs/audits/2026-10-12-geo-real-wiring/probe.py
+
+Focused tests:
+env -u GEO_RUNTIME_MODE GEO_DB_PATH=/tmp/eios-test/geo-wiring-20261012/tests.db PYTHONPATH=/Users/tutu/eios-foundation/packages/auth:/Users/tutu/eios-foundation/packages/policy:/Users/tutu/.codex/worktrees/runtime-repair-alignment/eios-foundation/packages/contracts/generated/python .venv/bin/python -m pytest -q apps/api/tests/test_geo_stats.py apps/api/tests/test_monitor_analysis_scope.py apps/api/tests/test_intelligence_subject_scope.py apps/api/tests/test_intelligence_queue_tenant.py apps/api/tests/test_geo_formal_content.py apps/api/tests/test_product_geo_door.py
+59 passed, 6 warnings in 3.46s
+
+No business code changes; no live model/knowledge calls; temporary database removed after evidence copy.

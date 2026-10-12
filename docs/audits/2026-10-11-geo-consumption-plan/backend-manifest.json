@@ -1,0 +1,42 @@
+{
+  "adapters/eios/__init__.py": {
+    "before_sha256": "5c5729899db5f7cf63b79d3adbdb4a6747a24c53acf33932a2a7f687621ab3d3",
+    "after_sha256": "1717306be3cbf7e24be6834b25fa121a90980b55768e9183d913958d7bf27645"
+  },
+  "services/content/__init__.py": {
+    "before_sha256": "9225f247c176a7907762c2d564692f0cee0247da1f2504916f1d94bb810c8a8d",
+    "after_sha256": "29de27141ec1e8fe1479c901ecbd40127e9b90e42bb3283324cfcc265dc7a273"
+  },
+  "apps/api/app/api/v1/content.py": {
+    "before_sha256": "c5963428edb74e07b35cdae0ab40f027f72c3964e8735b75de1942d6b836c469",
+    "after_sha256": "703d3c46b9bd10b5dd247e84dc05fd0a1d908b4369749de8db8e0d4083d4946f"
+  },
+  "apps/api/app/api/v1/knowledge.py": {
+    "before_sha256": "279ebfcec8e478d359261f3c5bfd24491ff34c9ff6e2f3cbdf597bb66134c181",
+    "after_sha256": "25349885b593306bbbb01b1858b736a4b1e8040ac0a663b8d06e53fb46a87167"
+  },
+  "apps/api/tests/test_geo_formal_content.py": {
+    "after_sha256": "07e998a626a7c6a56c708133c1ba10780772e76b4ce30b69509337a5b0a9ecd0",
+    "new": true
+  },
+  "apps/api/tests/fixtures/formal_content/attributes.json": {
+    "after_sha256": "f4c75d322455c4001fa42daef61dfade8614e0d12f562c115e132fa9f5881573",
+    "new": true
+  },
+  "apps/api/tests/fixtures/formal_content/evidence.json": {
+    "after_sha256": "0e062296b8920209c2c9dd021e2d08c4965b3e9c0fdb1a4b971070c17f177e86",
+    "new": true
+  },
+  "apps/api/tests/fixtures/formal_content/object.json": {
+    "after_sha256": "f1726546db0032d787c5f030d5812b3f8329553fe9787afc26c59a41d552e69f",
+    "new": true
+  },
+  "apps/api/tests/fixtures/formal_content/objects.json": {
+    "after_sha256": "3da664d1f79772a05cbd63a269685e3973c2cc5c0a7c3fba6498c72b2ef3a13c",
+    "new": true
+  },
+  "apps/api/tests/fixtures/formal_content/relations.json": {
+    "after_sha256": "5d2dd75d576be988083f15d6ae698c76371031093801730d58d4e17c83aa678c",
+    "new": true
+  }
+}

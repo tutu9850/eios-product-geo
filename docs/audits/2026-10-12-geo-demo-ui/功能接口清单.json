@@ -1,0 +1,1863 @@
+{
+  "summary": {
+    "frontend_destinations": 20,
+    "backend_routes": 143,
+    "product_allowlist_patterns": 138,
+    "allowlisted_routes": 138,
+    "limitation": "AST/text source inventory; imported dependencies and variable-built URLs require manual tracing. No HTTP/permission acceptance implied."
+  },
+  "features": [
+    {
+      "feature": "kb-init",
+      "real_component": "GeoKnowledgeInitCard",
+      "source": "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 117,
+          "expression": "geoGet<GeoProfileOverview>('/enterprise-profile/overview'),"
+        },
+        {
+          "line": 118,
+          "expression": "geoGet<{ categories: GeoProfileCategory[] }>('/enterprise-profile/categories'),"
+        },
+        {
+          "line": 133,
+          "expression": "const d = await geoPost<GeoKbInitScan>('/kb-init/scan')"
+        },
+        {
+          "line": 161,
+          "expression": "const d = await geoPost<GeoKbInitApply>('/kb-init/apply', {"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "auto-config",
+      "real_component": "AutoConfigFlow",
+      "source": "packages/geo/src/geo-advisor/AutoConfigFlow.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 126,
+          "expression": "const d = await geoPost<GeoDetectResult>('/onboard/auto-config', { step: 'detect' })"
+        },
+        {
+          "line": 187,
+          "expression": "const d = await geoPost<GeoDiscoverResult>('/onboard/auto-config', {"
+        },
+        {
+          "line": 224,
+          "expression": "const c = await geoPost<GeoCreateResult>('/onboard/auto-config', {"
+        },
+        {
+          "line": 243,
+          "expression": "await geoPost<GeoRunResult>('/onboard/auto-config', {"
+        },
+        {
+          "line": 257,
+          "expression": "const s = await geoGet<GeoRunStatus>('/onboard/run-status')"
+        },
+        {
+          "line": 271,
+          "expression": "const d = await geoPost<GeoDistillResult>('/onboard/auto-config', { step: 'distill' })"
+        },
+        {
+          "line": 280,
+          "expression": "await geoPost('/monitor/tasks', {"
+        },
+        {
+          "line": 286,
+          "expression": "const s = await geoGet<{ items: number; questions: number }>('/onboard/status')"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "monitor",
+      "real_component": "GeoMonitorObjectsCard",
+      "source": "packages/geo/src/geo-advisor/GeoMonitorObjectsCard.tsx",
+      "demo_surface": "read-only setup replacing actual management",
+      "api_call_expressions": [
+        {
+          "line": 84,
+          "expression": "geoGet<{ items: GeoMonitorItem[] }>('/monitor/items'),"
+        },
+        {
+          "line": 85,
+          "expression": "geoGet<GeoTasks>('/monitor/tasks'),"
+        },
+        {
+          "line": 86,
+          "expression": "geoGet<{ groups: Array<{ type: string; label: string; items: Array<{ name: string }> }> }>('/cognition/competitors').catch(() => null),"
+        },
+        {
+          "line": 128,
+          "expression": "await geoPost(`/monitor/items/${mid}/run`)"
+        },
+        {
+          "line": 154,
+          "expression": "const result = await geoPost<QuickCheckResult>('/monitor/check', { question, company_name: company, full: false })"
+        },
+        {
+          "line": 166,
+          "expression": "await geoPost(`/monitor/items/${it.monitor_id}/run`)"
+        },
+        {
+          "line": 179,
+          "expression": "await geoPatch(`/monitor/items/${it.monitor_id}`, { status: next })"
+        },
+        {
+          "line": 190,
+          "expression": "await geoDelete(`/monitor/items/${it.monitor_id}`)"
+        },
+        {
+          "line": 201,
+          "expression": "const d = await geoPost<TaskRunResult>(`/monitor/tasks/${tid}/run`)"
+        },
+        {
+          "line": 214,
+          "expression": "await geoDelete(`/monitor/tasks/${tid}`)"
+        },
+        {
+          "line": 225,
+          "expression": "await geoPatch(`/monitor/tasks/${taskId}`, { status: current === 'active' ? 'paused' : 'active' })"
+        },
+        {
+          "line": 237,
+          "expression": "setDetailPanel({ kind: 'trend', title: `${item.entity} · 跨次趋势`, data: await geoGet<TrendData>(`/monitor/items/${item.monitor_id}/trend`) })"
+        },
+        {
+          "line": 247,
+          "expression": "setDetailPanel({ kind: 'task', title: `${name} · 任务表现`, data: await geoGet<TaskOverview>(`/monitor/tasks/${taskId}/overview`) })"
+        },
+        {
+          "line": 339,
+          "expression": "const d = await geoPost<{ query_count?: number }>('/monitor/items/preview', { type: newItemType, config_json: cfg })"
+        },
+        {
+          "line": 356,
+          "expression": "await geoPost('/monitor/items', { type: newItemType, config_json: cfg })"
+        },
+        {
+          "line": 372,
+          "expression": "await geoPost('/monitor/tasks', {"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "monitor-report",
+      "real_component": "GeoMonitorReportCard",
+      "source": "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 134,
+          "expression": "geoGet<MonitorAnswerPage>(`/monitor/answers?page=${nextPage}&page_size=20${answerType !== 'all' ? `&item_type=${answerType}` : ''}${selectedMonitorIds.length ? `&monitor_ids=${encodeURIComponent(selectedMonitorIds.join(','))}` : ''}`),"
+        },
+        {
+          "line": 135,
+          "expression": "geoGet<{ items: Array<{ monitor_id: string; type: string; entity?: string }> }>('/monitor/items'),"
+        },
+        {
+          "line": 198,
+          "expression": "geoGet<{ reasons: Array<{ query: string; engine: string; snippet: string }>; missing_evidence: string[] }>('/cognition/reasons')"
+        },
+        {
+          "line": 209,
+          "expression": "geoGet<{ items: Array<Record<string, unknown>> }>(`/monitor/citations${subjectQuery ? `?${subjectQuery}` : ''}`)"
+        },
+        {
+          "line": 217,
+          "expression": "geoGet<{ items: Array<Record<string, unknown>>; note?: string }>(`/cognition/sources${subjectQuery ? `?${subjectQuery}` : ''}`)"
+        },
+        {
+          "line": 234,
+          "expression": "geoGet<SentimentResult>(`/monitor/sentiment${brandId ? `?monitor_id=${encodeURIComponent(brandId)}` : ''}`)"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "assets",
+      "real_component": "GeoAssetsListCard",
+      "source": "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 106,
+          "expression": "? await geoGet<{ items: GeoMaterial[]; stats?: AssetStats }>("
+        },
+        {
+          "line": 109,
+          "expression": ": await geoGet<{ items: GeoMaterial[]; stats?: AssetStats }>('/knowledge/materials')"
+        },
+        {
+          "line": 151,
+          "expression": "const d = await geoGet<{ item: GeoMaterial; effects?: MaterialEffects }>(`/knowledge/materials/${id}`)"
+        },
+        {
+          "line": 172,
+          "expression": "const d = await geoDelete<{ chunks_removed?: number }>(`/knowledge/materials/${id}`)"
+        },
+        {
+          "line": 208,
+          "expression": "const d = await geoPost<{ error?: string }>('/knowledge/materials', {"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "questions",
+      "real_component": "GeoQuestionsListCard",
+      "source": "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 66,
+          "expression": "geoGet<{ items: GeoQuestion[]; total: number }>(`/distill/questions?limit=50${q}${scopeQuery ? `&${scopeQuery}` : ''}`),"
+        },
+        {
+          "line": 67,
+          "expression": "geoGet<{ stages: Array<{ key: string; label: string; question_count: number; coverage: number | null }> }>(`/cognition/coverage${scopeQuery ? `?${scopeQuery}` : ''}`),"
+        },
+        {
+          "line": 100,
+          "expression": "const d = await geoGet<{ items: Array<{ platform?: string; answer?: string; url?: string }> }>("
+        },
+        {
+          "line": 115,
+          "expression": "await geoDelete(`/distill/questions/${qid}`)"
+        },
+        {
+          "line": 124,
+          "expression": "try { await geoPost('/distill/questions', { seed_keywords: seeds.split(/[，,\\n]/).map((x) => x.trim()).filter(Boolean), count: 10, monitor_id: subjectValue !== ALL_SUBJECTS ? subjectValue : null }); setSeeds(''); await load() }"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "gaps",
+      "real_component": "GeoGapsListCard",
+      "source": "packages/geo/src/geo-advisor/GeoGapsListCard.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 35,
+          "expression": "const d = await geoGet<{ items: GeoGap[]; total: number }>(`/distill/gaps?limit=50${scopeQuery ? `&${scopeQuery}` : ''}`)"
+        },
+        {
+          "line": 56,
+          "expression": "const d = await geoPost<{ added: number; total: number; plans_added: number }>(`/distill/gaps?limit=30${scopeQuery ? `&${scopeQuery}` : ''}`)"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "cognition",
+      "real_component": "GeoCognitionCard",
+      "source": "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 94,
+          "expression": "geoGet<CognitionV2>('/distill/cognition/profile'),"
+        },
+        {
+          "line": 95,
+          "expression": "geoGet<HealthResult>(`/cognition/health${subjectQuery ? `?${subjectQuery}` : ''}`),"
+        },
+        {
+          "line": 96,
+          "expression": "geoGet<{ items: PortraitItem[]; ai_health: number | null; material_count?: number; evaluated_at?: string | null; note?: string }>('/cognition/portrait'),"
+        },
+        {
+          "line": 116,
+          "expression": "await geoPost('/distill/cognition/evaluate')"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "content",
+      "real_component": "GeoContentGenForm",
+      "source": "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 209,
+          "expression": "geoGet<{ items: GeoPlan[] }>(`/distill/plans?status=planned&limit=20${scopeQuery ? `&${scopeQuery}` : ''}`)"
+        },
+        {
+          "line": 246,
+          "expression": "const d = await geoPost<GenResult>('/content/generate', {"
+        },
+        {
+          "line": 271,
+          "expression": "const s = await geoPost<ScoreResult>('/content/score', {"
+        },
+        {
+          "line": 326,
+          "expression": "const d = await geoPost<{ title?: string; content?: string; context_sources?: ContextSource[]; source_material_ids?: string[]; knowledge_status?: GenResult['knowledge_status']; knowledge_error?: GenResult['knowledge_error']; warnings?: string[]; claim_check?: ClaimCheck | null }>('/content/improve', {"
+        },
+        {
+          "line": 377,
+          "expression": "const d = await geoPost<{ item?: { title?: string; chunks?: number }; error?: string }>('/content/save', {"
+        },
+        {
+          "line": 406,
+          "expression": "const checked = await geoPost<QualityResult>('/content/quality', { content: result.content, question: topic, company_name: subject?.name || null }, controller.signal)"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "battle",
+      "real_component": "GeoBattleCard",
+      "source": "packages/geo/src/geo-advisor/GeoBattleCard.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 34,
+          "expression": "const d = await geoPost<GeoBattleResult>('/battle', {"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "report",
+      "real_component": "GeoReportCard",
+      "source": "packages/geo/src/geo-advisor/GeoReportCard.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 25,
+          "expression": "const [s, latest] = await Promise.all([geoGet<GeoOnboardStatus>('/onboard/status'), geoGet<{ company?: string; created_at?: string; report?: GeoReport | null }>('/intelligence/reports/latest').catch(() => null)])"
+        },
+        {
+          "line": 59,
+          "expression": "try { const d = await geoPost<{ skipped?: string }>('/intelligence/reports/run', { days: 30 }); if (d.skipped) setError('报告刚刚生成过，请稍后再试。'); else await load() }"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "plans",
+      "real_component": "GeoPlansListCard",
+      "source": "packages/geo/src/geo-advisor/GeoPlansListCard.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 51,
+          "expression": "const d = await geoGet<{ items: GeoPlan[]; total: number }>(`/distill/plans?limit=50&sort=${s}${scopeQuery ? `&${scopeQuery}` : ''}`)"
+        },
+        {
+          "line": 78,
+          "expression": "const d = await geoPost<{ added?: number; total?: number; note?: string }>(`/distill/content-plan?limit=10${scopeQuery ? `&${scopeQuery}` : ''}`)"
+        },
+        {
+          "line": 101,
+          "expression": "await geoDelete(`/distill/plans/${pid}`)"
+        },
+        {
+          "line": 111,
+          "expression": "const d = await geoPost<{ published?: boolean; error?: string }>('/distill/content-publish', {"
+        },
+        {
+          "line": 129,
+          "expression": "const d = await geoPost<{ impact?: { level?: string; note?: string; delta?: number | null }; error?: string }>('/distill/content-recheck', { plan_id: pid })"
+        },
+        {
+          "line": 137,
+          "expression": "try { const d = await geoPost<{ added?: boolean; dup?: boolean; error?: string }>('/distill/plans/manual', { topic: manualTopic.trim(), target_question: manualQuestion.trim(), reason: '用户手动创建', recommended_content_type: 'FAQ+案例文章', priority: 60, monitor_id: subjectValue !== ALL_SUBJECTS ? subjectValue : null }); setGenMsg(d.error || (d.dup ? '已有相同计划，未重复添加' : '计划已创建')); setManualTopic(''); setManualQuestion(''); setManualOpen(false); await load() }"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "action-plan",
+      "real_component": "GeoActionPlanCard",
+      "source": "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 56,
+          "expression": "geoGet<{ items: GeoGap[]; total: number }>(`/distill/gaps?limit=50${scopeQuery ? `&${scopeQuery}` : ''}`),"
+        },
+        {
+          "line": 57,
+          "expression": "geoGet<{ items: GeoPlan[]; total: number }>(`/distill/plans?status=planned&limit=50${scopeQuery ? `&${scopeQuery}` : ''}`),"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "insight-overview",
+      "real_component": "GeoInsightWorkspace",
+      "source": "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 163,
+          "expression": "Promise.allSettled(paths.map((path) => geoGet(`/intelligence/${path}${subjectQuery ? `?${subjectQuery}` : ''}`))),"
+        },
+        {
+          "line": 164,
+          "expression": "geoGet<IntelligenceProgress>(`/intelligence/progress${subjectQuery ? `?${subjectQuery}` : ''}`).catch(() => null),"
+        },
+        {
+          "line": 165,
+          "expression": "geoGet<IntelligenceStats>(`/intelligence/stats${subjectQuery ? `?${subjectQuery}` : ''}`).catch(() => null),"
+        },
+        {
+          "line": 220,
+          "expression": "const nextChain = await geoGet<EvidenceChain>(`/intelligence/evidence?factor=${encodeURIComponent(nextFactor)}${subjectQuery ? `&${subjectQuery}` : ''}`)"
+        },
+        {
+          "line": 237,
+          "expression": "await geoPost(`/intelligence/recover?${params.toString()}`)"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "profile-overview",
+      "real_component": "GeoProfileWorkspace",
+      "source": "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 40,
+          "expression": "const [ov, cats] = await Promise.all([geoGet<GeoProfileOverview>('/enterprise-profile/overview'), geoGet<{ categories: GeoProfileCategory[] }>('/enterprise-profile/categories')])"
+        },
+        {
+          "line": 57,
+          "expression": "geoGet<{ item: Detail }>(`/enterprise-profile/items/${selected}`).then((d) => { if (alive) setDetail(d.item) }).catch((e) => { if (alive) setNotice(e instanceof Error ? e.message : '详情加载失败') })"
+        },
+        {
+          "line": 62,
+          "expression": "async function refresh() { if (demoMode) { setNotice(GEO_DEMO_NOTICE); return }; setBusy(true); setNotice('正在重新读取当前可检索的企业资料…'); try { await geoPost('/enterprise-profile/refresh', {}); await load(); setNotice('已按当前可检索的资料重新计算；历史快照不会因原资料删除而消失。') } catch (e) { setNotice(e instanceof Error ? e.message : '刷新失败') } finally { setBusy(false) } }"
+        },
+        {
+          "line": 63,
+          "expression": "async function makePlans() { if (!selected) return; if (demoMode) { setNotice('演示模式不会写入真实行动计划；关闭演示数据后才能操作。'); return }; setBusy(true); try { const d = await geoPost<{ added?: number; duplicated?: number; error?: string }>(`/enterprise-profile/items/${selected}/plans`, {}); setNotice(d.error || `已生成 ${d.added ?? 0} 条补充计划${d.duplicated ? `，跳过 ${d.duplicated} 条重复计划` : ''}`); if (!d.error && d.added) go?.('action-plan') } catch (e) { setNotice(e instanceof Error ? e.message : '生成失败') } finally { setBusy(false) } }"
+        },
+        {
+          "line": 64,
+          "expression": "async function exportWord() { if (demoMode) { setNotice('演示数据不会导出为正式企业资料；关闭演示数据后才能导出真实资料。'); return }; setBusy(true); try { const blob = await geoDownloadFile('/enterprise-profile/export'); await saveBlobToDisk(blob, `企业资料总览-${new Date().toISOString().slice(0,10)}.docx`) } catch (e) { setNotice(e instanceof Error ? e.message : '导出失败') } finally { setBusy(false) } }"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "monitor-analysis",
+      "real_component": "GeoMonitorAnalytics",
+      "source": "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 225,
+          "expression": "const results = await Promise.allSettled(paths.map(([, path]) => geoGet<unknown>(path)))"
+        },
+        {
+          "line": 235,
+          "expression": "geoGet<unknown>(`/cognition/coverage${subjectQuery ? `?${subjectQuery}` : ''}`),"
+        },
+        {
+          "line": 236,
+          "expression": "geoGet<unknown>(`/cognition/health${subjectQuery ? `?${subjectQuery}` : ''}`),"
+        },
+        {
+          "line": 237,
+          "expression": "geoGet<{ scope?: { identity_status?: 'confirmed' | 'unconfirmed' | null } }>(`/monitor/overview${subjectQuery ? `?${subjectQuery}` : ''}`),"
+        },
+        {
+          "line": 252,
+          "expression": "try { await saveBlobToDisk(await geoDownloadFile('/monitor/export'), `GEO-监测报告-${new Date().toISOString().slice(0, 10)}.md`) }"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "faq",
+      "real_component": "GeoFaqWorkspace",
+      "source": "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx",
+      "demo_surface": "read-only preview replacing actual component",
+      "api_call_expressions": [
+        {
+          "line": 7,
+          "expression": "async function generate(){if(!topic.trim())return;setLoading(true);setError('');try{const d=await geoPost<{items?:Item[];error?:string}>('/distill/faq',{topic:topic.trim(),keywords:[],count});if(d.error)setError(d.error);setItems(d.items??[])}catch(e){setError(e instanceof Error?e.message:'FAQ 生成失败')}finally{setLoading(false)}}"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "cognition-map",
+      "real_component": "GeoCognitionMap",
+      "source": "packages/geo/src/geo-advisor/GeoCognitionMap.tsx",
+      "demo_surface": "existing component; demo coverage not verified",
+      "api_call_expressions": [],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "overview",
+      "real_component": "GeoEnterpriseOverview",
+      "source": "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 58,
+          "expression": "subjectQuery ? geoGet<GeoMonitorOverview>(`/monitor/overview?${subjectQuery}`) : Promise.resolve(null),"
+        },
+        {
+          "line": 59,
+          "expression": "geoGet<GeoStatsOverview>('/stats/overview'),"
+        },
+        {
+          "line": 60,
+          "expression": "geoGet<GeoDistillOverview>('/distill/overview'),"
+        },
+        {
+          "line": 61,
+          "expression": "geoGet<{ data_status?: { knowledge_ready?: boolean | null } }>('/enterprise-profile/overview'),"
+        }
+      ],
+      "business_runtime_verified": false
+    },
+    {
+      "feature": "market",
+      "real_component": "GeoMarketWorkspace",
+      "source": "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx",
+      "demo_surface": "same component with local fixtures",
+      "api_call_expressions": [
+        {
+          "line": 30,
+          "expression": "const result = await Promise.allSettled([geoGet('/market/watchlist'),geoGet('/market/signals'),geoGet('/links')]); if(result[0].status==='fulfilled') setWatch(rows(result[0].value)); if(result[1].status==='fulfilled') setSignals(rows(result[1].value)); if(result[2].status==='fulfilled') setLinks(rows(result[2].value)); setLoading(false)"
+        },
+        {
+          "line": 34,
+          "expression": "async function addWatch(){if(!name.trim())return;await act('add',()=>geoPost('/market/watchlist',{name,url,type}),'已加入关注');setName('');setUrl('');setShowAdd(false)}"
+        },
+        {
+          "line": 36,
+          "expression": "async function signalToPlan(row: Row){const title=text(row,'title');await act(`plan-${row.id}`,()=>geoPost(`/market/signals/${row.id}/to-plan`,{}),'已转入内容计划');if(title&&title!=='—')go?.('plans',{focus:title})}"
+        },
+        {
+          "line": 37,
+          "expression": "async function removeWatch(row: Row){if(!(await askGeoConfirm(`移除关注「${text(row,'name')}」后，不再采集它的市场信号。`))) return; await act(`delete-${text(row,'id')}`,()=>geoDelete(`/market/watchlist/${row.id}`),'已移除')}"
+        },
+        {
+          "line": 38,
+          "expression": "async function removeLink(row: Row){if(!(await askGeoConfirm(`删除链接「${text(row,'name')}」后，收录检测记录一并移除。`))) return; await act(`delete-${text(row,'id')}`,()=>geoDelete(`/links/${row.id}`),'已删除')}"
+        },
+        {
+          "line": 39,
+          "expression": "async function addLink(){if(!url.trim())return;await act('add-link',()=>geoPost('/links',{name:name.trim(),url:url.trim()}),'链接已添加');setName('');setUrl('');setShowAdd(false)}"
+        },
+        {
+          "line": 47,
+          "expression": "<section className=\"market-workarea\"><header><div><h2>{tab==='watch'?'关注来源':tab==='signals'?'近期市场变化':'内容收录台账'}</h2><p>{tab==='watch'?'配置需要持续采集的竞品官网、行业媒体或内容平台':tab==='signals'?'先确认事实，再决定是否转入内容计划':'登记发布链接并进行真实收录检测'}</p></div><div className=\"workspace-actions\">{!demoMode&&tab==='watch'&&<button className=\"geo-btn primary\" onClick={()=>setShowAdd(!showAdd)}><Plus/>新增关注</button>}{!demoMode&&tab==='watch'&&watch.length>0&&<button className=\"geo-btn secondary\" onClick={()=>void act('collect',()=>geoPost('/market/collect',{watch_ids:null}),'采集完成')}>{busy==='collect'?<LoaderCircle className=\"spin\"/>:<RefreshCw/>}采集全部</button>}{!demoMode&&tab==='links'&&<><button className=\"geo-btn primary\" onClick={()=>setShowAdd(!showAdd)}><Plus/>登记链接</button><button className=\"geo-btn secondary\" onClick={()=>void act('check-all',()=>geoPost('/links/check-all',{}),'检测完成')}><Search/>检测未收录</button></>}</div></header>"
+        },
+        {
+          "line": 50,
+          "expression": "{tab==='signals'&&<details className=\"geo-long-list market-long-list\" data-empty={signals.length===0} open={signals.length <= 6}><summary><span>近期市场变化</span><small>{signals.length} 条{signals.length > 6 ? '，默认收起长列表' : ''}</small></summary><div className=\"geo-long-list-body\"><div className=\"market-signal-grid\">{signals.length?signals.map(row=><article key={text(row,'id')}><header><span data-status={row.status}>{row.status?statusText(row.status):text(row,'source_type')}</span><small>{text(row,'source_name','created_at')}</small></header><h3>{text(row,'title')}</h3><p>{text(row,'summary','text').slice(0,180)}</p>{Array.isArray(row.facts)&&row.facts.length>0&&<ul>{row.facts.slice(0,3).map((f:string,i:number)=><li key={i}>{f}</li>)}</ul>}{!demoMode&&<footer>{row.status!=='ignored'&&<button onClick={()=>void act(`extract-${row.id}`,()=>geoPost(`/market/signals/${row.id}/extract`,{}),'事实提取完成')}>提取事实</button>}<button onClick={()=>void signalToPlan(row)}>转内容计划<ArrowRight/></button><button onClick={()=>void act(`ignore-${row.id}`,()=>geoPost(`/market/signals/${row.id}/ignore`,{}),'已忽略')}>忽略</button></footer>}</article>):<div className=\"market-empty\"><b>还没有外部市场信号</b><span>先添加关注来源，再点击“采集全部”；采集结果只是线索，确认事实后才会进入内容计划。</span><button className=\"geo-btn primary\" onClick={()=>{setTab('watch');setShowAdd(true)}}><Plus/>先添加关注来源</button></div>}</div></div></details>}"
+        },
+        {
+          "line": 51,
+          "expression": "{tab==='links'&&<details className=\"geo-long-list market-long-list\" data-empty={links.length===0} open={links.length <= 6}><summary><span>内容收录台账</span><small>{links.length} 条{links.length > 6 ? '，默认收起长列表' : ''}</small></summary><div className=\"geo-long-list-body\"><div className=\"market-table links\">{links.length?links.map(row=><article key={text(row,'id')}><span className=\"index-state\" data-status={row.index_status}>{indexStatusText(row.index_status)}</span><div><b>{text(row,'name')}</b><small>{text(row,'url')} · {text(row,'status_note')}</small></div>{!demoMode&&<><button onClick={()=>void act(`check-${row.id}`,()=>geoPost('/links/check',{id:row.id}),'检测完成')} aria-label=\"检测收录\"><Search/></button><button onClick={()=>void removeLink(row)} aria-label=\"删除链接\"><Trash2/></button></>}</article>):<div className=\"market-empty\"><b>还没有发布链接</b><span>把已经发布的文章或页面 URL 登记进来，系统才能检查搜索引擎是否收录。</span><button className=\"geo-btn primary\" onClick={()=>setShowAdd(true)}><Plus/>登记第一条链接</button></div>}</div></div></details>}"
+        }
+      ],
+      "business_runtime_verified": false
+    }
+  ],
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/v1/analyze/diagnose",
+      "handler": "diagnose",
+      "source": "apps/api/app/api/v1/analyze.py",
+      "line": 12,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/analyze/reports/{report_id}",
+      "handler": "get_report",
+      "source": "apps/api/app/api/v1/analyze.py",
+      "line": 18,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/battle",
+      "handler": "battle",
+      "source": "apps/api/app/api/v1/battle.py",
+      "line": 62,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cognition/coverage",
+      "handler": "coverage",
+      "source": "apps/api/app/api/v1/cognition.py",
+      "line": 270,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cognition/competitors",
+      "handler": "competitors",
+      "source": "apps/api/app/api/v1/cognition.py",
+      "line": 369,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cognition/sources",
+      "handler": "sources",
+      "source": "apps/api/app/api/v1/cognition.py",
+      "line": 519,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cognition/portrait",
+      "handler": "portrait",
+      "source": "apps/api/app/api/v1/cognition.py",
+      "line": 586,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cognition/health",
+      "handler": "health",
+      "source": "apps/api/app/api/v1/cognition.py",
+      "line": 672,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/cognition/reasons",
+      "handler": "reasons",
+      "source": "apps/api/app/api/v1/cognition.py",
+      "line": 739,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/collect/crawl",
+      "handler": "crawl",
+      "source": "apps/api/app/api/v1/collect.py",
+      "line": 12,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/content/generate",
+      "handler": "generate",
+      "source": "apps/api/app/api/v1/content.py",
+      "line": 61,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/content/score",
+      "handler": "score_content",
+      "source": "apps/api/app/api/v1/content.py",
+      "line": 96,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/content/company",
+      "handler": "company",
+      "source": "apps/api/app/api/v1/content.py",
+      "line": 140,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/content/parse",
+      "handler": "parse",
+      "source": "apps/api/app/api/v1/content.py",
+      "line": 168,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/content/improve",
+      "handler": "improve",
+      "source": "apps/api/app/api/v1/content.py",
+      "line": 216,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/content/save",
+      "handler": "save",
+      "source": "apps/api/app/api/v1/content.py",
+      "line": 267,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/content/quality",
+      "handler": "quality",
+      "source": "apps/api/app/api/v1/content.py",
+      "line": 355,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/diagnose",
+      "handler": "diagnose",
+      "source": "apps/api/app/api/v1/diagnose.py",
+      "line": 212,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/questions",
+      "handler": "gen_questions",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 107,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/cognition-map",
+      "handler": "cognition_map",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 192,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/questions",
+      "handler": "list_questions",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 207,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/distill/questions/{qid}",
+      "handler": "delete_question",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 278,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/questions/{qid}/platforms",
+      "handler": "question_platforms",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 310,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/faq",
+      "handler": "faq",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 387,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/faq/upgraded",
+      "handler": "faq_upgraded",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 585,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/gaps",
+      "handler": "detect_gaps",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 674,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/gaps",
+      "handler": "list_gaps",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 835,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/opportunities",
+      "handler": "gen_opportunities",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 944,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/overview",
+      "handler": "distill_overview",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1032,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/cognition-profile",
+      "handler": "cognition_profile",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1075,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/cognition/evaluate",
+      "handler": "cognition_evaluate",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1174,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/cognition/profile",
+      "handler": "cognition_profile_v2",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1337,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/plans",
+      "handler": "gen_plans",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1439,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/analyze",
+      "handler": "analyze_content",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1504,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/loop/run",
+      "handler": "loop_run",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1623,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/plans/manual",
+      "handler": "add_plan_manual",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1635,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/plans/customer-gap",
+      "handler": "add_plan_from_customer_gap",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1663,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/plans/from-gaps",
+      "handler": "plans_from_weak",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1704,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/distill/plans/{plan_id}",
+      "handler": "delete_plan",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1821,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/distill/plans",
+      "handler": "list_plans",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 1848,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/content-plan",
+      "handler": "gen_content_plan",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 2019,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/content-publish",
+      "handler": "content_publish",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 2174,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/distill/content-recheck",
+      "handler": "content_recheck",
+      "source": "apps/api/app/api/v1/distill.py",
+      "line": 2228,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/enterprise-profile/overview",
+      "handler": "profile_overview",
+      "source": "apps/api/app/api/v1/enterprise_profile.py",
+      "line": 764,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/enterprise-profile/categories",
+      "handler": "profile_categories",
+      "source": "apps/api/app/api/v1/enterprise_profile.py",
+      "line": 821,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/enterprise-profile/items/{item_id}",
+      "handler": "profile_item",
+      "source": "apps/api/app/api/v1/enterprise_profile.py",
+      "line": 851,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/enterprise-profile/items/{item_id}/plans",
+      "handler": "item_to_plans",
+      "source": "apps/api/app/api/v1/enterprise_profile.py",
+      "line": 975,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/enterprise-profile/export",
+      "handler": "profile_export",
+      "source": "apps/api/app/api/v1/enterprise_profile.py",
+      "line": 1037,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/enterprise-profile/refresh",
+      "handler": "profile_refresh",
+      "source": "apps/api/app/api/v1/enterprise_profile.py",
+      "line": 1144,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/eios/export/knowledge-index",
+      "handler": "export_knowledge_index",
+      "source": "apps/api/app/api/v1/export.py",
+      "line": 12,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/consumer/summary",
+      "handler": "geo_consumer_summary",
+      "source": "apps/api/app/api/v1/geo_consumer.py",
+      "line": 79,
+      "product_allowlist_match": false,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/consumer/snapshots",
+      "handler": "geo_consumer_snapshots",
+      "source": "apps/api/app/api/v1/geo_consumer.py",
+      "line": 104,
+      "product_allowlist_match": false,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/geo/consumer/knowledge",
+      "handler": "geo_consumer_knowledge",
+      "source": "apps/api/app/api/v1/geo_consumer.py",
+      "line": 115,
+      "product_allowlist_match": false,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/health",
+      "handler": "health",
+      "source": "apps/api/app/api/v1/health.py",
+      "line": 13,
+      "product_allowlist_match": false,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/analyze",
+      "handler": "analyze",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 83,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/analyses",
+      "handler": "analyses",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 109,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/sov",
+      "handler": "sov",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 132,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/trend-delta",
+      "handler": "trend_delta",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 139,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/overview",
+      "handler": "overview",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 146,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/keywords",
+      "handler": "keywords",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 153,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/humanize",
+      "handler": "humanize",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 160,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/factor-gaps",
+      "handler": "factor_gaps",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 167,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/gap-analysis",
+      "handler": "gap_analysis",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 174,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/strategies",
+      "handler": "strategies",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 181,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/evidence",
+      "handler": "evidence",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 188,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/compare",
+      "handler": "compare",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 197,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/matrix",
+      "handler": "matrix",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 204,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/perception",
+      "handler": "perception",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 211,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/reports/latest",
+      "handler": "reports_latest",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 218,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/reports/latest/pdf",
+      "handler": "reports_latest_pdf",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 253,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/reports/run",
+      "handler": "reports_run",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 266,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/recover",
+      "handler": "recover",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 300,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/intelligence/harvest/search",
+      "handler": "harvest_search",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 338,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/harvest/runs/{run_id}",
+      "handler": "harvest_run_status",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 359,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/stats",
+      "handler": "stats",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 368,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/intelligence/progress",
+      "handler": "progress",
+      "source": "apps/api/app/api/v1/intelligence.py",
+      "line": 413,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/kb-init/scan",
+      "handler": "kb_init_scan",
+      "source": "apps/api/app/api/v1/kb_init.py",
+      "line": 259,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/kb-init/apply",
+      "handler": "kb_init_apply",
+      "source": "apps/api/app/api/v1/kb_init.py",
+      "line": 397,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/keywords/expand",
+      "handler": "expand",
+      "source": "apps/api/app/api/v1/keywords.py",
+      "line": 12,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/knowledge/reset",
+      "handler": "reset_geo_data",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 96,
+      "product_allowlist_match": false,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/knowledge/profile",
+      "handler": "get_company_profile",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 157,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/knowledge/materials",
+      "handler": "list_materials",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 172,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/knowledge/materials/search",
+      "handler": "search_materials",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 195,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/knowledge/materials/vectorize",
+      "handler": "vectorize_materials",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 207,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/knowledge/materials/{material_id}",
+      "handler": "get_material",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 216,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/knowledge/materials",
+      "handler": "add_material",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 236,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/knowledge/materials/upload",
+      "handler": "upload_material",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 261,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/knowledge/media/upload",
+      "handler": "upload_media",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 352,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/knowledge/media/{filename}",
+      "handler": "get_media",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 386,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/knowledge/materials/{material_id}",
+      "handler": "update_material",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 398,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/knowledge/materials/{material_id}",
+      "handler": "delete_material",
+      "source": "apps/api/app/api/v1/knowledge.py",
+      "line": 423,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/links",
+      "handler": "list_links",
+      "source": "apps/api/app/api/v1/links.py",
+      "line": 97,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/links",
+      "handler": "add_link",
+      "source": "apps/api/app/api/v1/links.py",
+      "line": 107,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/links/{link_id}",
+      "handler": "delete_link",
+      "source": "apps/api/app/api/v1/links.py",
+      "line": 130,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/links/check",
+      "handler": "check_link",
+      "source": "apps/api/app/api/v1/links.py",
+      "line": 143,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/links/check-all",
+      "handler": "check_all",
+      "source": "apps/api/app/api/v1/links.py",
+      "line": 163,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/watchlist",
+      "handler": "list_watchlist",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 54,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/watchlist",
+      "handler": "add_watch",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 59,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/market/watchlist/{watch_id}",
+      "handler": "delete_watch",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 77,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/collect",
+      "handler": "collect",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 87,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/market/signals",
+      "handler": "list_signals",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 113,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/signals/{signal_id}/extract",
+      "handler": "extract_facts",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 121,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/signals/{signal_id}/confirm",
+      "handler": "confirm_signal",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 163,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/signals/{signal_id}/to-plan",
+      "handler": "signal_to_plan",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 183,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/market/signals/{signal_id}/ignore",
+      "handler": "ignore_signal",
+      "source": "apps/api/app/api/v1/market.py",
+      "line": 216,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/meta/engines",
+      "handler": "engines",
+      "source": "apps/api/app/api/v1/meta.py",
+      "line": 14,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/meta/engines/{engine_id}/ping",
+      "handler": "engine_ping",
+      "source": "apps/api/app/api/v1/meta.py",
+      "line": 25,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/items/preview",
+      "handler": "preview_item",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 232,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/items/{mid}/run",
+      "handler": "run_item",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 276,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/items",
+      "handler": "list_items",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 303,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/items",
+      "handler": "create_item",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 341,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/monitor/items/{mid}",
+      "handler": "update_item",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 367,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/monitor/items/{mid}",
+      "handler": "archive_item",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 402,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/tasks",
+      "handler": "list_tasks",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 445,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/tasks",
+      "handler": "create_task",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 468,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/monitor/tasks/{tid}",
+      "handler": "update_task",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 507,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/v1/monitor/tasks/{tid}",
+      "handler": "archive_task",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 546,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/tasks/{tid}/run",
+      "handler": "run_task",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 591,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/tasks/{tid}/overview",
+      "handler": "task_overview",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 605,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/history",
+      "handler": "history",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 1105,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/competitor",
+      "handler": "competitor",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 1111,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/sources",
+      "handler": "sources",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 1490,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/answers",
+      "handler": "answers",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 1552,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/check",
+      "handler": "check",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 1633,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/batch",
+      "handler": "batch",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 1717,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/export",
+      "handler": "export_report",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2008,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/citations",
+      "handler": "list_citations",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2064,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/pool",
+      "handler": "get_pool",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2102,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/pool",
+      "handler": "save_pool",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2107,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/monitor/generate-questions",
+      "handler": "generate_questions",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2117,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/effects",
+      "handler": "material_effects",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2321,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/rank-sentiment",
+      "handler": "rank_sentiment",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2371,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/overview",
+      "handler": "overview",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2610,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/public-opinion",
+      "handler": "public_opinion",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2732,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/industry",
+      "handler": "industry",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 2750,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/sentiment",
+      "handler": "sentiment",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 3098,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/fact-check",
+      "handler": "fact_check",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 3247,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/monitor/items/{mid}/trend",
+      "handler": "item_trend",
+      "source": "apps/api/app/api/v1/monitor.py",
+      "line": 3447,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/onboard/run-status",
+      "handler": "onboard_run_status",
+      "source": "apps/api/app/api/v1/onboard.py",
+      "line": 1127,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/onboard/status",
+      "handler": "onboard_status",
+      "source": "apps/api/app/api/v1/onboard.py",
+      "line": 1247,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/onboard/auto-config",
+      "handler": "auto_config",
+      "source": "apps/api/app/api/v1/onboard.py",
+      "line": 1281,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/report/export",
+      "handler": "export_report",
+      "source": "apps/api/app/api/v1/report.py",
+      "line": 45,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/stats/overview",
+      "handler": "overview",
+      "source": "apps/api/app/api/v1/stats.py",
+      "line": 13,
+      "product_allowlist_match": true,
+      "runtime_verified": false
+    }
+  ]
+}

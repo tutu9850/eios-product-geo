@@ -1,0 +1,1400 @@
+{
+  "boundaries": [
+    "synthetic history",
+    "model output substitute",
+    "catalog substitute",
+    "knowledge unavailable substitute"
+  ],
+  "phases": {
+    "history_only": {
+      "stats": {
+        "ok": true,
+        "data": {
+          "knowledge": {
+            "materials": 0,
+            "text_blocks": 0,
+            "bytes": 0
+          },
+          "links": {
+            "total": 0,
+            "indexed": 0,
+            "failed": 0,
+            "pending": 0,
+            "unknown": 0
+          },
+          "monitor": {
+            "runs": 1,
+            "mentioned": 1,
+            "avg_score": 100.0
+          },
+          "engines": {
+            "total": 1,
+            "answered": 1
+          },
+          "knowledge_objects": {
+            "entities": 0,
+            "empty": true,
+            "error": null
+          }
+        },
+        "error": null,
+        "request_id": "7398ca9d-b991-4f2b-9012-0ba18c364ec3",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "answers": {
+        "ok": true,
+        "data": {
+          "answers": [
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "query": "有哪些家居企业值得选择？",
+              "engine": "AuditModel",
+              "mentioned": true,
+              "recognition": "recognised",
+              "rank_est": 1,
+              "sentiment": "positive",
+              "sentiment_status": "classified",
+              "snippet": "推荐审计样例甲公司，提供家居服务。",
+              "answer": "推荐审计样例甲公司，提供家居服务。"
+            },
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "query": "有哪些家居企业值得选择？",
+              "engine": "FailedModel",
+              "mentioned": false,
+              "recognition": "not_mentioned",
+              "rank_est": null,
+              "sentiment": null,
+              "sentiment_status": "not_applicable",
+              "snippet": "",
+              "answer": ""
+            }
+          ],
+          "groups": [
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "query": "有哪些家居企业值得选择？",
+              "answers": [
+                {
+                  "group_id": "b8bd3c75ef2962620630",
+                  "batch_id": "audit-history",
+                  "ts": "2026-10-11T20:36:38.803379+00:00",
+                  "monitor_id": "audit-brand",
+                  "item_type": "brand",
+                  "query": "有哪些家居企业值得选择？",
+                  "engine": "AuditModel",
+                  "mentioned": true,
+                  "recognition": "recognised",
+                  "rank_est": 1,
+                  "sentiment": "positive",
+                  "sentiment_status": "classified",
+                  "snippet": "推荐审计样例甲公司，提供家居服务。",
+                  "answer": "推荐审计样例甲公司，提供家居服务。"
+                },
+                {
+                  "group_id": "b8bd3c75ef2962620630",
+                  "batch_id": "audit-history",
+                  "ts": "2026-10-11T20:36:38.803379+00:00",
+                  "monitor_id": "audit-brand",
+                  "item_type": "brand",
+                  "query": "有哪些家居企业值得选择？",
+                  "engine": "FailedModel",
+                  "mentioned": false,
+                  "recognition": "not_mentioned",
+                  "rank_est": null,
+                  "sentiment": null,
+                  "sentiment_status": "not_applicable",
+                  "snippet": "",
+                  "answer": ""
+                }
+              ]
+            }
+          ],
+          "total": 2,
+          "group_total": 1,
+          "page": 1,
+          "page_size": 100,
+          "pages": 1
+        },
+        "error": null,
+        "request_id": "329d18ea-6877-4180-8e6a-383d901a33dd",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "sentiment": {
+        "ok": true,
+        "data": {
+          "overview": {
+            "total": 1,
+            "positive": 1,
+            "negative": 0,
+            "neutral": 0,
+            "pos_pct": 100,
+            "neg_pct": 0,
+            "neu_pct": 0
+          },
+          "trend": [
+            {
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "positive": 1,
+              "negative": 0,
+              "neutral": 0,
+              "total": 1
+            }
+          ],
+          "questions": [
+            {
+              "question": "有哪些家居企业值得选择？",
+              "positive": 1,
+              "negative": 0,
+              "neutral": 0,
+              "sentiment": "positive"
+            }
+          ],
+          "top_words": [],
+          "top_words_note": "只统计负面回答片段；只列重复出现（≥2 次）的 2-4 字词，同一处文字只归一个词（最长优先、不重叠），因此不再是「消费/费者」这类滑窗碎片。规则分词，不是语义理解。",
+          "negative_samples": [],
+          "unknown_count": 0,
+          "scope": {
+            "monitor_id": "audit-brand",
+            "start_at": null,
+            "end_at": null,
+            "scope_required": false,
+            "brands": [
+              {
+                "monitor_id": "audit-brand",
+                "name": "审计样例甲公司"
+              }
+            ]
+          }
+        },
+        "error": null,
+        "request_id": "9f697d2b-97a0-4443-b1a6-af6eaf2abd3e",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "monitor": {
+        "ok": true,
+        "data": {
+          "recommend": {
+            "value": 100,
+            "delta": null
+          },
+          "rank": {
+            "value": 1.0,
+            "delta": null
+          },
+          "citations_count": 0,
+          "cite_rate": null,
+          "published_count": 0,
+          "cited_count": null,
+          "latest_batch_at": "2026-10-11T20:36:38.803379+00:00",
+          "platforms": {
+            "AuditModel": [
+              {
+                "ts": "2026-10-11T20:36:38.803379+00:00",
+                "recommend_pct": 100,
+                "mentioned": 1,
+                "configured": 1
+              }
+            ],
+            "FailedModel": [
+              {
+                "ts": "2026-10-11T20:36:38.803379+00:00",
+                "recommend_pct": 0,
+                "mentioned": 0,
+                "configured": 1
+              }
+            ]
+          },
+          "questions": [
+            {
+              "question": "有哪些家居企业值得选择？",
+              "recommend_pct": 50,
+              "rank_avg": 1.0,
+              "sentiment_summary": {
+                "positive": 1,
+                "negative": 0,
+                "neutral": 0
+              },
+              "citations": 0
+            }
+          ],
+          "scope": {
+            "monitor_id": "audit-brand",
+            "scope_required": false,
+            "brands": [
+              {
+                "monitor_id": "audit-brand",
+                "name": "审计样例甲公司"
+              }
+            ],
+            "citations_attribution_available": false,
+            "identity_status": null,
+            "identity_note": null
+          }
+        },
+        "error": null,
+        "request_id": "5e0fbae9-c7d6-4b83-9681-24b68dd73954",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "intelligence": {
+        "ok": true,
+        "data": {
+          "company": "审计样例甲公司",
+          "mode": "comparison",
+          "total_evidence": 0,
+          "brands": [],
+          "self_name": "审计样例甲公司"
+        },
+        "error": null,
+        "request_id": "f9ac637e-dc30-40d3-bba8-06de259ca9e5",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "profile": {
+        "ok": true,
+        "data": {
+          "total": 0,
+          "health": null,
+          "metrics": {
+            "awareness": null,
+            "understanding": null,
+            "hallucination": null,
+            "recommendation": null
+          },
+          "matrix": [],
+          "errors": [],
+          "note": "暂无评估——先跑「AI 认知评估」（监测回答批处理分析）"
+        },
+        "error": null,
+        "request_id": "625f5057-d876-45e0-ac1e-d37cc0fd77c4",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "health": {
+        "ok": true,
+        "data": {
+          "total": null,
+          "dims": [
+            {
+              "key": "brand",
+              "label": "品牌认知",
+              "score": null,
+              "basis": "暂无有效认知评估；提及不等于正确认识"
+            },
+            {
+              "key": "product",
+              "label": "产品认知",
+              "score": null,
+              "basis": "产品能力 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "scene",
+              "label": "场景覆盖",
+              "score": null,
+              "basis": "尚无按决策场景判定的有效样本；品牌提及率不能代表场景覆盖"
+            },
+            {
+              "key": "trust",
+              "label": "信任证据",
+              "score": null,
+              "basis": "组织/安全合规 claim 已理解占比均值"
+            },
+            {
+              "key": "case",
+              "label": "案例覆盖",
+              "score": null,
+              "basis": "客户案例 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "price",
+              "label": "价格透明度",
+              "score": null,
+              "basis": "价格信息 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "diff",
+              "label": "差异化认知",
+              "score": null,
+              "basis": "暂无评估"
+            },
+            {
+              "key": "defense",
+              "label": "竞品防御力",
+              "score": null,
+              "basis": "暂无评估"
+            }
+          ],
+          "sample": {
+            "batch_at": "2026-10-11T20:36:38.803379+00:00",
+            "subject_status": "confirmed",
+            "subject": "审计样例甲公司",
+            "question_total": 1,
+            "engine_total": 2,
+            "engine_effective": 1,
+            "engines": [
+              {
+                "name": "AuditModel",
+                "asked": 1,
+                "answered": 1,
+                "mentioned": 1,
+                "error": null
+              },
+              {
+                "name": "FailedModel",
+                "asked": 1,
+                "answered": 0,
+                "mentioned": 0,
+                "error": "isolated failure"
+              }
+            ],
+            "silent_engines": [
+              "FailedModel"
+            ],
+            "note": "本期 1 问 × 2 家引擎；1 家返回有效回答，1 家本期未返回任何回答（FailedModel），已从分母剔除。"
+          },
+          "sample_size": 0,
+          "subject_status": "confirmed",
+          "subject_name": "审计样例甲公司",
+          "subject_error": null,
+          "scope_mode": "selected",
+          "subjects": [
+            {
+              "monitor_id": "audit-brand",
+              "name": "审计样例甲公司"
+            }
+          ],
+          "evaluation_scope": "语义评估为历史聚合；现有评估记录不含监测对象 ID，不能与最近品牌批次逐条对齐。",
+          "evaluated_at": null,
+          "note": "数据口径：主体由「监测主体」选择决定（可全选汇总），不再靠列表顺序猜；品牌认知与场景覆盖不用提及率代替。总分为 0/8 个有数据维度的均值，无数据维度不计入。"
+        },
+        "error": null,
+        "request_id": "bf5dad7d-f54f-4eb9-a9a6-061097863530",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "distill": {
+        "ok": true,
+        "data": {
+          "funnel": [],
+          "ai_judgment": null,
+          "verified_questions": 0,
+          "unverified_questions": 0,
+          "open_gaps_count": 0,
+          "top_gaps": [],
+          "opportunities_count": 0,
+          "note": "总览为现有数据聚合（问题池/缺口/计划），无 AI 猜测；企业覆盖只按已判定过的问题算，未判定为 null"
+        },
+        "error": null,
+        "request_id": "0a9d87f5-8a82-41e3-bc60-aca37f7abeb8",
+        "trace": {
+          "stage": "p0"
+        }
+      }
+    },
+    "parsed": {
+      "stats": {
+        "ok": true,
+        "data": {
+          "knowledge": {
+            "materials": 0,
+            "text_blocks": 0,
+            "bytes": 0
+          },
+          "links": {
+            "total": 0,
+            "indexed": 0,
+            "failed": 0,
+            "pending": 0,
+            "unknown": 0
+          },
+          "monitor": {
+            "runs": 1,
+            "mentioned": 1,
+            "avg_score": 100.0
+          },
+          "engines": {
+            "total": 1,
+            "answered": 1
+          },
+          "knowledge_objects": {
+            "entities": 0,
+            "empty": true,
+            "error": null
+          }
+        },
+        "error": null,
+        "request_id": "8896c10d-407e-4b6f-aac8-e22bfe5c80d0",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "answers": {
+        "ok": true,
+        "data": {
+          "answers": [
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "query": "有哪些家居企业值得选择？",
+              "engine": "AuditModel",
+              "mentioned": true,
+              "recognition": "recognised",
+              "rank_est": 1,
+              "sentiment": "positive",
+              "sentiment_status": "classified",
+              "snippet": "推荐审计样例甲公司，提供家居服务。",
+              "answer": "推荐审计样例甲公司，提供家居服务。"
+            },
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "query": "有哪些家居企业值得选择？",
+              "engine": "FailedModel",
+              "mentioned": false,
+              "recognition": "not_mentioned",
+              "rank_est": null,
+              "sentiment": null,
+              "sentiment_status": "not_applicable",
+              "snippet": "",
+              "answer": ""
+            }
+          ],
+          "groups": [
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "query": "有哪些家居企业值得选择？",
+              "answers": [
+                {
+                  "group_id": "b8bd3c75ef2962620630",
+                  "batch_id": "audit-history",
+                  "ts": "2026-10-11T20:36:38.803379+00:00",
+                  "monitor_id": "audit-brand",
+                  "item_type": "brand",
+                  "query": "有哪些家居企业值得选择？",
+                  "engine": "AuditModel",
+                  "mentioned": true,
+                  "recognition": "recognised",
+                  "rank_est": 1,
+                  "sentiment": "positive",
+                  "sentiment_status": "classified",
+                  "snippet": "推荐审计样例甲公司，提供家居服务。",
+                  "answer": "推荐审计样例甲公司，提供家居服务。"
+                },
+                {
+                  "group_id": "b8bd3c75ef2962620630",
+                  "batch_id": "audit-history",
+                  "ts": "2026-10-11T20:36:38.803379+00:00",
+                  "monitor_id": "audit-brand",
+                  "item_type": "brand",
+                  "query": "有哪些家居企业值得选择？",
+                  "engine": "FailedModel",
+                  "mentioned": false,
+                  "recognition": "not_mentioned",
+                  "rank_est": null,
+                  "sentiment": null,
+                  "sentiment_status": "not_applicable",
+                  "snippet": "",
+                  "answer": ""
+                }
+              ]
+            }
+          ],
+          "total": 2,
+          "group_total": 1,
+          "page": 1,
+          "page_size": 100,
+          "pages": 1
+        },
+        "error": null,
+        "request_id": "f716c4b7-de5a-44d7-bb22-95647cc52c12",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "sentiment": {
+        "ok": true,
+        "data": {
+          "overview": {
+            "total": 1,
+            "positive": 1,
+            "negative": 0,
+            "neutral": 0,
+            "pos_pct": 100,
+            "neg_pct": 0,
+            "neu_pct": 0
+          },
+          "trend": [
+            {
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "positive": 1,
+              "negative": 0,
+              "neutral": 0,
+              "total": 1
+            }
+          ],
+          "questions": [
+            {
+              "question": "有哪些家居企业值得选择？",
+              "positive": 1,
+              "negative": 0,
+              "neutral": 0,
+              "sentiment": "positive"
+            }
+          ],
+          "top_words": [],
+          "top_words_note": "只统计负面回答片段；只列重复出现（≥2 次）的 2-4 字词，同一处文字只归一个词（最长优先、不重叠），因此不再是「消费/费者」这类滑窗碎片。规则分词，不是语义理解。",
+          "negative_samples": [],
+          "unknown_count": 0,
+          "scope": {
+            "monitor_id": "audit-brand",
+            "start_at": null,
+            "end_at": null,
+            "scope_required": false,
+            "brands": [
+              {
+                "monitor_id": "audit-brand",
+                "name": "审计样例甲公司"
+              }
+            ]
+          }
+        },
+        "error": null,
+        "request_id": "e9a5d64d-c452-4882-bbb4-73b6bb9c62b9",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "monitor": {
+        "ok": true,
+        "data": {
+          "recommend": {
+            "value": null,
+            "delta": null
+          },
+          "rank": {
+            "value": null,
+            "delta": null
+          },
+          "citations_count": 0,
+          "cite_rate": null,
+          "published_count": 0,
+          "cited_count": null,
+          "latest_batch_at": "2026-10-11T20:36:38.803379+00:00",
+          "platforms": {},
+          "questions": [],
+          "scope": {
+            "monitor_id": "audit-brand",
+            "scope_required": false,
+            "brands": [
+              {
+                "monitor_id": "audit-brand",
+                "name": "审计样例甲公司"
+              }
+            ],
+            "citations_attribution_available": false,
+            "identity_status": "unconfirmed",
+            "identity_note": "已有回答，但还不能确认对应的是哪家企业；先完成回答理解后再显示品牌表现。"
+          }
+        },
+        "error": null,
+        "request_id": "cb41cceb-63d9-4c1e-990b-a83484e993d9",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "intelligence": {
+        "ok": true,
+        "data": {
+          "company": "审计样例甲公司",
+          "mode": "comparison",
+          "total_evidence": 1,
+          "brands": [
+            {
+              "name": "审计样例甲公司",
+              "is_self": true,
+              "mentions": 1,
+              "rate": 100.0,
+              "unconfirmed_count": 0,
+              "identity_status": "confirmed"
+            }
+          ],
+          "self_name": "审计样例甲公司"
+        },
+        "error": null,
+        "request_id": "95b78375-13e3-4893-af72-cdc911db1668",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "profile": {
+        "ok": true,
+        "data": {
+          "total": 0,
+          "health": null,
+          "metrics": {
+            "awareness": null,
+            "understanding": null,
+            "hallucination": null,
+            "recommendation": null
+          },
+          "matrix": [],
+          "errors": [],
+          "note": "暂无评估——先跑「AI 认知评估」（监测回答批处理分析）"
+        },
+        "error": null,
+        "request_id": "9c46a610-1b20-451d-b899-1c67fbf8e3df",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "health": {
+        "ok": true,
+        "data": {
+          "total": null,
+          "dims": [
+            {
+              "key": "brand",
+              "label": "品牌认知",
+              "score": null,
+              "basis": "暂无有效认知评估；提及不等于正确认识"
+            },
+            {
+              "key": "product",
+              "label": "产品认知",
+              "score": null,
+              "basis": "产品能力 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "scene",
+              "label": "场景覆盖",
+              "score": null,
+              "basis": "尚无按决策场景判定的有效样本；品牌提及率不能代表场景覆盖"
+            },
+            {
+              "key": "trust",
+              "label": "信任证据",
+              "score": null,
+              "basis": "组织/安全合规 claim 已理解占比均值"
+            },
+            {
+              "key": "case",
+              "label": "案例覆盖",
+              "score": null,
+              "basis": "客户案例 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "price",
+              "label": "价格透明度",
+              "score": null,
+              "basis": "价格信息 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "diff",
+              "label": "差异化认知",
+              "score": null,
+              "basis": "暂无评估"
+            },
+            {
+              "key": "defense",
+              "label": "竞品防御力",
+              "score": null,
+              "basis": "暂无评估"
+            }
+          ],
+          "sample": {
+            "batch_at": "2026-10-11T20:36:38.803379+00:00",
+            "subject_status": "confirmed",
+            "subject": "审计样例甲公司",
+            "question_total": 1,
+            "engine_total": 2,
+            "engine_effective": 1,
+            "engines": [
+              {
+                "name": "AuditModel",
+                "asked": 1,
+                "answered": 1,
+                "mentioned": 1,
+                "error": null
+              },
+              {
+                "name": "FailedModel",
+                "asked": 1,
+                "answered": 0,
+                "mentioned": 0,
+                "error": "isolated failure"
+              }
+            ],
+            "silent_engines": [
+              "FailedModel"
+            ],
+            "note": "本期 1 问 × 2 家引擎；1 家返回有效回答，1 家本期未返回任何回答（FailedModel），已从分母剔除。"
+          },
+          "sample_size": 0,
+          "subject_status": "confirmed",
+          "subject_name": "审计样例甲公司",
+          "subject_error": null,
+          "scope_mode": "selected",
+          "subjects": [
+            {
+              "monitor_id": "audit-brand",
+              "name": "审计样例甲公司"
+            }
+          ],
+          "evaluation_scope": "语义评估为历史聚合；现有评估记录不含监测对象 ID，不能与最近品牌批次逐条对齐。",
+          "evaluated_at": null,
+          "note": "数据口径：主体由「监测主体」选择决定（可全选汇总），不再靠列表顺序猜；品牌认知与场景覆盖不用提及率代替。总分为 0/8 个有数据维度的均值，无数据维度不计入。"
+        },
+        "error": null,
+        "request_id": "f2ea045f-2e69-4421-8ee4-7a63a80d2fc9",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "distill": {
+        "ok": true,
+        "data": {
+          "funnel": [],
+          "ai_judgment": null,
+          "verified_questions": 0,
+          "unverified_questions": 0,
+          "open_gaps_count": 0,
+          "top_gaps": [],
+          "opportunities_count": 0,
+          "note": "总览为现有数据聚合（问题池/缺口/计划），无 AI 猜测；企业覆盖只按已判定过的问题算，未判定为 null"
+        },
+        "error": null,
+        "request_id": "a66cc279-3da1-420a-99dd-56350d0820ae",
+        "trace": {
+          "stage": "p0"
+        }
+      }
+    },
+    "evaluated": {
+      "stats": {
+        "ok": true,
+        "data": {
+          "knowledge": {
+            "materials": 0,
+            "text_blocks": 0,
+            "bytes": 0
+          },
+          "links": {
+            "total": 0,
+            "indexed": 0,
+            "failed": 0,
+            "pending": 0,
+            "unknown": 0
+          },
+          "monitor": {
+            "runs": 1,
+            "mentioned": 1,
+            "avg_score": 100.0
+          },
+          "engines": {
+            "total": 1,
+            "answered": 1
+          },
+          "knowledge_objects": {
+            "entities": 0,
+            "empty": true,
+            "error": null
+          }
+        },
+        "error": null,
+        "request_id": "8637f1a2-c8e5-4793-9b4b-8e6c55a5a057",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "answers": {
+        "ok": true,
+        "data": {
+          "answers": [
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "query": "有哪些家居企业值得选择？",
+              "engine": "AuditModel",
+              "mentioned": true,
+              "recognition": "recognised",
+              "rank_est": 1,
+              "sentiment": "positive",
+              "sentiment_status": "classified",
+              "snippet": "推荐审计样例甲公司，提供家居服务。",
+              "answer": "推荐审计样例甲公司，提供家居服务。"
+            },
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "query": "有哪些家居企业值得选择？",
+              "engine": "FailedModel",
+              "mentioned": false,
+              "recognition": "not_mentioned",
+              "rank_est": null,
+              "sentiment": null,
+              "sentiment_status": "not_applicable",
+              "snippet": "",
+              "answer": ""
+            }
+          ],
+          "groups": [
+            {
+              "group_id": "b8bd3c75ef2962620630",
+              "batch_id": "audit-history",
+              "monitor_id": "audit-brand",
+              "item_type": "brand",
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "query": "有哪些家居企业值得选择？",
+              "answers": [
+                {
+                  "group_id": "b8bd3c75ef2962620630",
+                  "batch_id": "audit-history",
+                  "ts": "2026-10-11T20:36:38.803379+00:00",
+                  "monitor_id": "audit-brand",
+                  "item_type": "brand",
+                  "query": "有哪些家居企业值得选择？",
+                  "engine": "AuditModel",
+                  "mentioned": true,
+                  "recognition": "recognised",
+                  "rank_est": 1,
+                  "sentiment": "positive",
+                  "sentiment_status": "classified",
+                  "snippet": "推荐审计样例甲公司，提供家居服务。",
+                  "answer": "推荐审计样例甲公司，提供家居服务。"
+                },
+                {
+                  "group_id": "b8bd3c75ef2962620630",
+                  "batch_id": "audit-history",
+                  "ts": "2026-10-11T20:36:38.803379+00:00",
+                  "monitor_id": "audit-brand",
+                  "item_type": "brand",
+                  "query": "有哪些家居企业值得选择？",
+                  "engine": "FailedModel",
+                  "mentioned": false,
+                  "recognition": "not_mentioned",
+                  "rank_est": null,
+                  "sentiment": null,
+                  "sentiment_status": "not_applicable",
+                  "snippet": "",
+                  "answer": ""
+                }
+              ]
+            }
+          ],
+          "total": 2,
+          "group_total": 1,
+          "page": 1,
+          "page_size": 100,
+          "pages": 1
+        },
+        "error": null,
+        "request_id": "43bcf7c7-2e83-47be-bfbd-446ff98c69b1",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "sentiment": {
+        "ok": true,
+        "data": {
+          "overview": {
+            "total": 1,
+            "positive": 1,
+            "negative": 0,
+            "neutral": 0,
+            "pos_pct": 100,
+            "neg_pct": 0,
+            "neu_pct": 0
+          },
+          "trend": [
+            {
+              "ts": "2026-10-11T20:36:38.803379+00:00",
+              "positive": 1,
+              "negative": 0,
+              "neutral": 0,
+              "total": 1
+            }
+          ],
+          "questions": [
+            {
+              "question": "有哪些家居企业值得选择？",
+              "positive": 1,
+              "negative": 0,
+              "neutral": 0,
+              "sentiment": "positive"
+            }
+          ],
+          "top_words": [],
+          "top_words_note": "只统计负面回答片段；只列重复出现（≥2 次）的 2-4 字词，同一处文字只归一个词（最长优先、不重叠），因此不再是「消费/费者」这类滑窗碎片。规则分词，不是语义理解。",
+          "negative_samples": [],
+          "unknown_count": 0,
+          "scope": {
+            "monitor_id": "audit-brand",
+            "start_at": null,
+            "end_at": null,
+            "scope_required": false,
+            "brands": [
+              {
+                "monitor_id": "audit-brand",
+                "name": "审计样例甲公司"
+              }
+            ]
+          }
+        },
+        "error": null,
+        "request_id": "2cbda67e-cd16-42ac-9198-0cb93f199fd8",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "monitor": {
+        "ok": true,
+        "data": {
+          "recommend": {
+            "value": null,
+            "delta": null
+          },
+          "rank": {
+            "value": null,
+            "delta": null
+          },
+          "citations_count": 0,
+          "cite_rate": null,
+          "published_count": 0,
+          "cited_count": null,
+          "latest_batch_at": "2026-10-11T20:36:38.803379+00:00",
+          "platforms": {},
+          "questions": [],
+          "scope": {
+            "monitor_id": "audit-brand",
+            "scope_required": false,
+            "brands": [
+              {
+                "monitor_id": "audit-brand",
+                "name": "审计样例甲公司"
+              }
+            ],
+            "citations_attribution_available": false,
+            "identity_status": "unconfirmed",
+            "identity_note": "已有回答，但还不能确认对应的是哪家企业；先完成回答理解后再显示品牌表现。"
+          }
+        },
+        "error": null,
+        "request_id": "8f34d4cf-fd68-428b-a28d-78d8d957e636",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "intelligence": {
+        "ok": true,
+        "data": {
+          "company": "审计样例甲公司",
+          "mode": "comparison",
+          "total_evidence": 1,
+          "brands": [
+            {
+              "name": "审计样例甲公司",
+              "is_self": true,
+              "mentions": 1,
+              "rate": 100.0,
+              "unconfirmed_count": 0,
+              "identity_status": "confirmed"
+            }
+          ],
+          "self_name": "审计样例甲公司"
+        },
+        "error": null,
+        "request_id": "7e0295a2-662c-43c5-ad80-9cc7f5642a41",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "profile": {
+        "ok": true,
+        "data": {
+          "total": 1,
+          "evaluated_at": null,
+          "health": 100,
+          "metrics": {
+            "awareness": 100,
+            "understanding": 100,
+            "hallucination": 0,
+            "recommendation": 100
+          },
+          "matrix": [
+            {
+              "key": "business",
+              "label": "业务定位",
+              "claims": 0,
+              "grounded": 0,
+              "partial": 0,
+              "hallucination": 0,
+              "status": "暂无此类断言"
+            },
+            {
+              "key": "product",
+              "label": "产品能力",
+              "claims": 1,
+              "grounded": 1,
+              "partial": 0,
+              "hallucination": 0,
+              "status": "已理解"
+            },
+            {
+              "key": "customer",
+              "label": "客户案例",
+              "claims": 0,
+              "grounded": 0,
+              "partial": 0,
+              "hallucination": 0,
+              "status": "暂无此类断言"
+            },
+            {
+              "key": "finance",
+              "label": "财务融资",
+              "claims": 0,
+              "grounded": 0,
+              "partial": 0,
+              "hallucination": 0,
+              "status": "暂无此类断言"
+            },
+            {
+              "key": "organization",
+              "label": "组织架构",
+              "claims": 0,
+              "grounded": 0,
+              "partial": 0,
+              "hallucination": 0,
+              "status": "暂无此类断言"
+            },
+            {
+              "key": "security",
+              "label": "安全合规",
+              "claims": 0,
+              "grounded": 0,
+              "partial": 0,
+              "hallucination": 0,
+              "status": "暂无此类断言"
+            }
+          ],
+          "errors": [],
+          "note": "LLM 语义评估：理解 = 有企业依据的声明占比；幻觉 = 无依据编造占比（可溯源到回答）"
+        },
+        "error": null,
+        "request_id": "5aca16c6-8e05-4f6c-9701-583bf31a63fd",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "health": {
+        "ok": true,
+        "data": {
+          "total": 100,
+          "dims": [
+            {
+              "key": "brand",
+              "label": "品牌认知",
+              "score": 100,
+              "basis": "AI 认知评估：100%"
+            },
+            {
+              "key": "product",
+              "label": "产品认知",
+              "score": 100,
+              "basis": "产品能力 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "scene",
+              "label": "场景覆盖",
+              "score": null,
+              "basis": "尚无按决策场景判定的有效样本；品牌提及率不能代表场景覆盖"
+            },
+            {
+              "key": "trust",
+              "label": "信任证据",
+              "score": null,
+              "basis": "组织/安全合规 claim 已理解占比均值"
+            },
+            {
+              "key": "case",
+              "label": "案例覆盖",
+              "score": null,
+              "basis": "客户案例 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "price",
+              "label": "价格透明度",
+              "score": null,
+              "basis": "价格信息 claim 已理解占比（AI 评估）"
+            },
+            {
+              "key": "diff",
+              "label": "差异化认知",
+              "score": 100,
+              "basis": "AI 推荐倾向 100%（正面推荐占比）"
+            },
+            {
+              "key": "defense",
+              "label": "竞品防御力",
+              "score": 100,
+              "basis": "AI 理解程度 100%（回答与事实一致率）"
+            }
+          ],
+          "sample": {
+            "batch_at": "2026-10-11T20:36:38.803379+00:00",
+            "subject_status": "confirmed",
+            "subject": "审计样例甲公司",
+            "question_total": 1,
+            "engine_total": 2,
+            "engine_effective": 1,
+            "engines": [
+              {
+                "name": "AuditModel",
+                "asked": 1,
+                "answered": 1,
+                "mentioned": 1,
+                "error": null
+              },
+              {
+                "name": "FailedModel",
+                "asked": 1,
+                "answered": 0,
+                "mentioned": 0,
+                "error": "isolated failure"
+              }
+            ],
+            "silent_engines": [
+              "FailedModel"
+            ],
+            "note": "本期 1 问 × 2 家引擎；1 家返回有效回答，1 家本期未返回任何回答（FailedModel），已从分母剔除。"
+          },
+          "sample_size": 1,
+          "subject_status": "confirmed",
+          "subject_name": "审计样例甲公司",
+          "subject_error": null,
+          "scope_mode": "selected",
+          "subjects": [
+            {
+              "monitor_id": "audit-brand",
+              "name": "审计样例甲公司"
+            }
+          ],
+          "evaluation_scope": "语义评估为历史聚合；现有评估记录不含监测对象 ID，不能与最近品牌批次逐条对齐。",
+          "evaluated_at": null,
+          "note": "数据口径：主体由「监测主体」选择决定（可全选汇总），不再靠列表顺序猜；品牌认知与场景覆盖不用提及率代替。总分为 4/8 个有数据维度的均值，无数据维度不计入。"
+        },
+        "error": null,
+        "request_id": "d5837787-5ceb-4f4c-b25c-beab2bcfea73",
+        "trace": {
+          "stage": "p0"
+        }
+      },
+      "distill": {
+        "ok": true,
+        "data": {
+          "funnel": [],
+          "ai_judgment": null,
+          "verified_questions": 0,
+          "unverified_questions": 0,
+          "open_gaps_count": 0,
+          "top_gaps": [],
+          "opportunities_count": 0,
+          "note": "总览为现有数据聚合（问题池/缺口/计划），无 AI 猜测；企业覆盖只按已判定过的问题算，未判定为 null"
+        },
+        "error": null,
+        "request_id": "4944e417-b949-4458-a71b-64f23e32d5bb",
+        "trace": {
+          "stage": "p0"
+        }
+      }
+    }
+  },
+  "hook": {
+    "history": 1,
+    "queued": 1,
+    "reingest_new": 0
+  },
+  "extraction": {
+    "evidence_id": "ans_audit-history_audit-query_AuditModel",
+    "status": "succeeded",
+    "version": 1,
+    "mentions": 1
+  },
+  "question_stats": {
+    "freq": 2,
+    "mention_rate": 50,
+    "positive_rate": 50,
+    "avg_rank": 1.0
+  },
+  "other_subject_health": {
+    "ok": true,
+    "data": {
+      "total": 100,
+      "dims": [
+        {
+          "key": "brand",
+          "label": "品牌认知",
+          "score": 100,
+          "basis": "AI 认知评估：100%"
+        },
+        {
+          "key": "product",
+          "label": "产品认知",
+          "score": 100,
+          "basis": "产品能力 claim 已理解占比（AI 评估）"
+        },
+        {
+          "key": "scene",
+          "label": "场景覆盖",
+          "score": null,
+          "basis": "尚无按决策场景判定的有效样本；品牌提及率不能代表场景覆盖"
+        },
+        {
+          "key": "trust",
+          "label": "信任证据",
+          "score": null,
+          "basis": "组织/安全合规 claim 已理解占比均值"
+        },
+        {
+          "key": "case",
+          "label": "案例覆盖",
+          "score": null,
+          "basis": "客户案例 claim 已理解占比（AI 评估）"
+        },
+        {
+          "key": "price",
+          "label": "价格透明度",
+          "score": null,
+          "basis": "价格信息 claim 已理解占比（AI 评估）"
+        },
+        {
+          "key": "diff",
+          "label": "差异化认知",
+          "score": 100,
+          "basis": "AI 推荐倾向 100%（正面推荐占比）"
+        },
+        {
+          "key": "defense",
+          "label": "竞品防御力",
+          "score": 100,
+          "basis": "AI 理解程度 100%（回答与事实一致率）"
+        }
+      ],
+      "sample": {
+        "batch_at": "2026-10-11T20:36:38.803379+00:00",
+        "subject_status": "confirmed",
+        "subject": "审计样例乙公司",
+        "question_total": 0,
+        "engine_total": 0,
+        "engine_effective": 0,
+        "engines": [],
+        "silent_engines": [],
+        "note": "本期 0 问 × 0 家引擎；0 家返回有效回答。"
+      },
+      "sample_size": 1,
+      "subject_status": "confirmed",
+      "subject_name": "审计样例乙公司",
+      "subject_error": null,
+      "scope_mode": "selected",
+      "subjects": [
+        {
+          "monitor_id": "audit-brand",
+          "name": "审计样例甲公司"
+        },
+        {
+          "monitor_id": "audit-other",
+          "name": "审计样例乙公司"
+        }
+      ],
+      "evaluation_scope": "语义评估为历史聚合；现有评估记录不含监测对象 ID，不能与最近品牌批次逐条对齐。",
+      "evaluated_at": null,
+      "note": "数据口径：主体由「监测主体」选择决定（可全选汇总），不再靠列表顺序猜；品牌认知与场景覆盖不用提及率代替。总分为 4/8 个有数据维度的均值，无数据维度不计入。"
+    },
+    "error": null,
+    "request_id": "62dded9b-cf4f-45a2-93c2-9602848bec73",
+    "trace": {
+      "stage": "p0"
+    }
+  },
+  "publish_registration": {
+    "ok": true,
+    "data": {
+      "published": true,
+      "plan_id": "audit-plan",
+      "published_at": "2026-10-11T20:36:39.066072+00:00",
+      "published_url": "https://example.invalid/audit",
+      "baseline_questions": 1,
+      "note": "已记录发布时间/链接 + 发布时基线（逐问监测统计），复测按基线算差值"
+    },
+    "error": null,
+    "request_id": "3299369d-9072-4faf-8d9a-0c93af1d6174",
+    "trace": {
+      "stage": "p0"
+    }
+  },
+  "recheck_without_new_run": {
+    "ok": true,
+    "data": {
+      "impact": {
+        "level": "neutral",
+        "delta": 0.0,
+        "measured": 1,
+        "note": "与发布时基线相比的平均提及率变化（百分点）"
+      },
+      "after": [
+        {
+          "question": "有哪些家居企业值得选择？",
+          "mention_rate": 50,
+          "positive_rate": 50,
+          "baseline_mention_rate": 50,
+          "delta_mention_rate": 0
+        }
+      ],
+      "note": "impact = 复测提及率 − 发布时基线提及率（真实监测差值）；无基线则如实报 unknown"
+    },
+    "error": null,
+    "request_id": "94b5da81-27c8-4c3a-b381-ad60dabc31fa",
+    "trace": {
+      "stage": "p0"
+    }
+  },
+  "formal_reader_unbound": "FORMAL_READER_NOT_BOUND"
+}

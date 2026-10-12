@@ -1,0 +1,102 @@
+{
+  "date": "2026-10-11 Asia/Shanghai",
+  "foundation_head": "094fca274d1e632897c632c977401891371f9b7a",
+  "sources": [
+    {
+      "path": "/Users/tutu/eios-foundation/README.md",
+      "sha256": "e2c045135504fe6c7436b4274888d99b27f50df381c4e730374691d31e12f316"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/AGENTS.md",
+      "sha256": "3ace4936c05ba65154b59956b0457f36bd601ba8bd692afe04c1c8837a02f90d"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/CURRENT_STATE.md",
+      "sha256": "bd7e76a662885c9b4c575c51e343b737bce3dd8644afbad7f20c8e4d96aed73c"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/ARCHITECTURE.md",
+      "sha256": "dc32c0a8ad849cc7f3590973730b27fc775f7e6cb38638d2c5eea5bbacd041e9"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/PROJECT_CONTEXT.md",
+      "sha256": "37160c0cdc035cced96764ca21bedb283794edcda9e0c1622e2c6768621bbed7"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/README.md",
+      "sha256": "b62bb2fc7cde545dfa7ae5e3de75957e80f6067e325b7f3fe04411800260d52b"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/DOCUMENT_REGISTRY.yaml",
+      "sha256": "513962f033faa4df813829c5e480eb16155cdd8a5463d667714f92121b2700e5"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/MAIN-AXIS.md",
+      "sha256": "b413827fc2727c684de06d594e74730bc4c152c24220968bc3b8407cecd38248"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/ROLLOUT-2026-10-11.md",
+      "sha256": "a3867a9364a3b8478f5e5b3a8e074a16304b9dcf170542b35809d0460a8ac63a"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/EIOS-CONVERGENT-CONSTRUCTION-PROTOCOL-2026-10-05.md",
+      "sha256": "13050a98fa0f6a7906a9247280789e1f5443b0bde3ad4b046e938ac7d5d7569e"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/EIOS-DESIGN-METHOD.md",
+      "sha256": "71710ccfb0365146b3346e99de89ad6a8e2e2808ca97e6f5bbbef67dac3f1dc7"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/EIOS-OPERATING-MODEL.md",
+      "sha256": "45120dc58da69f64419e7e43ea5a8cee4cb4e145dd3625067b34b33552940ded"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/EIOS-BRANCH-WORKTREE-SESSION.md",
+      "sha256": "4941701644df48ddd1bec0e702688cfd7203f4298f73549dede19645e3ab30e7"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/EIOS-CROSS-REPO-CHANGE.md",
+      "sha256": "1858107180712311f124f1f6eaf5d9a917e4ba2f44fd25024a505c44d4083a71"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/APPROVAL-AND-DELEGATION.md",
+      "sha256": "e059db5d93173b5632b65f63022f9435fd47da1ace8166f048a13583e6ee87f9"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/VERIFICATION-INTEGRITY.md",
+      "sha256": "9956468cae4fc13af66ba1a95010ebb806fb359c8607341f6624c19487357f0a"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/CODING-STANDARDS.md",
+      "sha256": "7f7b3c7eff9253f90747a564b240aa245bcb60271517982d451252ecd105d055"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/RELEASE-AND-CHANGE.md",
+      "sha256": "cfffe56d6bb80adee3cff3286ccb9c3834dafd9eaabd931627be65160c684ae7"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/DATA-GOVERNANCE.md",
+      "sha256": "19ad5a20aafb4e28eaa43c86a0d80a41a4ad1f9e9ce04d4f0f831d943a1c0846"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/INCIDENT-AND-POSTMORTEM.md",
+      "sha256": "672381414cad4b5cfc83c278632f61a9cd6537890279e493ab9fb51c265ddab9"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/engineering/GOVERNANCE-AUTOMATION.md",
+      "sha256": "5f8292d23b044c830d5d9258a9a8421e9daeb4c55c55180bab1327edf0eca2de"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/decisions/2026-10-11-main-axis.md",
+      "sha256": "0785a8660b42eaa8cb91614feb710dd4b189bc5a8f4fe456af472719ac914aa6"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/decisions/2026-10-11-governance-owner-revisions.md",
+      "sha256": "d643a6e3057b1f7d51b48261ec5f73a98af55868b6ed7d0b63f5b634f4a10590"
+    },
+    {
+      "path": "/Users/tutu/eios-foundation/docs/decisions/FREEZE-REGISTER.md",
+      "sha256": "53d131b53bbd1e71d7a096d33755f4702ef4eae336d4379eeb0b9825cbc55ad2"
+    }
+  ]
+}

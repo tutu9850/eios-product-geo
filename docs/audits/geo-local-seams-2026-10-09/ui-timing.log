@@ -1,0 +1,11 @@
+next scenario []
+next scenario [ '/content/improve' ]
+next scenario [ '/content/quality', '/content/generate', '/content/score' ]
+next scenario [
+  '/content/generate',
+  '/content/score',
+  '/content/generate',
+  '/content/score'
+]
+save check 1
+4 actual component closure timing scenarios passed (hook harness; no DOM/Host assertion)

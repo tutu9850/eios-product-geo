@@ -1,0 +1,65 @@
+{
+  "timestamp": "2026-10-12T04:27:31.573170+08:00",
+  "head": "a432683beb8739b85a27acdde1fbcdb4dc1e1a35",
+  "status": "self-tested; independent acceptance pending",
+  "thread_id": "01a12c8d-7c61-7180-8788-23c1b1b892cc",
+  "files": [
+    {
+      "path": "package.json",
+      "sha256": "96b97fe92536950b838491cde83575ac47b7b3dcb5b50a13ee7965a7c2a0a077"
+    },
+    {
+      "path": "CURRENT_STATE.md",
+      "sha256": "24a13b47581a2722508d1f1df83fe268fcc94cdd5c38fafd3a422b1c930ca650"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/demo-monitor-samples.ts",
+      "sha256": "1255b89ab68b252bfef53c120def539dd0083f302cd5729194d374cf9e984781"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/demo-fixtures.ts",
+      "sha256": "bdc434df6ef50211d814da70becd2de65c99fadfed4c2918b7056294ea80c5ea"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+      "sha256": "85a07f862573d30b68c7502169c95594eeaeb7ba612168e9222a1a5e379fca7d"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx",
+      "sha256": "02d65735864f2f2533429346f109da2626f1f300e040e64221eb6540af15d6c7"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx",
+      "sha256": "088da04c061ab9e815a1367dad5e6a640342cdb7e60fa37c0581af182771e843"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+      "sha256": "15eb0c97f994af8158ae04ef87f502eae8b8ac11dea92d91933f70ca272d21db"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+      "sha256": "f111ade1632a58618175a69d784ebb9327b2f513aa24ce74df35bd415500feae"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+      "sha256": "5d2d18e60e790de51573f10fbec6881f35d30d28714539282c19acfd1f265953"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/geo-monitor-subject.tsx",
+      "sha256": "64ed3afef7ed92766d1bfb1ea31e72046f8976e1a247fcd3e964e5fa66cd8c62"
+    },
+    {
+      "path": "packages/geo/tests/demo-monitor.test.mjs",
+      "sha256": "defb3ed6a03a365d41b2bd5281b7ed2cc7042fd1c6dbd2f75da8f31d840aa55e"
+    },
+    {
+      "path": "docs/decisions/2026-10-12-geo-demo-ui-authorization.md",
+      "sha256": "293b01abb7404e8d8167fa263c7e5ee4d354c32a7f38bacea3310f457cd14aaf"
+    }
+  ],
+  "limitations": [
+    "Foundation global worktree/card registration not updated",
+    "No main-environment or actual Knowledge/Model invocation",
+    "round.patch covers available preimages only; package and subject-hook changes listed separately"
+  ]
+}

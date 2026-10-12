@@ -1,0 +1,4 @@
+Existing changed: ['CURRENT_STATE.md', 'AGENTS.md', 'README.md']
+Relative file links: 60, missing: []
+CURRENT_STATE lines: 56
+All other baseline files unchanged.

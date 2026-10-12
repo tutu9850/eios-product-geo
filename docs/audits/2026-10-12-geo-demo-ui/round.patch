@@ -1,0 +1,585 @@
+--- before/CURRENT_STATE.md
++++ after/CURRENT_STATE.md
+@@ -1,6 +1,6 @@
+ # GEO 当前现场
+ 
+-最后核实：2026-10-11（北京时间），后端适配候选 PARTIAL。规范入口见 [docs/README](docs/README.md)；历史现场见[归档](docs/archive/INDEX.md)。
++最后核实：2026-10-12（北京时间），演示样本候选自测通过待验收；正式后端适配仍 PARTIAL。主环境本轮未复核。规范入口见 [docs/README](docs/README.md)；历史现场见[归档](docs/archive/INDEX.md)。
+ 
+ ## 1. 主轴
+ 
+@@ -23,6 +23,7 @@
+ | GEO 治理文档对齐 | 文档检查通过 | [10-11 证据](docs/audits/2026-10-11-geo-docs-alignment/报告.md)，用户直接授权；不授权代码 |
+ | 内容链局部候选 | 自测通过待验收 | [10-09 证据](docs/audits/geo-local-seams-2026-10-09/REPORT.md)；原卡保留，未登记为新主轴已批卡 |
+ | A5 GEO 正式读口迁移 | 后端隔离候选 PARTIAL | 用户明确批准路径和“先做后端适配”；[本轮授权](docs/decisions/2026-10-11-geo-backend-authorization.md)、[391通过/5跳过证据](docs/audits/2026-10-11-geo-consumption-plan/后端报告.md)；中控登记、共享身份/F7接缝及联合验收待交付 |
++| GEO 演示样本与功能接线盘点 | 自测通过待验收；完整审计 PARTIAL | [10-12直接授权](docs/decisions/2026-10-12-geo-demo-ui-authorization.md)、[报告](docs/audits/2026-10-12-geo-demo-ui/报告.md)；36槽位/33回答/3失败，5项样例测试及隔离浏览器检查通过，后端391通过/5跳过；共享登记、独立旅程走查和真实接线未完成 |
+ 
+ ## 4. 代码与环境现场
+ 
+@@ -33,7 +34,7 @@
+ | 控制面 | Foundation HEAD 094fca274d1e632897c632c977401891371f9b7a，加工作树现行文档 | CURRENT/Freeze 登记优先，非仅凭 HEAD |
+ | 工作树登记 | Foundation WORKTREES 待 WT1 填充 | 唯一写者/运行引用未完整登记，不宣称 active |
+ | 主环境 | Foundation CURRENT_STATE §4（10-11 记 8090 未连通、DRIFT 未清、KO=0） | 引用控制面记录，未独立运行探测；当前业务可用性未验证 |
+-| GEO UI 制品 | 10-09 首次检查误写在用 packages/geo/dist | 未取得可靠原制品，未猜测恢复；当前 served 版本未知 |
++| GEO UI 制品 | 10-12 演示检查仅输出任务临时目录 | 类型/5项样例测试/隔离构建通过，未覆盖在用 packages/geo/dist；10-09误写尚无可靠原制品恢复，当前served版本仍未知 |
+ 
+ ## 5. 阻塞
+ 
+@@ -50,7 +51,7 @@
+ 
+ ## 7. 暂停与范围外
+ 
+-- 本轮授权后端四文件隔离适配已完成；未授权的UI/共享接缝迁移、旧 candidate 链删除、历史数据修补仍暂停。391通过/5跳过只证明隔离环境，C4–C8主环境仍未验证。
++- 后端四文件隔离适配已完成；10-12另获准完成演示夹具与必要前端接线，未授权的正式读口UI/共享接缝迁移、旧 candidate 链删除、历史数据修补仍暂停。391通过/5跳过及演示浏览器自测只证明隔离环境，C4–C8主环境仍未验证。
+ - 自动升版、新 pin 续跑、第二 chunk、跨 DOCX 补证、自动实质纠错、非 current 历史投影、VideoPublish 按主轴暂停。
+ - 不改 Foundation、Product API、Integrations、Provider、Release 及部署配置；不真实调用模型、不提交/推送。
+ - 范围外债统一登记见 [Foundation DEBT](../eios-foundation/docs/cards/DEBT.md)，本仓不另造共享登记。
+--- before/packages/geo/src/geo-advisor/GeoCognitionCard.tsx
++++ after/packages/geo/src/geo-advisor/GeoCognitionCard.tsx
+@@ -147,7 +147,7 @@
+   return <div className="cognition-workbench">
+     <header className="cognition-head"><div><span>品牌认知</span><h1>模型如何理解你的企业</h1><p>从国产大模型的真实回答中，识别稳定理解、缺失信息和需要核对的说法。</p></div><Button disabled={evaluating || demoMode || health?.subject_status === 'pending'} title={demoMode ? '演示数据不会执行真实评估；关闭演示模式后才能操作' : health?.subject_status === 'pending' ? '请先在上方选择监测主体' : undefined} onClick={() => void runEvaluate()}><RefreshCw className={`size-3.5 ${evaluating ? 'animate-spin' : ''}`} />{evaluating ? '评估中…' : assessmentAvailable ? '重新评估' : '开始认知评估'}</Button></header>
+     {demoMode && <div className="geo-demo-banner"><AlertTriangle /><span><b>内测演示数据已开启</b>　{GEO_DEMO_NOTICE}</span></div>}
+-    {demoMode ? <div className="geo-demo-subject"><span>演示主体</span><b>笔革家居</b><small>演示夹具固定主体；关闭演示模式后才能按监测对象筛选。</small></div> : <MonitorSubjectPicker />}
++    {demoMode ? <div className="geo-demo-subject"><span>演示主体</span><b>云栖示例家居</b><small>演示夹具固定主体；关闭演示模式后才能按监测对象筛选。</small></div> : <MonitorSubjectPicker />}
+     {!demoMode ? <p className="geo-note">{subjectLabel ? `当前主体：${subjectLabel}（来自上方「监测主体」；换主体后本页八个认知方面会按新主体重算）` : subjectPendingNote}</p> : null}
+     <section className="cognition-summary"><div className="health-score"><span>品牌理解度</span><strong>{total ?? '—'}</strong><small>{health?.subject_status === 'pending' ? subjectPendingNote : !assessmentAvailable ? '暂无已完成的认知评估' : total == null ? '有效维度不足' : total >= 70 ? '整体认知稳定' : total >= 40 ? '存在明显差距（不等于曝光率）' : '需要优先治理（不等于曝光率）'}</small></div>{metricItems.map(([label, value]) => <div className="cognition-kpi" key={label}><span>{label}</span><strong>{value == null ? '—' : `${Math.round(value)}%`}</strong><i><em style={{ width: `${value ?? 0}%` }} /></i></div>)}</section>
+     <div className="cognition-layout"><section className="cognition-panel dimension-panel"><header><div><h2>品牌被理解的八个方面</h2><p>{assessmentAvailable ? `过去回答评估 ${health?.sample_size} 条${evaluatedAt ? ` · ${evaluatedAt}` : ''}；不保证与最近品牌批次一致` : health?.subject_status === 'pending' ? subjectPendingNote : '完成一次评估后显示'}</p></div><span className="cognition-legend">评估结果</span></header>{assessmentAvailable ? <div className="dimension-grid">{dims.map((d) => <article key={d.key}><div><span>{d.label}</span><strong>{d.score != null ? d.score : '—'}</strong></div><i><em data-score={d.score == null ? 'empty' : d.score >= 70 ? 'good' : d.score >= 40 ? 'mid' : 'low'} style={{ width: `${d.score == null ? 0 : Math.min(100,d.score)}%` }} /></i><p>{d.basis}</p></article>)}</div> : <div className="cognition-empty cognition-start-state"><Minus /><b>{health?.subject_status === 'pending' ? subjectPendingNote : '还没有可用的认知评估'}</b><p>先完成一轮监测并让系统读懂回答；系统不会用“出现过品牌名”代替“正确理解品牌”。</p>{health?.subject_status !== 'pending' ? <button type="button" onClick={() => go?.('monitor')}>去运行监测</button> : null}</div>}</section>
+--- before/packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx
++++ after/packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx
+@@ -15,19 +15,19 @@
+   },
+   assets: {
+     eyebrow: '内容资产', title: '公开内容资产', description: '这些材料让模型有可以引用的公开依据；它和企业资料分开保存，也不会自动发布。',
+-    items: [{ title: '成都三居室收纳改造案例', detail: '案例 · 已入库 · 可作为客户案例依据', tag: '案例' }, { title: '交付与售后说明', detail: '服务说明 · 需要补充周期和响应口径', tag: '待补' }, { title: '空间规划指南', detail: '解决方案 · 可用于解释差异化能力', tag: '方案' }], next: { label: '去看资料缺口', kind: 'gaps' },
++    items: [{ title: '演示·品牌与产品说明', detail: '支持空间规划、沙发与柜类组合建议', tag: '演示已发布' }, { title: '演示·交付与售后说明', detail: '按订单排期，尚无统一时限承诺', tag: '演示已发布' }, { title: '演示·住宅案例摘要', detail: '预算与结果待补齐', tag: '演示草稿' }], next: { label: '去看资料缺口', kind: 'gaps' },
+   },
+   questions: {
+     eyebrow: '客户问题', title: '客户会问什么', description: '这里回答“客户会问什么”，再把这些问题交给模型验证，而不是直接把问题当成市场结论。',
+-    items: [{ title: '成都适合年轻家庭的家居品牌有哪些？', detail: '认知 / 比较 · 已监测', tag: '高优先' }, { title: '笔革家居交付和售后怎么样？', detail: '决策 / 信任 · 证据不足', tag: '高优先' }, { title: '小户型如何选择柜类定制？', detail: '选择 · 尚未监测', tag: '待监测' }], next: { label: '去看资料缺口', kind: 'gaps' },
++    items: [{ title: '成都适合年轻家庭的家居品牌有哪些？', detail: '认知 / 比较 · 已监测', tag: '高优先' }, { title: '云栖示例家居交付和售后怎么样？', detail: '决策 / 信任 · 证据不足', tag: '高优先' }, { title: '云栖示例家居与星禾示例家居有哪些案例差异？', detail: '比较 · 案例结果待补', tag: '已监测' }], next: { label: '去看资料缺口', kind: 'gaps' },
+   },
+   gaps: {
+     eyebrow: '资料差距', title: '资料缺口', description: '缺口不是“模型说错了”，而是当前企业资料还不足以回答某个客户问题。',
+-    items: [{ title: '交付周期说明', detail: '竞品有明确节点，我方缺少可引用口径', tag: '现在处理 · 信任' }, { title: '真实客户案例结果', detail: '已有案例标题，但缺预算、周期和结果', tag: '现在处理 · 案例' }, { title: '定制差异化证据', detail: '有服务描述，缺可比较的结果证据', tag: '近期处理 · 比较' }], next: { label: '去看增长行动', kind: 'action-plan' },
++    items: [{ title: '交付周期说明', detail: '竞品有明确节点，我方缺少可引用口径', tag: '现在处理 · 信任' }, { title: '真实客户案例结果', detail: '已有案例标题，但缺预算、周期和结果', tag: '现在处理 · 案例' }], next: { label: '去看增长行动', kind: 'action-plan' },
+   },
+   plans: {
+     eyebrow: '内容计划', title: '内容计划', description: '每条计划都应该对应一个客户问题和一个可补的证据，发布后再回到模型监测复测。',
+-    items: [{ title: '交付周期与售后说明', detail: '针对：延期交付怎么办？ · 官网 + 知乎', tag: '现在处理' }, { title: '真实客户案例库', detail: '针对：有没有相近户型案例？ · 官网 + 小红书', tag: '现在处理' }, { title: '小户型空间规划指南', detail: '针对：小户型怎么选柜类？ · FAQ', tag: '长期建设' }], next: { label: '去看增长行动', kind: 'action-plan' },
++    items: [{ title: '交付周期与售后说明', detail: '针对：延期交付怎么办？ · 官网 + 知乎', tag: '现在处理' }, { title: '真实客户案例库', detail: '针对：有没有相近户型案例？ · 官网 + 小红书', tag: '现在处理' }], next: { label: '去看增长行动', kind: 'action-plan' },
+   },
+   content: {
+     eyebrow: '内容制作', title: '把缺口写成可发布内容', description: '正式模式下，这里会基于企业资料生成草稿并做依据检查；演示模式只展示结果形态，不写入素材库。',
+@@ -35,15 +35,15 @@
+   },
+   battle: {
+     eyebrow: '模型对比', title: '同一个问题，不同模型怎么回答', description: '模型对比用于找出回答差异，不代表模型之间有输赢，也不替企业生成事实。',
+-    items: [{ title: '问题：笔革家居交付和售后怎么样？', detail: 'DeepSeek：无法确认具体周期 · 豆包：需要补充公开资料', tag: '2 个模型' }, { title: '差异总结', detail: '不同模型都指出交付证据不足，优先补齐公开说明', tag: '演示结论' }], next: { label: '去看监测分析', kind: 'monitor-analysis' },
++    items: [{ title: '问题：云栖示例家居交付和售后怎么样？', detail: 'DeepSeek：无法确认具体周期 · 豆包：需要补充公开资料', tag: '2 个模型' }, { title: '差异总结', detail: '不同模型都指出交付证据不足，优先补齐公开说明', tag: '演示结论' }], next: { label: '去看监测分析', kind: 'monitor-analysis' },
+   },
+   report: {
+     eyebrow: '阶段结果', title: '企业在模型回答中的表现', description: '报告只总结有模型回答和可追溯原话的结果；没有证据时不会用企业内部资料代替外部判断。',
+-    items: [{ title: '本期判断', detail: '品牌已经能被看见，但交付证据还没有形成稳定认知', tag: '36 条样例回答' }, { title: '下一步', detail: '补交付周期、售后响应和完整客户案例', tag: '3 个重点' }], next: { label: '去看认知洞察', kind: 'insight-overview' },
++    items: [{ title: '本期判断', detail: '品牌已经能被看见，但交付证据还没有形成稳定认知', tag: '33 条样例回答' }, { title: '下一步', detail: '补交付周期、售后响应和完整客户案例', tag: '2 个重点' }], next: { label: '去看认知洞察', kind: 'insight-overview' },
+   },
+   faq: {
+     eyebrow: '生成常见问答', title: '把客户问题变成可发布问答', description: '问答会区分企业资料依据和待补内容，依据不足时会明确标出，不会用通用常识冒充企业事实。',
+-    items: [{ title: '问：笔革家居有哪些优势？', detail: '答：演示资料支持空间规划和组合建议；具体承诺仍需补证据', tag: '部分有依据' }, { title: '问：延期交付怎么办？', detail: '当前资料不足，不能生成确定的时效承诺', tag: '待补依据' }], next: { label: '去看资料缺口', kind: 'gaps' },
++    items: [{ title: '问：云栖示例家居有哪些优势？', detail: '答：演示资料支持空间规划和组合建议；具体承诺仍需补证据', tag: '部分有依据' }, { title: '问：延期交付怎么办？', detail: '当前资料不足，不能生成确定的时效承诺', tag: '待补依据' }], next: { label: '去看资料缺口', kind: 'gaps' },
+   },
+ }
+ 
+--- before/packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx
++++ after/packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx
+@@ -1,5 +1,6 @@
+ import { ArrowRight, FlaskConical, Radar } from 'lucide-react'
+ import { GEO_DEMO_NOTICE } from './demo-fixtures'
++import { DEMO_MONITOR } from './demo-monitor-samples'
+ import { useGeoNav } from './shared'
+ 
+ /** 演示模式的监测配置讲解。真实对象管理仍由 GeoMonitorObjectsCard 独立负责。 */
+@@ -7,11 +8,11 @@
+   const go = useGeoNav()
+   return <section className="geo-demo-monitor-setup geo-panel">
+     <div className="geo-demo-banner"><FlaskConical /><span><b>内测演示数据已开启</b>　{GEO_DEMO_NOTICE}</span></div>
+-    <div className="geo-demo-monitor-head"><Radar /><div><span>演示监测主体</span><h2>笔革家居</h2><p>向国产模型提问，记录它是否认出这家企业、如何描述产品，以及哪些回答缺少依据。</p></div></div>
++    <div className="geo-demo-monitor-head"><Radar /><div><span>演示监测主体</span><h2>云栖示例家居</h2><p>向国产模型提问，记录它是否认出这家企业、如何描述产品，以及哪些回答缺少依据。</p></div></div>
+     <div className="geo-demo-monitor-steps">
+-      <div><b>1. 监测范围</b><span>品牌：笔革家居 · 产品：沙发、软床、柜类定制 · 地区：成都</span></div>
++      <div><b>1. 监测范围</b><span>品牌：云栖示例家居 · 产品：沙发、软床、柜类定制 · 地区：成都</span></div>
+       <div><b>2. 运行问题</b><span>固定演示问题集覆盖认知、比较、决策和信任；不调用真实模型。</span></div>
+-      <div><b>3. 核对回答</b><span>本批演示样本为 36 条回答。先看模型原话，再看聚合分析。</span></div>
++      <div><b>3. 核对回答</b><span>3 轮共 {DEMO_MONITOR.summary.slots} 个槽位，{DEMO_MONITOR.summary.answered} 条回答、{DEMO_MONITOR.summary.failed} 条失败。先看模型原话，再看聚合分析。</span></div>
+     </div>
+     <div className="geo-demo-monitor-actions"><button type="button" className="geo-btn primary" onClick={() => go?.('monitor-report')}>查看演示模型回答<ArrowRight /></button><button type="button" className="geo-btn secondary" onClick={() => go?.('monitor-analysis')}>查看演示监测分析<ArrowRight /></button></div>
+     <p className="geo-note">演示模式只读。关闭顶部“演示数据”后，才能管理和运行真实监测对象。</p>
+--- before/packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx
++++ after/packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx
+@@ -113,7 +113,7 @@
+ 
+   return <div className="geo-dashboard">
+     <div className="geo-page-head"><div><span>总览</span><h1>客户问模型时，品牌是否会被提到</h1><p>看品牌有没有被看见、被正确理解，再决定下一步补什么。</p></div><button className="geo-btn secondary" onClick={() => void load()} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />}刷新</button></div>
+-    {demoMode ? <div className="geo-demo-subject"><FlaskConical /><span>演示主体</span><b>笔革家居</b><small>固定内测样本；关闭演示数据后恢复真实监测对象。</small></div> : <MonitorSubjectPicker />}
++    {demoMode ? <div className="geo-demo-subject"><FlaskConical /><span>演示主体</span><b>云栖示例家居</b><small>固定内测样本；关闭演示数据后恢复真实监测对象。</small></div> : <MonitorSubjectPicker />}
+     {error && <div className="geo-inline-error"><CircleAlert />{error}</div>}
+     {demoMode && <div className="geo-demo-banner"><FlaskConical /><span><b>内测演示数据已开启</b>　{GEO_DEMO_NOTICE}</span></div>}
+     <p className="geo-note">{readableIdentityNote(data.monitor?.scope?.identity_note) ?? (selectedBrandId ? `提及率、句序和平台表现来自${selectedBrandId === ALL_SUBJECTS ? '全选汇总的' : '所选'}主体最近批次（${latestBatchLabel}）。` : '请选择企业品牌后查看该主体的监测指标。')}资料缺口、内容资产与系统状态为当前工作空间汇总，不与品牌监测指标直接比较。</p>
+--- before/packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx
++++ after/packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx
+@@ -266,7 +266,7 @@
+ 
+   return <div className="monitor-analysis">
+     <header className="workspace-intro"><div><span>证据到行动</span><h1>监测分析</h1><p>把模型回答汇成三件事：有没有被看见、说法是否有依据、下一步做什么。</p></div><div className="workspace-actions"><button className="geo-btn secondary" onClick={() => void exportReport()}><Download />导出报告</button><button className="geo-btn secondary" onClick={() => void load()}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />}刷新</button></div></header>
+-    {demoMode ? <div className="geo-demo-subject"><FlaskConical /><span>演示主体</span><b>笔革家居</b><small>固定内测样本；关闭演示数据后恢复真实监测主体。</small></div> : <MonitorSubjectPicker />}
++    {demoMode ? <div className="geo-demo-subject"><FlaskConical /><span>演示主体</span><b>云栖示例家居</b><small>固定内测样本；关闭演示数据后恢复真实监测主体。</small></div> : <MonitorSubjectPicker />}
+     {demoMode && <div className="geo-demo-banner"><FlaskConical /><span><b>内测演示数据已开启</b>　{GEO_DEMO_NOTICE}</span></div>}
+     <div className="analysis-scope-bar"><Info /><span>当前范围：最近一批有效模型回答</span><b>{answerCount == null ? '样本未判定' : `${answerCount} 条回答`}</b><small>{identityPending ? '主体尚未确认：以下只作回答信号，不计入品牌曝光或推荐率。' : '历史认知维度只作解释，不与本批次覆盖率相加。'}</small></div>
+     {identityPending ? <div className="geo-identity-gate analysis-identity-gate" role="status"><div><strong>先确认回答里的企业是谁</strong><p>当前回答里出现了名称，但系统还不能确认它对应“{subjectQuery ? '当前所选主体' : '这家企业'}”。确认前只保留原始回答和情绪信号，不生成品牌表现结论。</p></div><button type="button" onClick={() => go?.('monitor-report')}>查看原始回答 <ArrowRight /></button></div> : null}
+--- before/packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx
++++ after/packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx
+@@ -2,7 +2,8 @@
+ import { FlaskConical } from 'lucide-react'
+ import { geoGet } from './geo-api'
+ import { GeoCardShell, GeoError, GeoFormattedAnswer, GeoLoading, monitorTypeText, sentimentText, shortDay, stripAnswerMarkdown, useGeoDemoMode } from './shared'
+-import { GEO_DEMO_MONITOR_ANSWERS, GEO_DEMO_NOTICE } from './demo-fixtures'
++import { GEO_DEMO_MONITOR_ANSWERS, GEO_DEMO_NOTICE, GEO_DEMO_REPORT_SENTIMENT, GEO_DEMO_REPORT_CITATIONS, GEO_DEMO_REPORT_SOURCES } from './demo-fixtures'
++import { DEMO_MONITOR, DEMO_OBSERVATIONS } from './demo-monitor-samples'
+ import { ALL_SUBJECTS, MonitorSubjectPicker, useMonitorSubject } from './geo-monitor-subject'
+ 
+ export interface MonitorAnswer {
+@@ -119,13 +120,15 @@
+     else { setLoading(true); setError(null) }
+     if (demoMode) {
+       const demoGroups = GEO_DEMO_MONITOR_ANSWERS.groups as unknown as MonitorAnswerGroup[]
+-      setGroups(append ? [...groups, ...demoGroups] : demoGroups)
+-      setItemNames({ 'demo-brand': '笔革家居' })
++      setGroups(demoGroups)
++      setItemNames({ 'demo-brand': '云栖示例家居' })
+       setPage(1); setPages(1); setGroupTotal(demoGroups.length); setItemTypes(['all', 'brand'])
+-      setReasons({ reasons: [{ query: '成都适合年轻家庭的家居品牌有哪些？', engine: 'DeepSeek', snippet: '笔革家居可以按户型和预算提供空间规划建议。' }], missing_evidence: ['交付周期', '售后响应'] })
++      setReasons({ reasons: DEMO_OBSERVATIONS.filter(r => r.mentioned === true).slice(0, 3).map(r => ({ query: r.question, engine: r.engine, snippet: r.snippet })), missing_evidence: ['案例预算与结果', '统一交付时限'] })
+       setLoading(false); setLoadingMore(false)
+       return
+     }
++    // 演示观察不能留在真实模式的“模型怎样提到你”里。
++    if (!append) setReasons(null)
+     try {
+       const [a, m] = await Promise.all([
+         geoGet<MonitorAnswerPage>(`/monitor/answers?page=${nextPage}&page_size=20${answerType !== 'all' ? `&item_type=${answerType}` : ''}${selectedMonitorIds.length ? `&monitor_ids=${encodeURIComponent(selectedMonitorIds.join(','))}` : ''}`),
+@@ -184,10 +187,10 @@
+   useEffect(() => {
+     if (demoMode) {
+       if (tab === 'sentiment') {
+-        setSentiment({ overview: { total: 36, positive: 14, negative: 10, neutral: 12, pos_pct: 39, neg_pct: 28, neu_pct: 33 }, trend: [], questions: [], top_words: [{ word: '交付', count: 6 }, { word: '售后', count: 5 }], negative_samples: [], unknown_count: 0 })
++        setSentiment(GEO_DEMO_REPORT_SENTIMENT)
+       }
+-      if (tab === 'citations') setCitations([{ title: '演示·品牌手册 v1', count: 8 }, { title: '演示·产品目录 v3', count: 6 }])
+-      if (tab === 'sources') { setSources([{ label: 'DeepSeek', count: 12, share: 40 }, { label: 'Kimi', count: 10, share: 33 }, { label: '豆包', count: 8, share: 27 }]); setSourceNote(GEO_DEMO_NOTICE) }
++      if (tab === 'citations') setCitations(GEO_DEMO_REPORT_CITATIONS)
++      if (tab === 'sources') { setSources(GEO_DEMO_REPORT_SOURCES); setSourceNote(GEO_DEMO_NOTICE) }
+       setLoadedSourceScope('demo')
+       return
+     }
+@@ -251,7 +254,7 @@
+   return (
+     <GeoCardShell title="📈 模型回答" className="sm:flex-1">
+       {demoMode && <div className="geo-demo-banner mb-1.5"><FlaskConical /><span><b>内测演示数据已开启</b>　{GEO_DEMO_NOTICE}</span></div>}
+-      {demoMode && <p className="geo-note">本页展示 2 组示例回答，用来讲解如何核对模型原话；总览和分析指标使用 36 条固定演示回答，示例不构成完整明细。</p>}
++      {demoMode && <p className="geo-note">3 轮 × 3 个问题 × 4 个模型，共 {DEMO_MONITOR.summary.slots} 个槽位：{DEMO_MONITOR.summary.answered} 条回答、{DEMO_MONITOR.summary.failed} 条失败；{DEMO_MONITOR.summary.unknown} 条主体未知。总览与监测分析从本页同一套原话计算。</p>}
+       {!demoMode ? <MonitorSubjectPicker note="模型回答、评价语气和引用明细都会按这里选择的主体筛选；“全部”只看账号汇总。" /> : null}
+       <div className="mb-1 flex flex-wrap items-center gap-1.5">
+         {tabs.map((t) => (
+--- before/packages/geo/src/geo-advisor/demo-fixtures.ts
++++ after/packages/geo/src/geo-advisor/demo-fixtures.ts
+@@ -1,12 +1,14 @@
++import { DEMO_COMPANY, DEMO_COMPETITOR, DEMO_MONITOR, DEMO_MATERIALS, DEMO_OBSERVATIONS, DEMO_ROUNDS } from './demo-monitor-samples'
++
+ /**
+  * GEO 内测演示夹具。
+  *
+  * 这些内容是前端演示数据，不是企业事实、监测证据或 Foundation canonical 数据。
+  * 只有用户显式打开“内测演示数据”开关时才会读取；关闭后页面只读真实产品门。
+  */
+-export const GEO_DEMO_NOTICE = '内测演示数据 · 虚构内容，不进入正式统计、报告或证据链'
+-
+-export const GEO_DEMO_PROFILE_OVERVIEW = {
++export const GEO_DEMO_NOTICE = '内测演示数据 · 虚构企业与回答；解析、核验和行动为模拟结果，不进入正式统计或证据链'
++
++const simulatedProfileOverview = {
+   overall_coverage_pct: 68,
+   total_items: 8,
+   enough_count: 3,
+@@ -34,21 +36,21 @@
+   ] },
+ ]
+ 
+-export const GEO_DEMO_PROFILE_DETAILS: Record<string, Record<string, unknown>> = {
++const simulatedProfileDetails: Record<string, Record<string, unknown>> = {
+   'demo-brand-positioning': {
+     id: 'demo-brand-positioning', name: '品牌定位', level: '足够', reason: '演示：品牌主张和目标客户已经有可直接引用的资料。',
+     knowledge: { summary: '已有 4 条可引用的定位事实', counts: { entities: 1, facts: 4, relations: 2, doc_chunks: 4 }, doc_chunks: [
+-      { text: '笔革家居面向正在改善居住空间的年轻家庭，提供从产品选择到交付的一体化家居方案。', source: '演示·品牌介绍 v2' },
++      { text: '云栖示例家居面向正在改善居住空间的年轻家庭，提供从产品选择到交付的一体化家居方案。', source: '演示·品牌介绍 v2' },
+       { text: '品牌主张：把复杂的家居选择讲清楚，让用户能按预算、空间和生活方式做决定。', source: '演示·品牌手册 v1' },
+     ] },
+-    uncovered_questions: [], partial_questions: [{ question: '笔革家居和传统定制家居有什么不同？' }],
++    uncovered_questions: [], partial_questions: [{ question: '云栖示例家居和传统定制家居有什么不同？' }],
+   },
+   'demo-brand-difference': {
+     id: 'demo-brand-difference', name: '差异化优势', level: '部分', reason: '演示：有定位描述，但缺少可核验的对比案例。',
+     knowledge: { summary: '定位有资料，差异化证据不完整', counts: { entities: 1, facts: 3, relations: 1, doc_chunks: 3 }, doc_chunks: [
+       { text: '提供空间规划、材质建议和安装交付协同服务。', source: '演示·服务说明 v1' },
+     ] },
+-    uncovered_questions: [{ question: '为什么选择笔革家居而不是索菲亚？' }], partial_questions: [{ question: '笔革家居有哪些独特工艺？' }],
++    uncovered_questions: [{ question: '为什么选择云栖示例家居而不是星禾示例家居？' }], partial_questions: [{ question: '云栖示例家居有哪些独特工艺？' }],
+   },
+   'demo-product-lines': {
+     id: 'demo-product-lines', name: '产品线与规格', level: '足够', reason: '演示：核心产品与规格信息可被当前问题池检索到。',
+@@ -63,52 +65,34 @@
+     knowledge: { summary: '工艺说明 3 条，检测依据 1 条', counts: { entities: 4, facts: 7, relations: 2, doc_chunks: 4 }, doc_chunks: [
+       { text: '木作产品在出厂前执行外观、尺寸和五金开合检查。', source: '演示·质量流程 v1' },
+     ] },
+-    uncovered_questions: [{ question: '笔革家居的板材和环保等级可靠吗？' }], partial_questions: [{ question: '笔革家居的定制误差怎么处理？' }],
++    uncovered_questions: [{ question: '云栖示例家居的板材和环保等级可靠吗？' }], partial_questions: [{ question: '云栖示例家居的定制误差怎么处理？' }],
+   },
+   'demo-use-scenes': {
+     id: 'demo-use-scenes', name: '适用场景', level: '部分', reason: '演示：住宅场景有描述，商业空间和小户型案例尚未覆盖。',
+     knowledge: { summary: '已有住宅场景资料', counts: { entities: 3, facts: 6, relations: 2, doc_chunks: 3 }, doc_chunks: [{ text: '适用于新房入住、旧房改善和局部空间升级。', source: '演示·场景手册 v1' }] },
+-    uncovered_questions: [{ question: '小户型如何选择笔革家居的柜类定制？' }], partial_questions: [],
++    uncovered_questions: [{ question: '小户型如何选择云栖示例家居的柜类定制？' }], partial_questions: [],
+   },
+   'demo-customer-case': {
+     id: 'demo-customer-case', name: '客户案例', level: '太少', reason: '演示：案例标题有记录，但缺少完整过程、预算和结果。',
+     knowledge: { summary: '只有 1 个可检索案例片段', counts: { entities: 2, facts: 2, relations: 1, doc_chunks: 1 }, doc_chunks: [{ text: '成都某三居室完成客餐厅和主卧收纳改造。', source: '演示·案例摘要（待补全）' }] },
+-    uncovered_questions: [{ question: '有没有和我家面积相近的笔革家居案例？' }, { question: '笔革家居整套全屋定制要多久？' }], partial_questions: [],
++    uncovered_questions: [{ question: '有没有和我家面积相近的云栖示例家居案例？' }, { question: '云栖示例家居整套全屋定制要多久？' }], partial_questions: [],
+   },
+   'demo-after-sale': {
+     id: 'demo-after-sale', name: '交付与售后', level: '太少', reason: '演示：当前缺少交付周期、验收和售后响应的公开说明。',
+     knowledge: { summary: '没有足够资料支撑交付承诺', counts: { entities: 1, facts: 1, relations: 0, doc_chunks: 1 }, doc_chunks: [{ text: '交付安排需以具体订单和门店排期为准。', source: '演示·服务条款（片段）' }] },
+-    uncovered_questions: [{ question: '笔革家居延期交付怎么办？' }, { question: '笔革家居售后多久响应？' }], partial_questions: [],
++    uncovered_questions: [{ question: '云栖示例家居延期交付怎么办？' }, { question: '云栖示例家居售后多久响应？' }], partial_questions: [],
+   },
+   'demo-certification': {
+     id: 'demo-certification', name: '认证与保障', level: '足够', reason: '演示：已有可展示的材料来源，但仍需在正式环境核验有效期。',
+     knowledge: { summary: '已有 3 条保障资料', counts: { entities: 2, facts: 5, relations: 1, doc_chunks: 3 }, doc_chunks: [
+       { text: '演示材料：主要板材和五金供应商信息已登记，正式上线前需要补充有效期和原件链接。', source: '演示·供应商档案' },
+     ] },
+-    uncovered_questions: [], partial_questions: [{ question: '笔革家居有哪些售后保障？' }],
+-  },
+-}
+-
+-export const GEO_DEMO_COGNITION_PROFILE = {
+-  total: 36,
+-  evaluated_at: '2026-09-25T09:00:00+08:00',
+-  health: 64,
+-  metrics: { awareness: 72, understanding: 58, hallucination: 21, recommendation: 46 },
+-  matrix: [
+-    { key: 'positioning', label: '品牌定位', claims: 8, grounded: 6, partial: 2, hallucination: 0, status: '75% 有依据' },
+-    { key: 'product', label: '产品能力', claims: 9, grounded: 5, partial: 3, hallucination: 1, status: '56% 有依据' },
+-    { key: 'delivery', label: '交付售后', claims: 6, grounded: 2, partial: 2, hallucination: 2, status: '33% 有依据' },
+-    { key: 'cases', label: '客户案例', claims: 5, grounded: 1, partial: 2, hallucination: 2, status: '20% 有依据' },
+-  ],
+-  errors: [
+-    { claim: '把演示中的行业常识当成笔革家居的具体承诺', type: 'unsupported', engine: 'DeepSeek', question: '笔革家居有哪些缺点？' },
+-    { claim: '无法从公开回答确认真实交付周期', type: 'insufficient_evidence', engine: '豆包', question: '笔革家居整套全屋定制要多久？' },
+-  ],
+-  note: GEO_DEMO_NOTICE,
+-}
+-
+-export const GEO_DEMO_HEALTH = {
+-  total: 64, sample_size: 36, subject_status: 'confirmed', subject_name: '笔革家居', evaluated_at: '2026-09-25T09:00:00+08:00', evaluation_scope: '内测演示样本', note: GEO_DEMO_NOTICE,
++    uncovered_questions: [], partial_questions: [{ question: '云栖示例家居有哪些售后保障？' }],
++  },
++}
++
++const simulatedHealth = {
++  total: 64, sample_size: 36, subject_status: 'confirmed', subject_name: '云栖示例家居', evaluated_at: '2026-10-12T09:00:00+08:00', evaluation_scope: '内测演示样本', note: GEO_DEMO_NOTICE,
+   dims: [
+     { key: 'brand', label: '品牌认知', score: 72, basis: '36 条演示回答中有 26 条正确识别品牌定位' },
+     { key: 'product', label: '产品认知', score: 58, basis: '产品线可识别，但规格描述不完整' },
+@@ -121,173 +105,135 @@
+   ],
+ }
+ 
+-export const GEO_DEMO_PORTRAIT = {
+-  ai_health: 64, material_count: 12, evaluated_at: '2026-09-25T09:00:00+08:00', note: GEO_DEMO_NOTICE,
+-  items: [
+-    { key: 'brand', label: '品牌定位', profile: '已有 4 份定位资料', ai_status: '基本一致', ai_grounded: 6, ai_claims: 8, deviation: '一致', evidence_count: 4, evidence: [{ title: '演示·品牌手册 v1' }] },
+-    { key: 'product', label: '产品能力', profile: '已有产品目录和定制说明', ai_status: '部分覆盖', ai_grounded: 5, ai_claims: 9, deviation: '部分缺口', evidence_count: 2, evidence: [{ title: '演示·产品目录 v3' }] },
+-    { key: 'trust', label: '交付售后', profile: '缺少公开交付承诺', ai_status: '依据不足', ai_grounded: 2, ai_claims: 6, deviation: '证据不足', evidence_count: 0, evidence: [] },
+-    { key: 'cases', label: '客户案例', profile: '1 个案例片段', ai_status: '案例不足', ai_grounded: 1, ai_claims: 5, deviation: '明显缺口', evidence_count: 1, evidence: [{ title: '演示·案例摘要（待补全）' }] },
+-  ],
+-}
+-
+-export const GEO_DEMO_INSIGHT = {
+-  humanize: {
+-    headline: { main: '品牌已经能被看见，但交付证据还没有形成稳定认知', sub: '演示样本显示：产品定位能被复述，案例、售后和差异化证据是下一步重点。', tone: 'watch' },
+-    metrics: { exposure_rate: 72, recommendation_rate: 46, gap_count: 3, gap_dimensions: [{ dimension: '交付售后' }, { dimension: '客户案例' }, { dimension: '差异化优势' }] },
+-    left: [
+-      { factor: '交付周期说明', dimension: '交付售后', self_mentions: 1, competitor_mentions: 7, competitor_leader: '索菲亚', missing_note: '竞品有明确时间口径，我方缺少可引用说明', quotes: [{ quote: '竞品回答里会先说明交付节点和影响因素。', brand: '索菲亚' }] },
+-      { factor: '真实案例结果', dimension: '客户案例', self_mentions: 1, competitor_mentions: 6, competitor_leader: '全友家居', missing_note: '只有案例标题，没有预算、周期和结果', quotes: [{ quote: '回答通常会引用完整案例来说明适用场景。', brand: '全友家居' }] },
+-      { factor: '定制差异化', dimension: '差异化优势', self_mentions: 2, competitor_mentions: 5, competitor_leader: '掌上明珠', missing_note: '服务描述存在，缺少可比较的结果证据', quotes: [{ quote: '对比回答更容易相信有明确流程和结果的一方。', brand: '掌上明珠' }] },
+-    ],
+-    right: [{ factor: '空间规划', dimension: '服务能力', self_mentions: 8, competitor_mentions: 2, competitor_leader: '笔革家居', missing_note: '我方资料里已有相对完整的服务描述', quotes: [{ quote: '可根据户型和预算做组合建议。', brand: '笔革家居' }] }],
+-    risk_notes: [{ factor: '交付售后', quote: '演示回答无法确认具体售后响应时间。', brand: '笔革家居' }],
+-    actions: [
+-      { priority: 'P0', score: 91, what: '补齐交付周期与售后承诺', why: '这是当前最明显的证据缺口', keywords: ['交付周期', '售后响应'] },
+-      { priority: 'P1', score: 78, what: '补写一个完整客户案例', why: '让模型有可引用的过程和结果', keywords: ['案例', '预算', '工期'] },
+-    ],
+-    sample_note: { total: 36, reliability: '演示', note: GEO_DEMO_NOTICE },
+-  },
+-  overview: { company: '笔革家居', mode: 'demo', total_evidence: 36, self_name: '笔革家居', brands: [
+-    { name: '笔革家居', is_self: true, mentions: 26, rate: 72 },
+-    { name: '索菲亚', is_self: false, mentions: 31, rate: 86 },
+-    { name: '全友家居', is_self: false, mentions: 28, rate: 78 },
+-    { name: '掌上明珠', is_self: false, mentions: 24, rate: 67 },
+-  ] },
+-  sov: { period_days: 30, total_mention: 36, total_recommend: 17, self: { brand: '笔革家居', is_self: true, mention_count: 26, mention_share: 72, recommend_count: 17, recommend_share: 46, missing_count: 10 }, brands: [], trend: [{ period: '2026-09-11', brands: [{ brand: '笔革家居', recommend_share: 38 }] }, { period: '2026-09-18', brands: [{ brand: '笔革家居', recommend_share: 42 }] }, { period: '2026-09-25', brands: [{ brand: '笔革家居', recommend_share: 46 }] }], note: '演示趋势：固定问题集的推荐回答占比。' },
+-  'trend-delta': { periods: [{ period: '2026-09-18', brands: { '笔革家居': 42 } }, { period: '2026-09-25', brands: { '笔革家居': 46 } }], gained: [], lost: [], rising: [{ brand: '笔革家居', from: 42, to: 46, delta: 4 }], falling: [], note: '演示周期变化' },
+-  matrix: { evidence_count: 36, dimensions: [
+-    { dimension: '交付售后', band: 'red', band_label: '缺口', verdict: 'loss', total_mentions: 8, self_mentions: 1, other_mentions: 7, quotes: [{ brand: '索菲亚', quote: '演示：对比回答更常提到明确交付节点。' }] },
+-    { dimension: '客户案例', band: 'red', band_label: '缺口', verdict: 'loss', total_mentions: 7, self_mentions: 1, other_mentions: 6, quotes: [{ brand: '全友家居', quote: '演示：完整案例让模型更容易复述。' }] },
+-    { dimension: '空间规划', band: 'green', band_label: '优势', verdict: 'win', total_mentions: 10, self_mentions: 8, other_mentions: 2, quotes: [{ brand: '笔革家居', quote: '演示：能按户型和预算做组合建议。' }] },
+-  ], observation: [], missing: [] },
+-  'factor-gaps': {
+-    left: [{ factor: '交付周期说明', dimension: '交付售后', self_mentions: 1, competitor_mentions: 7, competitor_leader: '索菲亚', missing_note: '竞品有明确时间口径，我方缺少可引用说明', quotes: [{ quote: '演示回答里会先说明交付节点。', brand: '索菲亚' }] }],
+-    right: [{ factor: '空间规划', dimension: '服务能力', self_mentions: 8, competitor_mentions: 2, competitor_leader: '笔革家居', missing_note: '我方资料里已有相对完整的服务描述', quotes: [{ quote: '演示：可根据户型和预算做组合建议。', brand: '笔革家居' }] }],
+-    risk_notes: [{ factor: '交付售后', quote: '演示回答无法确认具体售后响应时间。', brand: '笔革家居' }],
+-    sample_note: { total: 36, reliability: '演示', note: GEO_DEMO_NOTICE },
+-  },
+-  'gap-analysis': { knowledge_gaps: [{ dimension: '交付售后', competitor_leader: '索菲亚', action: '补齐交付节点、验收和售后响应资料', gap_type: 'knowledge' }], evidence_gaps: [{ dimension: '客户案例', competitor_leader: '全友家居', action: '发布带预算、周期和结果的案例', gap_type: 'evidence' }], sample_note: { total: 36, reliability: '演示', note: GEO_DEMO_NOTICE } },
+-  keywords: { keywords: [{ keyword: '交付周期', mentions: 8, band: 'red' }, { keyword: '全屋定制', mentions: 12, band: 'watch' }, { keyword: '空间规划', mentions: 10, band: 'green' }] },
+-  perception: { evidence_count: 36, tags: [{ tag: '空间规划', count: 10 }, { tag: '定制家具', count: 9 }, { tag: '交付周期', count: 8 }, { tag: '售后保障', count: 5 }], self_tags: [{ tag: '空间规划', count: 8 }] },
+-  strategies: { score_formula: '需求 × 差距 × 可改变性 × 证据强度', sample_note: { total: 36, reliability: '演示', note: GEO_DEMO_NOTICE }, strategies: [{ dimension: '交付售后', score: 91, priority: 'P0', topic: '把交付周期讲清楚', self_level_label: '资料不足', competitor_leader: '索菲亚', keywords: ['交付周期', '售后响应'], evidence_note: '竞品有明确口径，我方缺证据', comp_quotes: [{ quote: '演示：竞品回答有明确交付节点。', brand: '索菲亚' }] }] },
+-}
+-
+-export const GEO_DEMO_EVIDENCE: Record<string, unknown> = {
+-  '交付售后': { factor: '交付售后', semantic: '信任证据', dimension: '交付售后', propagation: 8, sources: [{ evidence_id: 'demo-ev-1', platform: 'DeepSeek', observed_at: '2026-09-25', mention_type: 'gap', intent: '决策', quote: '演示回答无法确认具体交付周期和售后响应。', brand: '笔革家居' }], related_factors: [{ factor: '客户案例', mentions: 6 }] },
+-  '客户案例': { factor: '客户案例', semantic: '案例覆盖', dimension: '客户案例', propagation: 7, sources: [{ evidence_id: 'demo-ev-2', platform: 'Kimi', observed_at: '2026-09-25', mention_type: 'missing', intent: '比较', quote: '演示回答没有给出可核验的完整案例结果。', brand: '笔革家居' }], related_factors: [{ factor: '交付售后', mentions: 8 }] },
+-  '空间规划': { factor: '空间规划', semantic: '服务能力', dimension: '空间规划', propagation: 10, sources: [{ evidence_id: 'demo-ev-3', platform: '通义', observed_at: '2026-09-25', mention_type: 'win', intent: '选择', quote: '演示回答能按户型和预算给出组合建议。', brand: '笔革家居' }], related_factors: [{ factor: '差异化优势', mentions: 2 }] },
+-  '差异化优势': { factor: '差异化优势', semantic: '品牌认知', dimension: '差异化优势', propagation: 5, sources: [{ evidence_id: 'demo-ev-4', platform: 'Kimi', observed_at: '2026-09-25', mention_type: 'gap', intent: '比较', quote: '演示回答提到服务流程，但缺少可比较的结果证据。', brand: '笔革家居' }], related_factors: [{ factor: '空间规划', mentions: 8 }] },
+-  '服务能力': { factor: '服务能力', semantic: '场景覆盖', dimension: '服务能力', propagation: 8, sources: [{ evidence_id: 'demo-ev-5', platform: '豆包', observed_at: '2026-09-25', mention_type: 'win', intent: '选择', quote: '演示回答能把空间规划和预算约束一起说明。', brand: '笔革家居' }], related_factors: [{ factor: '交付售后', mentions: 1 }] },
+-}
+-
+-/** 顶层总览演示数据：与认知洞察使用同一组样本和日期，避免各页面各讲一套。 */
++/** 总览与分析共用原始回答；资料覆盖为独立的模拟判定。 */
++export const GEO_DEMO_ANALYTICS_COVERAGE = [
++  { stage: '认知', coverage_pct: 100, question_count: 1, judged_count: 1 },
++  { stage: '比较', coverage_pct: 0, question_count: 1, judged_count: 1 },
++  { stage: '信任', coverage_pct: 100, question_count: 1, judged_count: 1 },
++]
+ export const GEO_DEMO_OVERVIEW = {
+-  monitor: {
+-    scope: { monitor_id: 'demo-brand', identity_status: 'confirmed', identity_note: '演示主体：笔革家居；以下数字只用于内测讲解。', citations_attribution_available: true },
+-    recommend: { value: 72, delta: null },
+-    rank: { value: 2.4, delta: -0.6 },
+-    citations_count: 14,
+-    cite_rate: 42,
+-    published_count: 12,
+-    cited_count: 5,
+-    latest_batch_at: '2026-09-25T09:00:00',
+-    platforms: {
+-      DeepSeek: [{ ts: '2026-09-25T09:00:00', recommend_pct: 52, mentioned: 13, configured: 1 }],
+-      Kimi: [{ ts: '2026-09-25T09:00:00', recommend_pct: 46, mentioned: 11, configured: 1 }],
+-      豆包: [{ ts: '2026-09-25T09:00:00', recommend_pct: 41, mentioned: 10, configured: 1 }],
+-      通义: [{ ts: '2026-09-25T09:00:00', recommend_pct: 45, mentioned: 12, configured: 1 }],
+-    },
+-  },
++  monitor: DEMO_MONITOR.overview,
+   stats: {
+-    knowledge: { materials: 12, text_blocks: 42, bytes: 184000 },
+-    links: { total: 18, indexed: 11, failed: 1, pending: 6, unknown: 0 },
+-    monitor: { runs: 8, mentioned: 26, avg_score: 46 },
+-    engines: { total: 6, answered: 4 },
+-  },
+-  distill: {
+-    funnel: [
+-      { stage: '认知', question_count: 8, judged_count: 8, coverage_pct: 72 },
+-      { stage: '比较', question_count: 10, judged_count: 10, coverage_pct: 48 },
+-      { stage: '决策', question_count: 9, judged_count: 9, coverage_pct: 36 },
+-      { stage: '信任', question_count: 9, judged_count: 9, coverage_pct: 22 },
+-    ],
+-    ai_judgment: { stage: '信任', coverage_pct: 22, reason: '交付和售后资料不足', samples: ['交付周期说明', '售后响应方式'] },
+-    open_gaps_count: 3,
+-  },
++    knowledge: { materials: DEMO_MATERIALS.length, text_blocks: DEMO_MATERIALS.length, bytes: new TextEncoder().encode(DEMO_MATERIALS.map(m => m.text).join('')).length },
++    links: { total: 2, indexed: 1, failed: 0, pending: 1, unknown: 0 },
++    monitor: DEMO_MONITOR.stats,
++    engines: { total: 4, answered: new Set(DEMO_OBSERVATIONS.filter(r => r.round === 2 && r.answer).map(r => r.engine)).size },
++  },
++  distill: { funnel: GEO_DEMO_ANALYTICS_COVERAGE, ai_judgment: { stage: '比较', coverage_pct: 0, reason: '模拟：案例结果资料待补', samples: ['案例预算与结果'] }, open_gaps_count: 2 },
+   notice: GEO_DEMO_NOTICE,
+ }
+-
+-/** 监测分析演示数据：只覆盖聚合页需要的三件事和详细页的空壳。 */
+-export const GEO_DEMO_ANALYTICS_SNAPSHOT = {
+-  'public-opinion': {
+-    health: { score: 62, label: '需要关注', neg_pct: 28, total: 36 },
+-    metrics: { check_records: 36, risk_count: 3, positive: 14, neutral: 12, affected_questions: 3, affected_units: 2 },
+-    trend: [{ ts: '2026-09-11', neg_pct: 34, negative: 5, total: 15 }, { ts: '2026-09-18', neg_pct: 30, negative: 4, total: 13 }, { ts: '2026-09-25', neg_pct: 28, negative: 3, total: 8 }],
+-    platforms: [{ platform: 'DeepSeek', negative: 3, total: 12, neg_pct: 25 }, { platform: 'Kimi', negative: 3, total: 12, neg_pct: 25 }],
+-    risk_top: [{ question: '笔革家居交付和售后怎么样？', negative: 6 }, { question: '笔革家居有哪些缺点？', negative: 4 }], details: [], detail_total: 0,
+-  },
+-  sentiment: {
+-    overview: { total: 36, positive: 14, negative: 10, neutral: 12, pos_pct: 39, neg_pct: 28, neu_pct: 33 }, unknown_count: 0,
+-    trend: [], questions: [], top_words: [{ word: '交付', count: 6 }, { word: '售后', count: 5 }], negative_samples: [],
+-  },
+-  'fact-check': {
+-    company_name: '笔革家居', truth: { available: true, hit_kb: 18, abnormal_count: 4, affected_questions: 3, affected_sources: 3, total_checked: 20, claim_checked: 20, candidate_total: 36, sampled_count: 20, unsupported_count: 4, no_claim_count: 6, knowledge_ok: true },
+-    source_rank: [{ rank: 1, source: 'DeepSeek', count: 2, main_type: '缺少依据' }], question_rank: [{ rank: 1, question: '笔革家居交付和售后怎么样？', count: 3, main_type: '缺少依据' }], details: [], detail_total: 0,
+-  },
+-  competitor: { pairs: [], note: '演示样例只展示聚合判断；需要核对竞品原话时请打开详细分析。' },
+-  industry: { industry: '家居家具', objects: 1, total_answers: 36, total_mention: 18, players: [], empty: false },
+-  sources: { sources: [{ engine: 'DeepSeek', total: 12, mentioned: 8, mention_pct: 67, positive: 5, negative: 3, neutral: 4 }, { engine: 'Kimi', total: 12, mentioned: 7, mention_pct: 58, positive: 4, negative: 3, neutral: 5 }, { engine: '豆包', total: 12, mentioned: 6, mention_pct: 50, positive: 3, negative: 4, neutral: 5 }] },
+-} as const
+-
+-export const GEO_DEMO_ANALYTICS_COVERAGE = [
+-  { stage: '认知', coverage_pct: 72, question_count: 8, judged_count: 8 },
+-  { stage: '比较', coverage_pct: 48, question_count: 10, judged_count: 10 },
+-  { stage: '决策', coverage_pct: 36, question_count: 9, judged_count: 9 },
+-  { stage: '信任', coverage_pct: 22, question_count: 9, judged_count: 9 },
+-]
+-
++export const GEO_DEMO_ANALYTICS_SNAPSHOT = DEMO_MONITOR.analytics
+ export const GEO_DEMO_ANALYTICS_DIMENSIONS = [
+-  { dimension: '品牌定位', score: 72 },
+-  { dimension: '产品能力', score: 58 },
+-  { dimension: '交付售后', score: 43 },
+-  { dimension: '客户案例', score: 29 },
+-]
+-
++  { dimension: '品牌定位', score: 72 }, { dimension: '产品能力', score: 58 },
++  { dimension: '交付售后', score: 43 }, { dimension: '客户案例', score: 29 },
++]
+ export const GEO_DEMO_MONITOR_ANSWERS = {
+-  groups: [
+-    { group_id: 'demo-answer-1', monitor_id: 'demo-brand', ts: '2026-09-25T09:00:00', query: '成都适合年轻家庭的家居品牌有哪些？', item_type: 'brand', answers: [
+-      { engine: 'DeepSeek', mentioned: true, recognition: 'recognised', sentiment_status: 'classified', rank_est: 1, sentiment: 'positive', snippet: '笔革家居可以按户型和预算提供空间规划建议。', answer: '如果关注空间规划和定制组合，笔革家居是一个可以比较的选择。',
+-      },
+-      { engine: 'Kimi', mentioned: true, recognition: 'recognised', sentiment_status: 'classified', rank_est: 2, sentiment: 'neutral', snippet: '笔革家居提供沙发、软床和柜类定制。', answer: '笔革家居的产品覆盖沙发、软床和柜类定制，具体交付需要进一步确认。' },
+-    ] },
+-    { group_id: 'demo-answer-2', monitor_id: 'demo-brand', ts: '2026-09-25T09:00:00', query: '笔革家居交付和售后怎么样？', item_type: 'brand', answers: [
+-      { engine: '豆包', mentioned: true, recognition: 'recognised', sentiment_status: 'unknown', rank_est: 1, sentiment: 'unknown', snippet: '公开回答无法确认具体交付周期和售后响应时间。', answer: '目前缺少足够公开资料确认笔革家居的具体交付周期和售后响应时间。' },
+-      { engine: '通义', mentioned: null, recognition: 'not_recognised', sentiment_status: 'unknown', rank_est: null, sentiment: 'unknown', snippet: '', answer: '' },
+-    ] },
+-  ],
+-  group_total: 2, page: 1, pages: 1,
+-  notice: GEO_DEMO_NOTICE,
+-}
++  groups: DEMO_MONITOR.groups, group_total: DEMO_MONITOR.groups.length, page: 1, pages: 1, notice: GEO_DEMO_NOTICE,
++}
++export const GEO_DEMO_REPORT_SENTIMENT = {
++  ...DEMO_MONITOR.sentiment,
++  trend: DEMO_MONITOR.sentiment.trend.map(r => ({ ...r, date: r.ts })),
++  questions: DEMO_MONITOR.sentiment.questions.map(r => r.question),
++}
++export const GEO_DEMO_REPORT_SOURCES = DEMO_MONITOR.sources.map(r => ({ label: r.engine, count: DEMO_OBSERVATIONS.filter(a => a.engine === r.engine && a.answer).length, share: Math.round(DEMO_OBSERVATIONS.filter(a => a.engine === r.engine && a.answer).length / DEMO_MONITOR.summary.answered * 100) }))
++export const GEO_DEMO_REPORT_CITATIONS = DEMO_MONITOR.citations
+ 
+ export const GEO_DEMO_ACTIONS = [
+-  { level: 'P0' as const, name: '《交付周期与售后说明》', bound: '笔革家居延期交付怎么办？', stage: '信任', channel: '官网 + 知乎', status: '未开始' },
+-  { level: 'P0' as const, name: '《真实客户案例库》', bound: '有没有和我家面积相近的笔革家居案例？', stage: '案例', channel: '官网 + 小红书', status: '未开始' },
+-  { level: 'P1' as const, name: '按计划生产内容：《定制误差怎么处理》', bound: '笔革家居的定制误差怎么处理？', stage: '内容', channel: '内容资产', status: '规划中' },
+-  { level: 'P2' as const, name: '《小户型空间规划指南》', bound: '小户型如何选择笔革家居的柜类定制？', stage: '认知', channel: '知乎 + 官网 FAQ', status: '未开始' },
++  { level: 'P0' as const, name: '《交付周期与售后说明》', bound: '云栖示例家居交付和售后怎么样？', stage: '信任', channel: '官网 + 知乎', status: '规划中' },
++  { level: 'P0' as const, name: '《住宅案例预算与结果》', bound: '云栖示例家居与星禾示例家居有哪些案例差异？', stage: '比较', channel: '官网 + 小红书', status: '未开始' },
+ ]
+ 
+ export const GEO_DEMO_MARKET = {
+   watch: [
+-    { id: 'demo-watch-1', type: 'website', name: '索菲亚官网', url: 'https://example.invalid/sofia', created_at: '2026-09-20' },
++    { id: 'demo-watch-1', type: 'website', name: '星禾示例家居官网', url: 'https://example.invalid/sofia', created_at: '2026-09-20' },
+     { id: 'demo-watch-2', type: 'news', name: '家居行业动态', url: 'https://example.invalid/home-news', created_at: '2026-09-20' },
+   ],
+   signals: [
+     { id: 'demo-signal-1', status: 'new', source_name: '家居行业动态', source_type: '媒体', title: '定制家居开始公开交付节点和验收方式', summary: '行业头部品牌近期把交付周期、验收节点和售后响应写进公开内容，客户比较时会优先寻找这些信息。', facts: ['交付节点更容易被客户直接比较', '售后响应时间成为信任信号'], created_at: '2026-09-25' },
+-    { id: 'demo-signal-2', status: 'planned', source_name: '索菲亚官网', source_type: '官网', title: '完整案例被用于解释不同户型的方案差异', summary: '竞品案例内容同时呈现户型、预算、周期和结果，帮助模型给出更具体的推荐。', facts: ['案例结果比口号更容易被引用'], created_at: '2026-09-23' },
++    { id: 'demo-signal-2', status: 'planned', source_name: '星禾示例家居官网', source_type: '官网', title: '完整案例被用于解释不同户型的方案差异', summary: '竞品案例内容同时呈现户型、预算、周期和结果，帮助模型给出更具体的推荐。', facts: ['案例结果比口号更容易被引用'], created_at: '2026-09-23' },
+   ],
+   links: [
+     { id: 'demo-link-1', name: '成都三居室收纳改造案例', url: 'https://example.invalid/case-01', index_status: 'indexed', status_note: '已收录', created_at: '2026-09-22' },
+     { id: 'demo-link-2', name: '交付与售后说明', url: 'https://example.invalid/service-01', index_status: 'pending', status_note: '等待检测', created_at: '2026-09-25' },
+   ],
+ } as const
++
++/** 解析维度/策略为人工编排；样本总数、提及与引用回绑真实的演示原话。 */
++const observed = DEMO_MONITOR.summary
++const sampleNote = { total: observed.answered, reliability: '模拟解析', note: GEO_DEMO_NOTICE }
++const latestAt = `${DEMO_ROUNDS.at(-1)}T09:00:00+08:00`
++const factors = ['交付售后', '客户案例', '空间规划']
++const factorRows = factors.map(factor => {
++  const records = DEMO_OBSERVATIONS.filter(r => r.factor === factor && r.answer)
++  const self = records.filter(r => r.mentioned === true)
++  const other = records.filter(r => r.competitor_mentioned)
++  return { factor, dimension: factor, self_mentions: self.length, competitor_mentions: other.length,
++    competitor_leader: other.length ? DEMO_COMPETITOR : DEMO_COMPANY,
++    missing_note: factor === '空间规划' ? '模拟：有产品组合依据' : factor === '客户案例' ? '模拟：案例缺少预算和结果' : '模拟：仍缺统一交付时限',
++    quotes: records.slice(0, 2).map(r => ({ quote: r.answer, brand: r.competitor_mentioned ? DEMO_COMPETITOR : DEMO_COMPANY })) }
++})
++const left = factorRows.filter(r => r.factor !== '空间规划')
++const right = factorRows.filter(r => r.factor === '空间规划')
++const riskNotes = DEMO_OBSERVATIONS.filter(r => r.check === 'review').map(r => ({ factor: r.factor, quote: r.answer, brand: DEMO_COMPANY }))
++const competitorMentions = DEMO_OBSERVATIONS.filter(r => r.competitor_mentioned).length
++const recommended = DEMO_OBSERVATIONS.filter(r => r.sentiment === 'positive').length
++const trend = DEMO_ROUNDS.map((period, round) => {
++  const records = DEMO_OBSERVATIONS.filter(r => r.round === round && r.answer)
++  // 该样例仅我方有明确推荐句；推荐份额=我方推荐/全部品牌推荐。
++  return { period, brands: [{ brand: DEMO_COMPANY, recommend_share: records.some(r => r.sentiment === 'positive') ? 100 : 0 }] }
++})
++export const GEO_DEMO_INSIGHT = {
++  humanize: {
++    headline: { main: '品牌能被看见，案例与交付口径仍需补齐', sub: '模拟解析：比较完整案例、复核统一交付承诺，再用同一组问题复测。', tone: 'watch' },
++    metrics: { exposure_rate: observed.mention_pct, recommendation_rate: observed.recommendation_pct, gap_count: left.length, gap_dimensions: left.map(r => ({ dimension: r.dimension })) },
++    left, right, risk_notes: riskNotes,
++    actions: [{ priority: 'P0', score: 91, what: '复核交付承诺并补案例结果', why: '人工编排的模拟行动建议', keywords: ['交付', '案例'] }], sample_note: sampleNote,
++  },
++  overview: { company: DEMO_COMPANY, mode: 'demo', total_evidence: observed.answered, self_name: DEMO_COMPANY, brands: [
++    { name: DEMO_COMPANY, is_self: true, mentions: observed.recognised, rate: observed.mention_pct },
++    { name: DEMO_COMPETITOR, is_self: false, mentions: competitorMentions, rate: Math.round(competitorMentions / observed.answered * 100) },
++  ] },
++  sov: { period_days: 15, total_mention: observed.recognised + competitorMentions, total_recommend: recommended,
++    self: { brand: DEMO_COMPANY, is_self: true, mention_count: observed.recognised, mention_share: Math.round(observed.recognised / (observed.recognised + competitorMentions) * 100), recommend_count: recommended, recommend_share: 100, missing_count: observed.not_mentioned },
++    brands: [], trend, note: '模拟解析；提及率以成功回答为分母，推荐率以成功回答为分母，推荐份额以全部品牌推荐次数为分母。' },
++  'trend-delta': { periods: trend.slice(-2).map(r => ({ period: r.period, brands: { [DEMO_COMPANY]: r.brands[0].recommend_share } })), gained: [], lost: [], rising: [], falling: [], note: '同一批样例的推荐份额；不要与推荐回答占比混用。' },
++  matrix: { evidence_count: observed.answered, dimensions: factorRows.map(r => ({ dimension: r.dimension, band: r.factor === '空间规划' ? 'green' : 'red', band_label: r.factor === '空间规划' ? '优势' : '资料待补', verdict: r.factor === '空间规划' ? 'win' : 'loss', total_mentions: r.self_mentions + r.competitor_mentions, self_mentions: r.self_mentions, other_mentions: r.competitor_mentions, quotes: r.quotes })), observation: [], missing: [] },
++  'factor-gaps': { left, right, risk_notes: riskNotes, sample_note: sampleNote },
++  'gap-analysis': { knowledge_gaps: [{ dimension: '交付售后', competitor_leader: DEMO_COMPETITOR, action: '模拟：核对并补齐交付口径', gap_type: 'knowledge' }], evidence_gaps: [{ dimension: '客户案例', competitor_leader: DEMO_COMPETITOR, action: '模拟：补齐预算和结果', gap_type: 'evidence' }], sample_note: sampleNote },
++  keywords: { keywords: factors.map(keyword => ({ keyword, mentions: DEMO_OBSERVATIONS.filter(r => r.factor === keyword && r.answer).length, band: keyword === '空间规划' ? 'green' : 'red' })) },
++  perception: { evidence_count: observed.answered, tags: factors.map(tag => ({ tag, count: DEMO_OBSERVATIONS.filter(r => r.factor === tag && r.answer).length })), self_tags: factorRows.map(r => ({ tag: r.factor, count: r.self_mentions })) },
++  strategies: { score_formula: '模拟优先级；非真实算法评估', sample_note: sampleNote, strategies: [{ dimension: '交付售后', score: 91, priority: 'P0', topic: '把交付口径讲清楚', self_level_label: '资料待补', competitor_leader: DEMO_COMPETITOR, keywords: ['交付', '售后'], evidence_note: '模拟解析：统一承诺缺依据', comp_quotes: factorRows[0].quotes }] },
++}
++export const GEO_DEMO_EVIDENCE: Record<string, unknown> = Object.fromEntries(factors.map(factor => {
++  const rows = DEMO_OBSERVATIONS.filter(r => r.factor === factor && r.answer)
++  return [factor, { factor, semantic: '模拟解析', dimension: factor, propagation: rows.length,
++    sources: rows.map(r => ({ evidence_id: r.id, platform: r.engine, observed_at: r.ts, mention_type: r.check === 'supported' ? 'win' : 'gap', intent: r.factor === '客户案例' ? '比较' : '选择', quote: r.answer, brand: DEMO_COMPANY })), related_factors: [] }]
++}))
++const claimRows = DEMO_OBSERVATIONS.filter(r => r.check === 'supported' || r.check === 'unsupported' || r.check === 'review')
++const cognitionMatrix = factors.map(factor => {
++  const claims = claimRows.filter(r => r.factor === factor)
++  const grounded = claims.filter(r => r.check === 'supported').length
++  return { key: factor, label: factor, claims: claims.length, grounded, partial: claims.filter(r => r.check === 'unsupported').length,
++    hallucination: claims.filter(r => r.check === 'review').length, status: claims.length ? `模拟：${Math.round(grounded / claims.length * 100)}% 有依据` : '模拟：无可核验断言' }
++})
++export const GEO_DEMO_COGNITION_PROFILE = {
++  total: observed.answered, evaluated_at: latestAt, health: 64,
++  metrics: { awareness: observed.mention_pct, understanding: Math.round(claimRows.filter(r => r.check === 'supported').length / claimRows.length * 100), hallucination: Math.round(claimRows.filter(r => r.check !== 'supported').length / claimRows.length * 100), recommendation: observed.recommendation_pct },
++  matrix: cognitionMatrix,
++  errors: DEMO_OBSERVATIONS.filter(r => r.check === 'review' || r.check === 'unsupported').map(r => ({ claim: r.answer, type: r.check === 'review' ? '模拟口径冲突' : '模拟缺少依据', engine: r.engine, question: r.question })), note: GEO_DEMO_NOTICE,
++}
++export const GEO_DEMO_HEALTH = { ...simulatedHealth, sample_size: observed.answered, evaluated_at: latestAt, dims: simulatedHealth.dims.map(d => d.key === 'brand' ? { ...d, score: observed.mention_pct, basis: `${observed.slots} 个演示槽位：${observed.answered} 条回答、${observed.recognised} 条确认提及、${observed.unknown} 条主体未知、${observed.failed} 条失败；语义评分为模拟。` } : d) }
++export const GEO_DEMO_PORTRAIT = {
++  ai_health: 64, material_count: DEMO_MATERIALS.length, evaluated_at: latestAt, note: GEO_DEMO_NOTICE,
++  items: cognitionMatrix.filter(r => r.claims > 0).map(r => ({ key: r.key, label: r.label, profile: '模拟资料对照', ai_status: r.status, ai_grounded: r.grounded, ai_claims: r.claims, deviation: r.grounded === r.claims ? '一致' : '资料待补', evidence_count: 1, evidence: [{ title: DEMO_MATERIALS[r.key === '空间规划' ? 0 : 1].title }] })),
++}
++
++export const GEO_DEMO_PROFILE_OVERVIEW = {
++  ...simulatedProfileOverview,
++  overall_coverage_pct: Math.round(GEO_DEMO_PROFILE_CATEGORIES.flatMap(c => c.items).reduce((n, i) => n + i.coverage_pct, 0) / simulatedProfileOverview.total_items),
++  note: `${GEO_DEMO_NOTICE}；覆盖率为8项模拟评分的均值。`,
++}
++export const GEO_DEMO_PROFILE_DETAILS: Record<string, Record<string, unknown>> = Object.fromEntries(Object.entries(simulatedProfileDetails).map(([id, item]) => {
++  const material = DEMO_MATERIALS[id.includes('case') || id.includes('scene') ? 2 : id.includes('sale') || id.includes('certification') ? 1 : 0]
++  return [id, { ...item, knowledge: { summary: '模拟资料匹配；不代表已读取正式Fact', counts: { entities: 0, facts: 0, relations: 0, doc_chunks: 1 }, doc_chunks: [{ text: material.text, source: material.title }] } }]
++}))

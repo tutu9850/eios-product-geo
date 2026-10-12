@@ -1,0 +1,82 @@
+{
+  "head": "a432683beb8739b85a27acdde1fbcdb4dc1e1a35",
+  "branch": "codex/geo-ui-layout",
+  "baseline": "本轮开始前工作树，非纯 HEAD；依赖既有未提交成果",
+  "files": [
+    {
+      "path": "adapters/eios/__init__.py",
+      "before_sha256": "60954a54f1ee50231d3f3db4c799fa29af1886262cc8a8918d5f41c522ba9c4b",
+      "after_sha256": "5c5729899db5f7cf63b79d3adbdb4a6747a24c53acf33932a2a7f687621ab3d3"
+    },
+    {
+      "path": "adapters/llm.py",
+      "before_sha256": "a477b3232a479d73f052c4a2bf21f5010c0df3cfa3ef0956320d31638540e933",
+      "after_sha256": "a4c79bf9340f2832c18a9e6f361b939a3ce5de48fbe0d3b98d20d80df712f6d4"
+    },
+    {
+      "path": "adapters/model_entry.py",
+      "before_sha256": "5fb68158bf28d5d66fe19144b8afd7d2b3cf4a6c9844d581a23736e15c0a70d1",
+      "after_sha256": "6d49d15b3c5d83897287883eb863dd0d3a8dfc7a97424682b42351723cc06afd"
+    },
+    {
+      "path": "apps/api/app/api/v1/content.py",
+      "before_sha256": "c238ebebe909937fac5936a20f6a1baf350319343657834f2d481a27c98e70b1",
+      "after_sha256": "c5963428edb74e07b35cdae0ab40f027f72c3964e8735b75de1942d6b836c469"
+    },
+    {
+      "path": "apps/api/app/api/v1/kb_init.py",
+      "before_sha256": "9c2039a083f06fb49eb22ece8779ac63c9bd49f16b2eae9cf2db1d8598ee1ddb",
+      "after_sha256": "a4712940212040c53af0759c94d6278f1cd3f7bd7e04838ea17995aa18f047c7"
+    },
+    {
+      "path": "apps/api/app/services/knowledge_snapshot.py",
+      "before_sha256": "0899f939ce0d4b18030a7356747243a66eb73533700b033060cf97dbe6cb55b0",
+      "after_sha256": "06ceb70fe756fb08c2aedfdfd38f8cc60a4dd0256a0274076651e3cbb819f5a4"
+    },
+    {
+      "path": "services/content/__init__.py",
+      "before_sha256": "94b317e490ab55d036752ba7c32b248df9ec923c1f9f94cf52508088f20b3afd",
+      "after_sha256": "9225f247c176a7907762c2d564692f0cee0247da1f2504916f1d94bb810c8a8d"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+      "before_sha256": "cd34d448fb29ffe6d08b26cac9576b42a9eef1a3a4cb36fbbfc2fa2691d1d091",
+      "after_sha256": "e17381ba6c9c3ee8f8e77618f07b22e04e73c2453e63f21b71e1fcce3f8a4895"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/geo-api.ts",
+      "before_sha256": "354c4e3412bf35256b4bcf452ec75c8af7d33aa01a9d13add535ecb3089a54a6",
+      "after_sha256": "d52638a8d9ff0f0cd680ebf5076bf84ba5f8fd1438e1300cd16090a168114ad0"
+    },
+    {
+      "path": "apps/api/tests/test_geo_chunk_channel.py",
+      "before_sha256": "0a0cd63d904bde9b7cf74e03b527a504c153ae435bd5dce8cab47c47a18051ba",
+      "after_sha256": "dcbb4e7f038af647017da58cb5625cbe4594a76aefdfb8bf450a76e259fd9076"
+    },
+    {
+      "path": "apps/api/tests/test_kb_init.py",
+      "before_sha256": "ebe2e85f4de7176e926728cef3ada65cf603913bd1e2a52bab7bb94b6dc28bcc",
+      "after_sha256": "8cbdb0082827c5dfdc7ef4d2e38489ebac9ce26aeeec73e3ebec5bd3bb759f6e"
+    },
+    {
+      "path": "apps/api/tests/test_geo_knowledge_consumer.py",
+      "before_sha256": "a8da73ddd1cf134bc1073dff2d8f764226ebc41cddf319f85479fbc8298125d0",
+      "after_sha256": "8cfc1663e88091846b684ca03f03fbcc1a97a00f18b2517abca9b43b4e18cde7"
+    },
+    {
+      "path": "apps/api/tests/test_content_budget.py",
+      "before_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "after_sha256": "0cfbaf389a7c4c5655329af6fe7d50d1f592716d6ff83448a3bb0f0ba61d44ae"
+    },
+    {
+      "path": "apps/api/tests/test_content_read_status.py",
+      "before_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "after_sha256": "f551c66ded43c967176dbda6eed09770f231c2dc9fea9ccec6a2169e09745be7"
+    },
+    {
+      "path": "apps/api/tests/test_content_cold_read.py",
+      "before_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "after_sha256": "5309655cd324c09c472666cd2fcddeb2cbe282f6eb01643914b6b78a96f47195"
+    }
+  ]
+}

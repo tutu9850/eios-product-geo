@@ -1,0 +1,123 @@
+- main
+  - sectionheader
+    - navigation "GEO 功能" [ref=e2]
+      - button "经营总览" [ref=e8]
+        - StaticText "经营总览"
+      - button "企业资料" [ref=e9]
+        - StaticText "企业资料"
+      - button "国产模型监测" [ref=e10]
+        - StaticText "国产模型监测"
+      - button "认知洞察" [ref=e11]
+        - StaticText "认知洞察"
+      - button "增长行动" [ref=e12]
+        - StaticText "增长行动"
+      - button "市场情报" [ref=e13]
+        - StaticText "市场情报"
+    - button "打开 GEO 使用说明" [ref=e3]
+      - StaticText "怎么使用"
+    - button "演示数据（仅用于内测样例）：已开启" [ref=e4]
+      - StaticText "演示数据 "
+      - StaticText "开"
+    - button "高级工具" [ref=e5]
+      - StaticText "高级工具"
+    - StaticText "已连接"
+  - generic
+    - sectionheader
+      - StaticText "模型监测"
+      - heading "国产大模型监测" [level=1, ref=e26]
+      - paragraph
+        - StaticText "选择要持续观察的品牌，运行一轮真实客户问题，并核对模型原话。"
+      - emphasis
+        - StaticText "仅监测国产大模型"
+    - navigation "页内功能" [ref=e25]
+      - button "监测工作台" [ref=e27]
+      - button "模型回答" [ref=e28]
+      - button "监测分析" [ref=e29]
+      - button "模型对比" [ref=e30]
+    - note
+      - StaticText "你现在在"
+      - StaticText "模型监测"
+      - paragraph
+        - StaticText "把客户问题交给国产模型，记录模型原话和主体是否被正确识别。"
+      - button "完成一轮监测后看认知差距 →" [ref=e31]
+        - StaticText "完成一轮监测后看认知差距 →"
+    - sectionheader
+      - StaticText "证据到行动"
+      - heading "监测分析" [level=1, ref=e86]
+      - paragraph
+        - StaticText "把模型回答汇成三件事：有没有被看见、说法是否有依据、下一步做什么。"
+      - button "导出报告" [ref=e87]
+      - button "刷新" [ref=e88]
+    - StaticText "演示主体"
+    - StaticText "云栖示例家居"
+    - StaticText "固定内测样本；关闭演示数据后恢复真实监测主体。"
+    - StaticText "内测演示数据已开启"
+    - StaticText "内测演示数据 · 虚构企业与回答；解析、核验和行动为模拟结果，不进入正式统计或证据链"
+    - StaticText "当前范围：最近一批有效模型回答"
+    - StaticText "28 条回答"
+    - StaticText "历史认知维度只作解释，不与本批次覆盖率相加。"
+    - group
+      - DisclosureTriangle "客户阶段是什么意思？ 展开" [expanded=false]
+        - StaticText "客户阶段是什么意思？"
+        - StaticText "展开"
+    - generic
+      - sectionheader
+        - StaticText "需要优先处理"
+        - heading "现在最值得处理的三件事" [level=2, ref=e91]
+        - paragraph
+          - StaticText "每条判断都保留样本范围和证据状态；没有足够数据就保持“未判定”。"
+      - article
+        - StaticText "负面说法"
+        - heading "先处理“云栖示例家居交付和售后怎么样？”" [level=3, ref=e92]
+        - paragraph
+          - StaticText "这是当前负面回答最集中的问题（5 条）。"
+        - StaticText "最近一批有效回答 · 28 条；提及/情绪是观察结果，不等于事实结论。"
+        - button "去资料缺口核对原因" [ref=e93]
+      - article
+        - StaticText "可信度"
+        - heading "有回答缺少足够依据，需要人工复核" [level=3, ref=e94]
+        - paragraph
+          - StaticText "5 条回答没有可直接支持的企业证据；“需要复核”不等于已证实错误。"
+        - StaticText "抽检 28 条，含可比对断言 19 条。"
+        - button "查看证据核验" [ref=e95]
+      - article
+        - StaticText "决策差距"
+        - heading "比较只有 1 条有效回答，暂不能判断覆盖是否稳定" [level=3, ref=e96]
+        - paragraph
+          - StaticText "样本太少，暂不展示提及比例；先补充这一阶段的客户问题再复测。"
+        - StaticText "本批次 1 条有效回答；不与历史认知维度混算。"
+        - button "去补客户问题" [ref=e97]
+    - generic
+      - sectionheader
+        - StaticText "辅助理解"
+        - heading "客户怎样理解这家企业" [level=2, ref=e98]
+        - paragraph
+          - StaticText "当前批次回答告诉你“这次有没有被提到”；历史评估只用来解释认知方面。两组样本不同，不能合成一个总分。"
+      - heading "当前批次 · 决策阶段" [level=3, ref=e89]
+      - StaticText "认知"
+      - emphasis
+      - StaticText "100%"
+      - StaticText "比较"
+      - emphasis
+      - StaticText "0%"
+      - StaticText "信任"
+      - emphasis
+      - StaticText "100%"
+      - heading "过去评估结果" [level=3, ref=e90]
+      - StaticText "品牌定位"
+      - emphasis
+      - StaticText "72%"
+      - StaticText "产品能力"
+      - emphasis
+      - StaticText "58%"
+      - StaticText "交付售后"
+      - emphasis
+      - StaticText "43%"
+      - StaticText "客户案例"
+      - emphasis
+      - StaticText "29%"
+    - group
+      - DisclosureTriangle "展开核对细节 只在需要核对证据时打开 ＋" [expanded=false]
+        - StaticText "展开核对细节"
+        - StaticText "只在需要核对证据时打开"
+        - StaticText "＋"

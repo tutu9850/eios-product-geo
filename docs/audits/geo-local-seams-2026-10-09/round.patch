@@ -1,0 +1,1471 @@
+--- before/adapters/eios/__init__.py
++++ after/adapters/eios/__init__.py
+@@ -63,6 +63,23 @@
+         self.code = code
+         self.message = message
+         self.status = status
++        self.category = self._category(code, status)
++        self.authority_refused = self.category == "refused"
++
++    @staticmethod
++    def _category(code: str, status: int) -> str:
++        """Stable user-facing class while preserving the authority's original code."""
++        normalized = str(code or "").upper()
++        if normalized == "KNOWLEDGE_INVALID_RESPONSE":
++            return "invalid_response"
++        if status in (401, 403, 404, 409, 410) or any(
++            marker in normalized
++            for marker in ("DENIED", "FORBIDDEN", "UNAUTHORIZED", "SCOPE", "PERMISSION", "NOT_VISIBLE")
++        ):
++            return "refused"
++        if normalized in {"KNOWLEDGE_UNAVAILABLE", "DEPENDENCY_NOT_ACTIVE"} or status >= 500:
++            return "unavailable"
++        return "unreadable"
+ 
+ 
+ #: 兼容别名：这个异常在换知识源前另有名字，调用点统一按知识库的名字捕获即可。
+@@ -194,21 +211,44 @@
+     try:
+         body = response.json()
+     except ValueError as exc:
++        if response.status_code in (401, 403, 404, 409, 410):
++            raise EIOSKnowledgeError(
++                "KNOWLEDGE_HTTP_ERROR",
++                f"知识库拒绝请求（HTTP {response.status_code}，响应正文无法读取）",
++                response.status_code,
++            ) from exc
+         raise EIOSKnowledgeError(
+             "KNOWLEDGE_INVALID_RESPONSE", f"知识库返回非 JSON（HTTP {response.status_code}）", 502
+         ) from exc
+ 
+     if not isinstance(body, dict):
++        if response.status_code in (401, 403, 404, 409, 410):
++            raise EIOSKnowledgeError(
++                "KNOWLEDGE_HTTP_ERROR",
++                f"知识库拒绝请求（HTTP {response.status_code}，响应结构异常）",
++                response.status_code,
++            )
+         raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "知识库返回结构异常", 502)
++    if response.status_code >= 400 and body.get("ok"):
++        code = "KNOWLEDGE_FORBIDDEN" if response.status_code in (401, 403) else "KNOWLEDGE_HTTP_ERROR"
++        raise EIOSKnowledgeError(code, f"知识库请求失败（HTTP {response.status_code}）", response.status_code)
+     if not body.get("ok"):
+         error = body.get("error") or {}
++        code = str(error.get("code") or "KNOWLEDGE_ERROR")
++        response_status = response.status_code if response.status_code >= 400 else 502
++        # Some authority routes encode denial in the envelope while returning HTTP 200.
++        # Preserve the authority code and make the denial impossible to mistake for outage.
++        if EIOSKnowledgeError._category(code, response_status) == "refused" and response_status == 502:
++            response_status = 403
+         raise EIOSKnowledgeError(
+-            str(error.get("code") or "KNOWLEDGE_ERROR"),
++            code,
+             str(error.get("message") or "知识库拒绝该请求")[:300],
+-            response.status_code if response.status_code >= 400 else 502,
++            response_status,
+         )
+     data = body.get("data")
+-    return data if isinstance(data, dict) else {}
++    if not isinstance(data, dict):
++        raise EIOSKnowledgeError("KNOWLEDGE_INVALID_RESPONSE", "知识库成功响应缺少 data 对象", 502)
++    return data
+ 
+ 
+ def _record(kind: str, payload: dict[str, Any]) -> bool:
+@@ -409,6 +449,13 @@
+         "layers": ["governed"] + (["material"] if include_candidates else []),
+     }
+     result = dict(payload)
++    chunk_state = knowledge_snapshot.read_status("chunks")
++    object_state = knowledge_snapshot.read_status("objects")
++    has_snapshot = any(s["status"] != "not_synced" for s in (chunk_state, object_state))
++    result["status"] = (
++        "partial" if any(s["status"] == "partial" for s in (chunk_state, object_state))
++        else "ready" if hits else ("empty" if has_snapshot else "not_synced")
++    )
+     result["provenance"] = _local_provenance(kind="search", query=text[:512])
+     result["snapshot_recorded"] = False
+     return result
+@@ -549,7 +596,16 @@
+         if cursor:
+             params["cursor"] = cursor
+         data = await _request("GET", "/api/v1/knowledge/objects", params=params)
+-        page = data.get("items") or []
++        page = data.get("items", [])
++        if not isinstance(page, list) or any(not isinstance(item, dict) for item in page):
++            raise EIOSKnowledgeError(
++                "KNOWLEDGE_INVALID_RESPONSE", "知识库对象响应中的 items 格式无效", 502
++            )
++        next_cursor = data.get("next_cursor")
++        if next_cursor is not None and not isinstance(next_cursor, str):
++            raise EIOSKnowledgeError(
++                "KNOWLEDGE_INVALID_RESPONSE", "知识库对象响应中的 next_cursor 格式无效", 502
++            )
+         for item in page:
+             items.append(
+                 {
+@@ -565,7 +621,7 @@
+                     "evidence_ids": list(item.get("evidence_ids") or []),
+                 }
+             )
+-        cursor = data.get("next_cursor")
++        cursor = next_cursor
+         remaining -= len(page)
+         if not cursor or not page:
+             break
+@@ -685,16 +741,19 @@
+ 
+ 
+ async def list_document_chunks(document_id: str, *, limit: int = 20) -> dict[str, Any]:
+-    """读某份文档的切块原文：先走权威的门，门关了就用 GEO 自己存下的切块。
++    """读某份文档的切块原文。
+ 
+     权威的门（``GET /api/v1/knowledge/documents/{id}/chunks``）对**未发布**文档额外要求
+     治理 scope；GEO 只有读 scope，所以未发布文档在那里是 404（fail-closed，权威侧有意为之，
+-    不是 GEO 能改的）。但同一份文档的切块，检索的 material 层按契约是给有权限的读者的，
+-    GEO 也已经按「读到的都存下来」把它落在自己的台账里。这条通道就是那个回退：
++    不是 GEO 能改的）。拒权代表本次没有读取资格，不能再用旧快照绕过当前拒绝。
++    只有服务不可达等非拒绝失败才可显示明确标记为历史的快照：
+ 
+     - ``source="knowledge"``：权威给的（正本，``authoritative`` 仍为 false —— GEO 不冒充权威）；
+     - ``source="geo_snapshot"``：GEO 读过的快照（带 ``note`` 说明正本在知识库）；
+-    - 两边都没有 → 原样抛权威的错误，不伪造空内容。
++    - 权威成功但返回空列表 → 合法空，不用旧快照补数据；
++    - 拒权 → 原样抛出拒绝错误，绝不读取旧快照；
++    - 服务不可达等失败 → 可显示带历史标记的快照；
++    - 两边都没有 → 原样抛错误，不伪造空内容。
+ 
+     ``limit`` 是**每页**条数；权威给了 ``next_cursor`` 就继续翻（最多 ``_MAX_CHUNK_PAGES`` 页）。
+     翻到上限还有下一页时 ``truncated=true``，如实说明「这些不是全部」，不静默少带。
+@@ -713,6 +772,11 @@
+             if cursor:
+                 params["cursor"] = cursor
+             data = await _request("GET", path, params=params)
++            page_items = data.get("items")
++            if not isinstance(page_items, list) or any(not isinstance(item, dict) for item in page_items):
++                raise EIOSKnowledgeError(
++                    "KNOWLEDGE_INVALID_RESPONSE", "知识库切块响应中的 items 格式无效", 502
++                )
+             items.extend(
+                 {
+                     "document_id": doc,
+@@ -724,12 +788,26 @@
+                     "authoritative": False,
+                     "note": "来自企业知识库的正式读接口；GEO 只读，不冒充权威",
+                 }
+-                for item in (data.get("items") or [])
++                for item in page_items
+             )
+             cursor = data.get("next_cursor")
++            if cursor is not None and not isinstance(cursor, str):
++                raise EIOSKnowledgeError(
++                    "KNOWLEDGE_INVALID_RESPONSE", "知识库切块响应中的 next_cursor 格式无效", 502
++                )
+             if not cursor:
+                 break
+         truncated = bool(cursor)
++        # A successful empty response is meaningful. Never turn it into stale cache data.
++        if not items:
++            return {
++                "document_id": doc,
++                "source": "knowledge",
++                "items": [],
++                "truncated": False,
++                "warnings": [],
++                "provenance": _provenance(kind="document_chunks"),
++            }
+         if items:
+             _record_read_chunks([{**i, "snippet": i["text"]} for i in items])
+             warnings = (
+@@ -749,7 +827,14 @@
+                 "warnings": warnings,
+                 "provenance": _provenance(kind="document_chunks"),
+             }
+-    except Exception as exc:  # noqa: BLE001 — 门关了不是错，去自己的台账找
++    except EIOSKnowledgeError as exc:
++        # A current Authority refusal cannot be turned into a fresh cache grant.
++        # Manual mode declines to issue a live request; it is not an Authority
++        # denial. Preserve its existing historical-view behavior, clearly marked.
++        if exc.authority_refused and not isinstance(exc, KnowledgeReadBlocked):
++            raise
++        authority_error = exc
++    except Exception as exc:
+         authority_error = exc
+ 
+     from app.services.knowledge_snapshot import chunks_for_document
+@@ -759,6 +844,10 @@
+         return {
+             "document_id": doc,
+             "source": "geo_snapshot",
++            "status": "historical_snapshot",
++            "error": {"code": str(getattr(authority_error, "code", "KNOWLEDGE_UNAVAILABLE")),
++                      "category": str(getattr(authority_error, "category", "unavailable")),
++                      "message": str(authority_error)[:300]},
+             "items": stored,
+             "truncated": False,
+             "warnings": [
+@@ -793,8 +882,13 @@
+     data = await _request(
+         "GET", "/api/v1/knowledge/documents", params={"limit": max(1, min(int(limit), 100))}
+     )
++    raw_items = data.get("items")
++    if not isinstance(raw_items, list) or any(not isinstance(item, dict) for item in raw_items):
++        raise EIOSKnowledgeError(
++            "KNOWLEDGE_INVALID_RESPONSE", "知识库文档响应中的 items 格式无效", 502
++        )
+     items = []
+-    for item in data.get("items") or []:
++    for item in raw_items:
+         items.append(
+             {
+                 "document_id": item.get("id") or item.get("document_id"),
+--- before/adapters/llm.py
++++ after/adapters/llm.py
+@@ -29,6 +29,10 @@
+ import asyncio
+ import logging
+ import threading
++import contextlib
++import contextvars
++import time
++from dataclasses import dataclass, field
+ from typing import Any
+ 
+ from adapters import identity
+@@ -50,6 +54,64 @@
+ _capability_error: str | None = None
+ _default_model_id: str = ""
+ _lock = threading.Lock()
++_CONTENT_CALL_BUDGET_SECONDS = 35.0
++
++
++@dataclass
++class CallBudget:
++    """Local waiting budget; stopping it does not terminate a running sync HTTP call."""
++    deadline: float
++    stopped: threading.Event = field(default_factory=threading.Event)
++
++    def remaining(self) -> float:
++        if self.stopped.is_set():
++            raise LLMError("CONTENT_CANCELLED", "本次内容请求已停止等待")
++        remaining = self.deadline - time.monotonic()
++        if remaining <= 0:
++            raise LLMError("CONTENT_DEADLINE_EXCEEDED", "本次内容请求已超过截止时间")
++        return remaining
++
++
++_budget: contextvars.ContextVar[CallBudget | None] = contextvars.ContextVar("geo_content_budget", default=None)
++
++
++@contextlib.contextmanager
++def call_budget(seconds: float):
++    existing = _budget.get()
++    budget = existing or CallBudget(time.monotonic() + seconds)
++    token = _budget.set(budget)
++    try:
++        yield budget
++    finally:
++        if existing is None:
++            budget.stopped.set()
++        _budget.reset(token)
++
++
++def remaining_budget(default: float = 120.0) -> float:
++    budget = _budget.get()
++    return min(default, budget.remaining()) if budget else default
++
++
++async def bounded_content_call(call):
++    """Use the existing 35s Product manage budget, including context and retries.
++
++    ASGI task cancellation stops waiting and further attempts; a running thread
++    can finish later, but its result cannot be returned as a successful draft.
++    Product API client disconnect cancellation is not propagated into GEO.
++    """
++    with call_budget(_CONTENT_CALL_BUDGET_SECONDS) as budget:
++        task = asyncio.create_task(call())
++        try:
++            done, _ = await asyncio.wait({task}, timeout=budget.remaining())
++            budget.remaining()
++            if task not in done:
++                raise LLMError("CONTENT_DEADLINE_EXCEEDED", "本次内容请求已超过截止时间")
++            return task.result()
++        finally:
++            budget.stopped.set()
++            task.cancel()
++            await asyncio.gather(task, return_exceptions=True)
+ 
+ 
+ class LLMNotConfiguredError(Exception):
+@@ -192,4 +254,16 @@
+         messages.append({"role": "system", "content": _JSON_INSTRUCTION})
+     messages.append({"role": "user", "content": prompt})
+     # 同步能力调用放线程里：一次真调用可能几十秒，占着事件循环会把整个 GEO 拖住。
+-    return await asyncio.to_thread(_invoke_sync, messages, max_tokens)
++    budget = _budget.get()
++    try:
++        text = await asyncio.wait_for(asyncio.to_thread(_invoke_sync, messages, max_tokens), remaining_budget())
++        remaining_budget()
++        return text
++    except asyncio.TimeoutError as exc:
++        if budget:
++            budget.stopped.set()
++        raise LLMError("CONTENT_DEADLINE_EXCEEDED", "模型结果超过截止时间，未接受为成功稿") from exc
++    except asyncio.CancelledError:
++        if budget:
++            budget.stopped.set()
++        raise
+--- before/adapters/model_entry.py
++++ after/adapters/model_entry.py
+@@ -65,6 +65,8 @@
+         payload: dict[str, Any] | None = None,
+     ) -> EntryResponse:
+         require_outbound_network("model_capability_entry")
++        from adapters.llm import remaining_budget
++        remaining_budget(TIMEOUT_SECONDS)
+         if not self.configured:
+             # 部署没给统一入口 = 部署没说模型在哪。这里补一个默认地址就是 GEO 替部署决定。
+             return EntryResponse(
+@@ -82,11 +84,12 @@
+         )
+         try:
+             with httpx.Client(
+-                timeout=TIMEOUT_SECONDS,
++                timeout=remaining_budget(TIMEOUT_SECONDS),
+                 follow_redirects=False,
+                 trust_env=False,
+                 transport=self._transport,
+             ) as client:
++                remaining_budget(TIMEOUT_SECONDS)
+                 response = client.request(
+                     method,
+                     f"{self._url}{path}",
+@@ -97,6 +100,7 @@
+             return EntryResponse(
+                 503, {"code": _UNAVAILABLE, "message": f"统一模型入口暂时不可达：{exc}"[:300]}
+             )
++        remaining_budget(TIMEOUT_SECONDS)
+         try:
+             body = response.json()
+         except ValueError:
+--- before/apps/api/app/api/v1/content.py
++++ after/apps/api/app/api/v1/content.py
+@@ -3,7 +3,11 @@
+ from pydantic import BaseModel
+ 
+ from app.core.envelope import ok, err
+-from adapters.llm import LLMNotConfiguredError, LLMError
++from adapters.llm import LLMNotConfiguredError, LLMError, bounded_content_call
++
++
++class _SourceUnavailable(ValueError):
++    pass
+ 
+ 
+ class GenerateRequest(BaseModel):
+@@ -58,7 +62,7 @@
+     from services.content import generate as generate_impl
+ 
+     try:
+-        result = await generate_impl(
++        result = await bounded_content_call(lambda: generate_impl(
+             goal=req.goal,
+             content_type=req.content_type,
+             question=req.question,
+@@ -73,7 +77,7 @@
+             structure=req.structure,
+             materials_extra=req.materials_extra,
+             source_material_ids=req.source_material_ids,
+-        )
++        ))
+     except LLMNotConfiguredError as exc:
+         return err("llm_not_configured", str(exc))
+     except LLMError as exc:
+@@ -214,30 +218,35 @@
+         return err("empty_content", "没有可改的内容")
+     if not req.instruction.strip():
+         return err("empty_instruction", "请先写清楚要改什么")
+-    sources = None
+-    if req.context_sources is not None:
+-        try:
+-            sources, _ = await _validate_saved_sources(SaveIn(
+-                title=req.title, content=req.content, question=req.question,
+-                source_material_ids=req.source_material_ids, context_sources=req.context_sources,
+-            ))
+-        except ValueError as exc:
+-            return err("source_unavailable", str(exc))
+-    try:
+-        result = await improve_impl(
+-            title=req.title,
+-            content=req.content,
+-            instruction=req.instruction,
+-            context_sources=sources,
+-            question=req.question,
+-            company_name=req.company_name,
+-            tenant_id=_cabinet(req.tenant_id),
+-            source_material_ids=req.source_material_ids,
+-        )
++    try:
++        async def run_improve():
++            sources = None
++            if req.context_sources is not None:
++                try:
++                    sources, _ = await _validate_saved_sources(SaveIn(
++                        title=req.title, content=req.content, question=req.question,
++                        source_material_ids=req.source_material_ids, context_sources=req.context_sources,
++                    ))
++                except ValueError as exc:
++                    raise _SourceUnavailable(str(exc)) from exc
++            return await improve_impl(
++                title=req.title,
++                content=req.content,
++                instruction=req.instruction,
++                context_sources=sources,
++                question=req.question,
++                company_name=req.company_name,
++                tenant_id=_cabinet(req.tenant_id),
++                source_material_ids=req.source_material_ids,
++            )
++
++        result = await bounded_content_call(run_improve)
+     except LLMNotConfiguredError as exc:
+         return err("llm_not_configured", str(exc))
+     except LLMError as exc:
+         return err(exc.code, exc.message)
++    except _SourceUnavailable as exc:
++        return err("source_unavailable", str(exc))
+     except ValueError as exc:
+         return err("improve_failed", str(exc))
+     from services.content.claim_check import check_claims
+@@ -335,11 +344,11 @@
+     if not req.content.strip():
+         return err("empty_content", "请先生成内容再检测")
+     try:
+-        result = await quality_impl(
++        result = await bounded_content_call(lambda: quality_impl(
+             content=req.content,
+             question=req.question,
+             company_name=req.company_name,
+-        )
++        ))
+     except LLMNotConfiguredError as exc:
+         return err("llm_not_configured", str(exc))
+     except LLMError as exc:
+--- before/apps/api/app/api/v1/kb_init.py
++++ after/apps/api/app/api/v1/kb_init.py
+@@ -190,13 +190,8 @@
+         known = {str(d.get("document_id") or ""): d for d in (await list_documents(limit=100) or [])}
+     except Exception as exc:  # noqa: BLE001 — 核不了标题就不能假装存了
+         raise KnowledgeUnreadable(f"读知识库核对文档失败：{str(exc)[:200]}") from exc
+-    # 知识库未发布的文档不在 documents 列表里，但 GEO 读到过它的切块 —— 也认。
+-    for c in knowledge_snapshot.documents_with_chunks():
+-        known.setdefault(
+-            c["document_id"],
+-            {"document_id": c["document_id"], "title": c["title"], "version": None,
+-             "source": "geo_snapshot"},
+-        )
++    # 只有本次权威文档列表确认可见的文档才具备本次同步资格。历史快照保留供查看，
++    # 但不能在当前列表缺席或拒绝时替文档取得资格。
+     for doc_id in wanted_ids:
+         item = known.get(doc_id)
+         if item is None:
+@@ -230,9 +225,21 @@
+                     ),
+                     source_url="",
+                 )
+-        except Exception as exc:  # noqa: BLE001 — 拉不到切块不影响「选中文档」这件事，但要如实报
++        except Exception as exc:  # noqa: BLE001 — 保留文档清单结果，同时具名报告切块读取状态
+             logger.warning("kb-init apply: chunks for %s failed: %s", doc_id, exc)
+-        entry = {"document_id": doc_id, "chunks": pulled}
++            entry = {"document_id": doc_id, "chunks": pulled, "status": getattr(exc, "category", "unreadable")}
++            entry["error"] = {
++                "code": getattr(exc, "code", type(exc).__name__),
++                "message": str(getattr(exc, "message", exc))[:200],
++            }
++        else:
++            entry = {
++                "document_id": doc_id,
++                "chunks": pulled,
++                "status": "partial" if truncated else ("ready" if pulled else "empty"),
++            }
++            if got.get("source") == "geo_snapshot":
++                entry["status"] = "historical_snapshot"
+         if truncated:
+             # 翻页到上限还有下一页：如实说「这只是其中一部分」，不把少带说成带全了。
+             entry["truncated"] = True
+@@ -275,10 +282,17 @@
+ 
+         documents: list[dict] = []
+         doc_error: str | None = None
++        doc_error_detail: dict | None = None
+         try:
+             documents = await list_documents(limit=100) or []
+         except Exception as exc:  # noqa: BLE001 — 文档读不到只少一桶，不假装三桶齐全
+             doc_error = str(exc)[:200]
++            doc_error_detail = {
++                "code": getattr(exc, "code", type(exc).__name__),
++                "category": getattr(exc, "category", "unreadable"),
++                "status": getattr(exc, "status", None),
++                "message": str(getattr(exc, "message", exc))[:200],
++            }
+             logger.warning("kb-init scan: list_documents failed: %s", exc)
+         # 同步一步到位：对象 / 正式事实 / 本公司关系一并落进 GEO 自己的柜
+         # （运行时不再实时读知识库，靠的就是这份）。
+@@ -296,8 +310,7 @@
+         {"name": n, "in_profile": n in have_products}
+         for n in _clean_names([*(detect.get("products") or []), *(detect.get("services") or [])])
+     ]
+-    # GEO 读到过切块的文档（含知识库里**未发布**、文档列表看不到的那些）。
+-    # Owner 2026-09-21：切块既然读得到并已存进 GEO 台账，同步时就该一并出现在候选里。
++    # 历史切块可供查看，但不能替代本次权威文档列表来取得同步资格。
+     read_docs = knowledge_snapshot.documents_with_chunks()
+     seen_ids = {str(d.get("document_id") or "") for d in documents}
+     document_items = [
+@@ -313,17 +326,6 @@
+         }
+         for d in documents
+         if d.get("document_id")
+-    ] + [
+-        {
+-            "document_id": c["document_id"],
+-            "title": c["title"] or c["document_id"],
+-            "version": None,
+-            "in_profile": c["document_id"] in have_documents,
+-            "listed": False,        # 只在 GEO 快照里有（知识库未发布，读文档会被拒）
+-            "chunks_stored": int(c["chunks"]),
+-        }
+-        for c in read_docs
+-        if c["document_id"] and c["document_id"] not in seen_ids
+     ]
+     document_items = document_items[:MAX_CANDIDATES]
+ 
+@@ -370,10 +372,9 @@
+                 if c["document_id"] not in seen_ids
+             ],
+             "snapshot_note": (
+-                "有些文档在知识库里还没发布，读它的文档门会被拒（fail-closed）；"
+-                "它们的切块文本 GEO 已经读到并存进自己的台账，所以这里也能点选。"
+-                if any(c["document_id"] not in seen_ids for c in read_docs)
+-                else ""
++                "下面列的是 GEO 以前读到并保留的历史切块；它们不属于本次可勾选清单，"
++                "只有本次知识库文档列表确认可见的文档才能同步。"
++                if any(c["document_id"] not in seen_ids for c in read_docs) else ""
+             ),
+             "captured": captured,
+             "classification_source": detect.get("classification_source"),
+@@ -385,6 +386,8 @@
+                 "其他账号的私有资料、未共享或未发布的文档不会出现在这里。"
+             ),
+             "error": doc_error,
++            "status": "partial" if doc_error else ("empty" if empty else "ready"),
++            "error_detail": doc_error_detail,
+             "hint": empty_hint or detect.get("hint"),
+         }
+     )
+--- before/apps/api/app/services/knowledge_snapshot.py
++++ after/apps/api/app/services/knowledge_snapshot.py
+@@ -173,6 +173,35 @@
+         return out
+     finally:
+         db.close()
++
++
++def read_status(kind: str) -> dict[str, Any]:
++    """Describe what a GEO snapshot can prove without treating old data as current authority.
++
++    ``not_synced`` means GEO has no snapshot for this category; ``empty`` means a successful
++    recorded read explicitly found no items; ``ready`` means items were recorded; and
++    ``partial`` means the saved response says it was truncated. This is descriptive metadata,
++    not a permission check for a new live read.
++    """
++    rows = list_recent(kind=kind, limit=1)
++    if not rows:
++        return {"status": "not_synced", "error": None, "snapshot_id": None, "count": 0}
++    row = rows[0]
++    payload = row.get("payload") or {}
++    items = payload.get("items")
++    if not isinstance(items, list):
++        items = payload.get("hits") if isinstance(payload.get("hits"), list) else []
++    truncated = bool(payload.get("truncated")) or any(
++        "truncated" in str(w).lower() for w in (payload.get("warnings") or [])
++    )
++    status = "partial" if truncated else ("ready" if items else "empty")
++    return {
++        "status": status,
++        "error": None,
++        "snapshot_id": row.get("snapshot_id"),
++        "count": len(items),
++        "authoritative": False,
++    }
+ 
+ 
+ def _iter_items(kind: str):
+--- before/services/content/__init__.py
++++ after/services/content/__init__.py
+@@ -722,6 +722,14 @@
+ _fact_context_status: ContextVar[tuple[str, list[str]]] = ContextVar(
+     "geo_content_fact_context_status", default=("empty", [])
+ )
++_fact_read_error: ContextVar[dict | None] = ContextVar("geo_content_fact_read_error", default=None)
++
++
++def _read_failure(exc: Exception) -> dict:
++    return {"code": str(getattr(exc, "code", "KNOWLEDGE_UNAVAILABLE")),
++            "message": str(getattr(exc, "message", exc))[:300],
++            "category": str(getattr(exc, "category", "unavailable")),
++            "status": getattr(exc, "status", None)}
+ 
+ 
+ async def _official_fact_context(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> tuple[list[str], str, list[str]]:
+@@ -739,6 +747,7 @@
+     与主题无关的事实不是「更多材料」，是**另一个题目的材料**，进来只会把文章拽走，所以不进。
+     主题为空时（用户没给题目）没有可对照的主题，仍按目录顺序取前 ``limit`` 条。
+     """
++    _fact_read_error.set(None)
+     try:
+         from adapters.eios import list_enterprise_facts
+ 
+@@ -769,7 +778,9 @@
+         return selected, ("available" if selected else "empty"), []
+     except Exception as e:  # noqa: BLE001 — 读不到 ≠ 没有事实，由来源面板如实体现
+         logging.getLogger("eios.geo.content").warning("正式事实读取失败: %s", e)
+-        return [], "unavailable", ["official_facts_read_failed"]
++        detail = _read_failure(e)
++        _fact_read_error.set(detail)
++        return [], detail["category"], ["official_facts_read_failed", detail["code"]]
+ 
+ 
+ async def _official_fact_lines(question: str = "", limit: int = _MAX_TOPIC_FACTS) -> list[str]:
+@@ -804,14 +815,23 @@
+ 
+         tenant_id = current_tenant() or "tenant_corp_01"
+     auto_name: str | None = company_name
++    from adapters.eios import reads_granted
+     chunk_lines: list[str] = []
+     entity_names: list[str] = []
+     # 正式企业事实（Knowledge 的 active fact）：Owner 2026-09-21 拍板「fact 接进内容生成」。
+     # 原样注入、排在切块之前 —— 事实是权威给的句子，GEO 不改写。
++    _fact_read_error.set(None)
+     official_facts = await _official_fact_lines(question)
+     fact_status, fact_warnings = _fact_context_status.get()
+     knowledge_status = fact_status
++    knowledge_error = _fact_read_error.get()
++    knowledge_refused = fact_status == "refused"
+     context_warnings = list(fact_warnings)
++    if not official_facts and fact_status == "empty":
++        if not reads_granted():
++            from app.services.knowledge_snapshot import read_status
++            if all(read_status(kind)["status"] == "not_synced" for kind in ("objects", "chunks")):
++                knowledge_status = "not_synced"
+     # 切块是从哪读到的不许含糊：实时检索给的 vs GEO 同步时存下的快照 —— 后者要在面板上说出来。
+     chunks_from_snapshot = False
+     if company_name:
+@@ -827,10 +847,16 @@
+                     else "unavailable" if fact_status == "unavailable"
+                     else "available" if has_knowledge else "empty"
+                 )
++            if res.get("status") == "not_synced" and not official_facts:
++                knowledge_status = "not_synced"
++            elif res.get("status") == "partial":
++                knowledge_status = "partial"
+         except Exception as exc:  # Knowledge unavailable must remain distinct from an empty result.
+             logging.getLogger("eios.geo.content").warning("知识检索失败: %s", exc)
+-            knowledge_status = "partial" if official_facts else "unavailable"
+-            context_warnings.append("knowledge_search_failed")
++            knowledge_error = _read_failure(exc)
++            knowledge_status = knowledge_error["category"]
++            knowledge_refused = knowledge_refused or knowledge_status == "refused"
++            context_warnings.extend(["knowledge_search_failed", knowledge_error["code"]])
+     else:
+         # 没给企业名时先认出「本公司」，再按同一口径取材料（切块 + 实体）。
+         auto_name = await _resolve_self_company(tenant_id)
+@@ -846,12 +872,22 @@
+                         else "unavailable" if fact_status == "unavailable"
+                         else "available" if has_knowledge else "empty"
+                     )
+-            except Exception:  # noqa: BLE001 — 读不到 ≠ 没有资料
+-                knowledge_status = "partial" if official_facts else "unavailable"
+-                context_warnings.append("knowledge_search_failed")
++                if res.get("status") == "not_synced" and not official_facts:
++                    knowledge_status = "not_synced"
++                elif res.get("status") == "partial":
++                    knowledge_status = "partial"
++            except Exception as exc:
++                knowledge_error = _read_failure(exc)
++                knowledge_status = knowledge_error["category"]
++                knowledge_refused = knowledge_refused or knowledge_status == "refused"
++                context_warnings.extend(["knowledge_search_failed", knowledge_error["code"]])
+                 chunk_lines, entity_names = [], []
++    if knowledge_refused:
++        # A successful historical snapshot is not permission for this attempt.
++        official_facts, chunk_lines, entity_names = [], [], []
++        knowledge_status = "refused"
+     # 实时检索没给够切块正文时，补上**同步时已经存进 GEO 自己柜**的那些（Owner 2026-09-22）。
+-    if len(chunk_lines) < _MAX_CHUNKS:
++    if not knowledge_refused and not reads_granted() and len(chunk_lines) < _MAX_CHUNKS:
+         seen_text = {line.split("：", 1)[-1] for line in chunk_lines}
+         for line in _chunk_lines_from_snapshot(question, need=_MAX_CHUNKS - len(chunk_lines)):
+             body = line.split("：", 1)[-1]
+@@ -965,6 +1001,7 @@
+         "source_material_ids": selected_material_ids,
+         "uploaded_sources": uploaded_sources,
+         "knowledge_status": knowledge_status,
++        "knowledge_error": knowledge_error,
+         "warnings": context_warnings,
+         "signals": signals,
+     }
+@@ -1067,6 +1104,7 @@
+         "source_material_ids": list(ctx.get("source_material_ids") or []),
+         "context_sources": used_sources,
+         "knowledge_status": ctx.get("knowledge_status", "unknown"),
++        "knowledge_error": ctx.get("knowledge_error"),
+         "warnings": list(ctx.get("warnings") or []),
+     }
+ 
+@@ -1109,6 +1147,7 @@
+             "source_material_ids": list(ctx.get("source_material_ids") or []),
+             "context_sources": ctx.get("context_sources") or [],
+             "knowledge_status": ctx.get("knowledge_status", "unknown"),
++        "knowledge_error": ctx.get("knowledge_error"),
+             "warnings": list(ctx.get("warnings") or []),
+         }
+     # 1) Content Context Builder：聚合 正式事实/文档切块/实体 + FAQ 资产 + 历史素材 + 问题池
+@@ -1294,14 +1333,22 @@
+     last_err: Exception | None = None
+     text = ""
+     for attempt in range(3):
++        from adapters.llm import remaining_budget
++        remaining_budget()
+         try:
+             text = await chat(prompt, system=_SYSTEM, max_tokens=3000)
+             last_err = None
+             break
+         except _LLMError as e:
+             last_err = e
++            # Only transient failures qualify, and backoff shares the same deadline.
++            if e.code not in {"MODEL_CAPABILITY_UNAVAILABLE", "RATE_LIMITED", "MODEL_HTTP_429", "MODEL_HTTP_502", "MODEL_HTTP_503", "MODEL_HTTP_504"}:
++                raise
+             if attempt < 2:
+-                await asyncio.sleep(2**attempt)  # 1s, 2s 退避
++                delay = 2**attempt
++                if remaining_budget() <= delay:
++                    raise _LLMError("CONTENT_DEADLINE_EXCEEDED", "重试剩余时间不足")
++                await asyncio.sleep(delay)
+     if last_err is not None:
+         raise last_err
+ 
+@@ -1338,6 +1385,7 @@
+         "context_sources": ctx["context_sources"],
+         "source_material_ids": list(ctx.get("source_material_ids") or []),
+         "knowledge_status": ctx.get("knowledge_status", "unknown"),
++        "knowledge_error": ctx.get("knowledge_error"),
+         "warnings": list(ctx.get("warnings") or []),
+         "goal": goal,
+         "content_type": content_type,
+--- before/packages/geo/src/geo-advisor/GeoContentGenForm.tsx
++++ after/packages/geo/src/geo-advisor/GeoContentGenForm.tsx
+@@ -1,4 +1,4 @@
+-import { useEffect, useState } from 'react'
++import { useEffect, useRef, useState } from 'react'
+ import { Check, Copy, Download } from 'lucide-react'
+ import { Button, cn } from '@yayu/ui'
+ import { geoGet, geoPost, type GeoPlan } from './geo-api'
+@@ -109,7 +109,8 @@
+   materials_used?: number
+   context_sources?: ContextSource[]
+   source_material_ids?: string[]
+-  knowledge_status?: 'available' | 'empty' | 'unavailable' | 'unknown'
++  knowledge_status?: 'available' | 'ready' | 'not_synced' | 'empty' | 'partial' | 'refused' | 'unavailable' | 'invalid_response' | 'unknown'
++  knowledge_error?: { code: string; message: string; category?: string } | null
+   warnings?: string[]
+   claim_check?: ClaimCheck | null
+   sections?: Record<string, string> | null
+@@ -174,6 +175,26 @@
+   const [improveNote, setImproveNote] = useState<string | null>(null)
+   const [saving, setSaving] = useState(false)
+   const [savedNote, setSavedNote] = useState<string | null>(null)
++  // Every body-changing operation invalidates all prior analysis responses.
++  const draftRevision = useRef(0)
++  const pendingRequests = useRef(new Set<AbortController>())
++  const invalidateDraft = () => {
++    draftRevision.current += 1
++    pendingRequests.current.forEach((request) => request.abort())
++    pendingRequests.current.clear()
++    setScore(null)
++    setQuality(null)
++    setScoring(false)
++    setQualityLoading(false)
++    setLoading(false)
++    setImproving(false)
++    setSavedNote(null)
++    return draftRevision.current
++  }
++  useEffect(() => () => {
++    draftRevision.current += 1
++    pendingRequests.current.forEach((request) => request.abort())
++  }, [])
+ 
+   // 从内容计划 / 错误认知跳过来时，把带过来的主题直接填进第 1 步（2026-09-21）
+   useEffect(() => {
+@@ -201,7 +222,12 @@
+   }, [scopeQuery])
+ 
+   const generate = async () => {
+-    if (!topic.trim() || !goal || !contentType || !style) return
++    if (!topic.trim() || !goal || !contentType || !style || saving) return
++    const revision = invalidateDraft()
++    const controller = new AbortController()
++    pendingRequests.current.add(controller)
++    setResult(null)
++    setImproveNote(null)
+     setLoading(true)
+     setError(null)
+     setScore(null)
+@@ -229,7 +255,8 @@
+         mode,
+         industry: industry.trim() || null,
+         seo,
+-      })
++      }, controller.signal)
++      if (revision !== draftRevision.current) return
+       if (d.ok === false) {
+         // 严谨模式拒绝生成（未验证声明）：把原因留在第四步，不进结果页
+         setResult(d)
+@@ -248,17 +275,18 @@
+           question: topic.trim(),
+           company_name: subject?.name || null,
+           platform: platformId,
+-        })
+-        setScore(s)
++        }, controller.signal)
++        if (revision === draftRevision.current) setScore(s)
+       } catch {
+         // 评分失败不阻塞结果展示
+       } finally {
+-        setScoring(false)
++        if (revision === draftRevision.current) setScoring(false)
+       }
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : '生成失败')
++      if (revision === draftRevision.current) setError(e instanceof Error ? e.message : '生成失败')
+     } finally {
+-      setLoading(false)
++      pendingRequests.current.delete(controller)
++      if (revision === draftRevision.current) setLoading(false)
+     }
+   }
+ 
+@@ -286,13 +314,16 @@
+ 
+   // 让模型按用户写的要求改这篇（结果替换当前稿；Enter 不提交，只能点按钮）
+   const runImprove = async () => {
+-    if (!result || !improveText.trim() || improving) return
++    if (!result || !improveText.trim() || improving || saving) return
++    const revision = invalidateDraft()
++    const controller = new AbortController()
++    pendingRequests.current.add(controller)
+     setImproving(true)
+     setError(null)
+     setImproveNote(null)
+     setSavedNote(null)
+     try {
+-      const d = await geoPost<{ title?: string; content?: string; context_sources?: ContextSource[]; source_material_ids?: string[]; knowledge_status?: GenResult['knowledge_status']; warnings?: string[]; claim_check?: ClaimCheck | null }>('/content/improve', {
++      const d = await geoPost<{ title?: string; content?: string; context_sources?: ContextSource[]; source_material_ids?: string[]; knowledge_status?: GenResult['knowledge_status']; knowledge_error?: GenResult['knowledge_error']; warnings?: string[]; claim_check?: ClaimCheck | null }>('/content/improve', {
+         title: result.title ?? '',
+         content: result.content ?? '',
+         instruction: improveText.trim(),
+@@ -300,7 +331,8 @@
+         company_name: subject?.name || null,
+         source_material_ids: result.source_material_ids ?? [],
+         context_sources: result.context_sources ?? [],
+-      })
++      }, controller.signal)
++      if (revision !== draftRevision.current) return
+       const nextTitle = (d.title ?? result.title ?? '').trim()
+       const nextContent = (d.content ?? '').trim()
+       if (!nextContent) {
+@@ -315,52 +347,70 @@
+         context_sources: d.context_sources ?? [],
+         source_material_ids: d.source_material_ids ?? [],
+         knowledge_status: d.knowledge_status ?? 'unknown',
++        knowledge_error: d.knowledge_error ?? null,
+         warnings: d.warnings ?? [],
+         claim_check: d.claim_check ?? null,
++        fact_check: null,
++        unverified_facts: [],
++        sections: null,
+       })
+       setScore(null) // 改过之后原来的评分不再对应当前稿子
+       setQuality(null)
+       setImproveNote(`已按你的要求改过（要求：${improveText.trim().slice(0, 40)}）。改后的稿子需要重新评分。`)
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : '改进失败')
++      if (revision === draftRevision.current) setError(e instanceof Error ? e.message : '改进失败')
+     } finally {
+-      setImproving(false)
++      pendingRequests.current.delete(controller)
++      if (revision === draftRevision.current) setImproving(false)
+     }
+   }
+ 
+   // 存进「企业资料 → 内容资产 → 生成内容」（后端 source_type=generated，会切块）
+   const saveToAssets = async () => {
+-    if (!result || saving) return
++    if (!result || saving || improving) return
++    const revision = draftRevision.current
++    const draft = result
+     setSaving(true)
+     setError(null)
+     setSavedNote(null)
+     try {
+       const d = await geoPost<{ item?: { title?: string; chunks?: number }; error?: string }>('/content/save', {
+-        title: result.title ?? '',
+-        content: result.content ?? '',
++        title: draft.title ?? '',
++        content: draft.content ?? '',
+         question: topic.trim(),
+-        context_sources: result.context_sources ?? [],
+-        source_material_ids: result.source_material_ids ?? [],
++        context_sources: draft.context_sources ?? [],
++        source_material_ids: draft.source_material_ids ?? [],
+       })
++      // A body change while the save was in flight makes its response stale.
++      if (revision !== draftRevision.current) return
+       if (d.error) throw new Error(d.error)
+       const item = d.item
+       if (!item) throw new Error('保存没有确认成功，请稍后检查内容资产')
+       setSavedNote(
+-        `已存入企业资料 · 生成内容：${item.title ?? result.title}${item.chunks ? `（切成 ${item.chunks} 段）` : ''}`,
++        `已存入企业资料 · 生成内容：${item.title ?? draft.title}${item.chunks ? `（切成 ${item.chunks} 段）` : ''}`,
+       )
+     } catch (e) {
+-      setError(e instanceof Error ? e.message : '保存失败')
++      if (revision === draftRevision.current) setError(e instanceof Error ? e.message : '保存失败')
+     } finally {
+       setSaving(false)
+     }
+   }
+ 
+   const runQuality = async () => {
+-    if (!result) return
++    if (!result || improving || loading || qualityLoading) return
++    const revision = draftRevision.current
++    const controller = new AbortController()
++    pendingRequests.current.add(controller)
+     setQualityLoading(true)
+-    try { setQuality(await geoPost<QualityResult>('/content/quality', { content: result.content, question: topic, company_name: subject?.name || null })) }
+-    catch (e) { setError(e instanceof Error ? e.message : '内容检查失败') }
+-    finally { setQualityLoading(false) }
++    try {
++      const checked = await geoPost<QualityResult>('/content/quality', { content: result.content, question: topic, company_name: subject?.name || null }, controller.signal)
++      if (revision === draftRevision.current) setQuality(checked)
++    }
++    catch (e) { if (revision === draftRevision.current) setError(e instanceof Error ? e.message : '内容检查失败') }
++    finally {
++      pendingRequests.current.delete(controller)
++      if (revision === draftRevision.current) setQualityLoading(false)
++    }
+   }
+ 
+   const chipClass = (active: boolean) =>
+@@ -630,7 +680,15 @@
+               </div>
+             </div>
+           ) : <div className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2 text-[10.5px] text-[var(--yayu-muted)]">本篇来源未记录。请人工核对正文依据。</div>}
+-          {result.knowledge_status === 'unavailable' ? (
++          {result.knowledge_status === 'not_synced' ? (
++            <p className="text-[10.5px] text-[var(--yayu-muted)]">尚未同步知识库资料，不代表企业没有资料。</p>
++          ) : result.knowledge_status === 'refused' ? (
++            <p className="text-[10.5px] text-[var(--yayu-muted)]">本次知识库读取被拒绝，未使用旧快照补充依据。{result.knowledge_error?.message}</p>
++          ) : result.knowledge_status === 'invalid_response' ? (
++            <p className="text-[10.5px] text-[var(--yayu-muted)]">知识库返回格式有问题，不能视为没有资料。</p>
++          ) : result.knowledge_status === 'partial' ? (
++            <p className="text-[10.5px] text-[var(--yayu-muted)]">本次只读到部分知识库资料，请核对缺失部分。</p>
++          ) : result.knowledge_status === 'unavailable' ? (
+             <p className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2 text-[10.5px] text-[var(--yayu-muted)]">企业知识库这次未读到，以下草稿仅按可用素材写成，请核对。</p>
+           ) : result.knowledge_status === 'empty' ? (
+             <p className="rounded-lg border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2.5 py-2 text-[10.5px] text-[var(--yayu-muted)]">本次未找到相关知识库资料。</p>
+@@ -819,7 +877,7 @@
+               className="mt-1 w-full resize-none rounded-md border border-[var(--yayu-border)] bg-[var(--yayu-input)] px-2 py-1 text-[12px] text-[var(--yayu-foreground)] outline-none focus:border-[var(--yayu-muted)]"
+             />
+             <div className="mt-1 flex flex-wrap items-center gap-1.5">
+-              <Button size="sm" disabled={improving || !improveText.trim()} onClick={() => void runImprove()}>
++              <Button size="sm" disabled={improving || saving || !improveText.trim()} onClick={() => void runImprove()}>
+                 {improving ? '改进中…' : '按此改进'}
+               </Button>
+               <Button variant="secondary" size="sm" disabled={saving} onClick={() => void saveToAssets()}>
+@@ -840,10 +898,10 @@
+             <Button variant="secondary" size="sm" onClick={downloadResult}>
+               <Download className="size-3.5" /> 下载
+             </Button>
+-            <Button variant="secondary" size="sm" disabled={qualityLoading} onClick={() => void runQuality()}>
++            <Button variant="secondary" size="sm" disabled={qualityLoading || improving || loading} onClick={() => void runQuality()}>
+               {qualityLoading ? '内容检查中…' : '检查内容质量'}
+             </Button>
+-            <Button variant="secondary" size="sm" onClick={() => setStep(1)}>
++            <Button variant="secondary" size="sm" disabled={saving} onClick={() => setStep(1)}>
+               再生成一篇
+             </Button>
+           </GeoButtonRow>
+--- before/packages/geo/src/geo-advisor/geo-api.ts
++++ after/packages/geo/src/geo-advisor/geo-api.ts
+@@ -160,9 +160,10 @@
+   return j.data as T
+ }
+ 
+-export async function geoPost<T>(path: string, body?: unknown): Promise<T> {
++export async function geoPost<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+   const r = await fetch(`${geoApiBase}${path}`, {
+     method: 'POST',
++    signal,
+     headers: geoHeaders(),
+     body: body === undefined ? undefined : JSON.stringify(body),
+   })
+--- before/apps/api/tests/test_geo_chunk_channel.py
++++ after/apps/api/tests/test_geo_chunk_channel.py
+@@ -157,8 +157,8 @@
+     assert stored[0]["text"] == "权威给的切块原文"
+ 
+ 
+-def test_list_document_chunks_falls_back_to_geo_snapshot_when_the_gate_denies(monkeypatch):
+-    """门关着（未发布文档缺治理 scope）→ 用 GEO 自己存下的快照，并如实标拒绝过。"""
++def test_list_document_chunks_does_not_regrant_from_snapshot_when_authority_denies(monkeypatch):
++    """当前拒绝不得借历史快照获得本次消费资格，历史记录保持。"""
+     import adapters.eios as eios
+ 
+     _seed_chunks("doc_unpublished", [("chk_1", "检索读到过的那一段正文")])
+@@ -169,15 +169,13 @@
+         )
+ 
+     monkeypatch.setattr(eios, "_request", _deny)
+-    got = _run(eios.list_document_chunks("doc_unpublished"))
+-
+-    assert got["source"] == "geo_snapshot"
+-    assert got["warnings"][0] == "authority_document_chunks_denied"
+-    assert "EIOSKnowledgeError" in got["warnings"][1]
+-    assert "快照" in got["warnings"][1]
+-    assert [i["chunk_id"] for i in got["items"]] == ["chk_1"]
+-    assert got["items"][0]["text"] == "检索读到过的那一段正文"
+-    assert got["items"][0]["authoritative"] is False
++    import pytest
++    with pytest.raises(eios.EIOSKnowledgeError) as caught:
++        _run(eios.list_document_chunks("doc_unpublished"))
++    assert caught.value.code == "NOT_FOUND"
++    assert caught.value.status == 404
++    from app.services.knowledge_snapshot import chunks_for_document
++    assert chunks_for_document("doc_unpublished")[0]["text"] == "检索读到过的那一段正文"
+ 
+ 
+ def test_list_document_chunks_reraises_when_neither_side_has_it(monkeypatch):
+--- before/apps/api/tests/test_kb_init.py
++++ after/apps/api/tests/test_kb_init.py
+@@ -337,12 +337,8 @@
+     assert "publish" not in source
+ 
+ 
+-def test_scan_offers_documents_geo_already_read_but_the_knowledge_base_has_not_published(monkeypatch, tenant):
+-    """Owner 2026-09-21 的发现：两份未发布的 docx，切块检索得到、文档读接口被拒。
+-
+-    「未发布」意味着它不在知识库的文档列表里；但 GEO 已经读到过它的切块并存在自己台账里，
+-    所以同步时它也必须在候选里出现（``listed: false`` 如实标出来处）。
+-    """
++def test_scan_keeps_historical_snapshot_visible_but_not_selectable(monkeypatch, tenant):
++    """历史正文保留供查看，但当前权威列表缺席时不能让它取得同步资格。"""
+     from app.api.v1 import kb_init
+     from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+ 
+@@ -361,16 +357,15 @@
+ 
+     docs = {d["document_id"]: d for d in data["candidates"]["documents"]}
+     assert docs["doc_1"]["listed"] is True
+-    assert docs["doc_unpublished"]["listed"] is False
+-    assert docs["doc_unpublished"]["chunks_stored"] == 1
+-    assert docs["doc_unpublished"]["title"].endswith("纯利润500万.docx")
++    assert "doc_unpublished" not in docs
+     assert [d["document_id"] for d in data["documents_from_snapshot"]] == ["doc_unpublished"]
+-    assert "没发布" in data["snapshot_note"]
+-
+-
+-def test_apply_accepts_a_document_it_only_knows_from_geos_own_chunk_snapshot(monkeypatch, tenant):
+-    """只在自己快照里的未发布文档：不是 unknown，切块也要一并带过来存下。"""
+-    from app.api.v1 import kb_init
++    assert "不属于本次可勾选清单" in data["snapshot_note"]
++
++
++def test_apply_does_not_let_a_historical_snapshot_qualify_a_document(monkeypatch, tenant):
++    """只在旧快照里的文档当前不具备资格，历史正文仍保留。"""
++    from app.api.v1 import kb_init
++    from app.services import knowledge_snapshot
+     from app.services.knowledge_snapshot import chunk_snapshot_payload, record
+ 
+     _patch_kb(monkeypatch, chunks={"doc_unpublished": [{"chunk_id": "chk_1", "text": "读到过的正文"}]})
+@@ -387,10 +382,11 @@
+         kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_unpublished"]))
+     )["data"]
+ 
+-    assert data["unknown_documents"] == []
+-    assert [d["document_id"] for d in data["added"]["documents"]] == ["doc_unpublished"]
+-    assert data["chunks_pulled"] == [{"document_id": "doc_unpublished", "chunks": 1}]
+-    assert data["chunks_total"] == 1
++    assert data["unknown_documents"] == ["doc_unpublished"]
++    assert data["added"]["documents"] == []
++    assert data["chunks_pulled"] == []
++    assert data["chunks_total"] == 0
++    assert knowledge_snapshot.chunks_for_document("doc_unpublished")
+ 
+ 
+ def test_apply_reports_the_chunks_it_brought_over_for_every_picked_document(monkeypatch, tenant):
+@@ -406,8 +402,8 @@
+     )["data"]
+ 
+     assert data["chunks_pulled"] == [
+-        {"document_id": "doc_1", "chunks": 1},
+-        {"document_id": "doc_2", "chunks": 2},
++        {"document_id": "doc_1", "chunks": 1, "status": "ready"},
++        {"document_id": "doc_2", "chunks": 2, "status": "ready"},
+     ]
+     assert data["chunks_total"] == 3
+ 
+@@ -455,7 +451,8 @@
+     data = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1"])))["data"]
+ 
+     assert [d["document_id"] for d in data["added"]["documents"]] == ["doc_1"]
+-    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 0}]
++    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 0, "status": "unreadable",
++                                      "error": {"code": "RuntimeError", "message": "resource is not available in the caller's view"}}]
+     assert data["chunks_total"] == 0
+ 
+ 
+@@ -467,5 +464,43 @@
+               chunks_truncated=True)
+     data = asyncio.run(kb_init.kb_init_apply(kb_init.KbInitApplyIn(documents=["doc_1"])))["data"]
+ 
+-    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 1, "truncated": True}]
++    assert data["chunks_pulled"] == [{"document_id": "doc_1", "chunks": 1, "status": "partial",
++                                      "truncated": True}]
+     assert data["chunks_truncated"] == ["doc_1"]
++
++
++def test_current_authority_refusal_never_falls_back_to_old_chunks(monkeypatch, tenant):
++    from adapters import eios
++    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
++
++    record("chunks", chunk_snapshot_payload([{
++        "document_id": "doc_1", "chunk_id": "old_chunk", "text": "已撤权后的旧正文"
++    }]))
++
++    async def denied(*_args, **_kwargs):
++        raise eios.EIOSKnowledgeError("FORBIDDEN_SCOPE", "当前账号无权读取", 403)
++
++    monkeypatch.setattr(eios, "_request", denied)
++    with pytest.raises(eios.EIOSKnowledgeError) as exc:
++        asyncio.run(eios.list_document_chunks("doc_1"))
++
++    assert exc.value.category == "refused"
++    assert exc.value.code == "FORBIDDEN_SCOPE"
++    assert exc.value.status == 403
++
++
++def test_successful_empty_authority_read_does_not_fill_from_old_chunks(monkeypatch, tenant):
++    from adapters import eios
++    from app.services.knowledge_snapshot import chunk_snapshot_payload, record
++
++    record("chunks", chunk_snapshot_payload([{
++        "document_id": "doc_1", "chunk_id": "old_chunk", "text": "历史正文"
++    }]))
++
++    async def empty(*_args, **_kwargs):
++        return {"items": [], "next_cursor": None}
++
++    monkeypatch.setattr(eios, "_request", empty)
++    got = asyncio.run(eios.list_document_chunks("doc_1"))
++    assert got["items"] == []
++    assert got["source"] == "knowledge"
+--- before/apps/api/tests/test_geo_knowledge_consumer.py
++++ after/apps/api/tests/test_geo_knowledge_consumer.py
+@@ -121,6 +121,26 @@
+     assert summary["authoritative"] is False
+ 
+ 
++def test_snapshot_read_status_separates_not_synced_empty_and_partial(snapshot_db):
++    from app.services import knowledge_snapshot as snap
++
++    assert snap.read_status("documents")["status"] == "not_synced"
++    snap.record("documents", {"contract": "eios.knowledge_documents", "count": 0, "items": []})
++    assert snap.read_status("documents")["status"] == "empty"
++    snap.record("chunks", {"contract": "geo.knowledge_chunks/v1", "items": [{"chunk_id": "c1"}],
++                           "truncated": True})
++    assert snap.read_status("chunks")["status"] == "partial"
++
++
++def test_local_search_does_not_call_an_unsynced_snapshot_a_valid_empty_result(snapshot_db):
++    from adapters.eios import local_search
++    from app.services import knowledge_snapshot as snap
++
++    assert local_search("anything")["status"] == "not_synced"
++    snap.record("objects", {"contract": "eios.knowledge_object_list", "count": 0, "items": []})
++    assert local_search("anything")["status"] == "empty"
++
++
+ # ── 3. 顾问查 GEO 的只读交接面 ──────────────────────────────────
+ 
+ 
+--- before/apps/api/tests/test_content_budget.py
++++ after/apps/api/tests/test_content_budget.py
+@@ -0,0 +1,148 @@
++"""Isolated checks for GEO's existing content-call wait budget."""
++import asyncio
++import time
++import uuid
++
++import pytest
++
++
++def _run(coro):
++    return asyncio.run(coro)
++
++
++@pytest.fixture()
++def tenant():
++    from app.models.geo_models import engine, init_db
++    from app.services.store import set_tenant
++
++    init_db()
++    set_tenant(f"tenant_budget_{uuid.uuid4().hex[:8]}")
++    try:
++        yield
++    finally:
++        set_tenant("tenant_corp_01")
++        engine.dispose()
++
++
++def test_bounded_call_stops_waiting_when_deadline_expires(monkeypatch):
++    import adapters.llm as llm
++
++    monkeypatch.setattr(llm, "_CONTENT_CALL_BUDGET_SECONDS", 0.02)
++    cancelled = asyncio.Event()
++
++    async def work():
++        try:
++            await asyncio.sleep(1)
++            return "too late"
++        finally:
++            cancelled.set()
++
++    with pytest.raises(llm.LLMError) as caught:
++        _run(llm.bounded_content_call(work))
++    assert caught.value.code == "CONTENT_DEADLINE_EXCEEDED"
++    assert cancelled.is_set()
++
++
++def test_task_cancellation_stops_wait_and_cancels_async_work(monkeypatch):
++    import adapters.llm as llm
++
++    monkeypatch.setattr(llm, "_CONTENT_CALL_BUDGET_SECONDS", 1)
++    cancelled = asyncio.Event()
++
++    async def work():
++        try:
++            await asyncio.sleep(1)
++        finally:
++            cancelled.set()
++
++    async def cancel_call():
++        task = asyncio.create_task(llm.bounded_content_call(work))
++        await asyncio.sleep(0)
++        task.cancel()
++        with pytest.raises(asyncio.CancelledError):
++            await task
++
++    _run(cancel_call())
++    assert cancelled.is_set()
++
++
++def test_improve_source_check_is_inside_the_same_budget(monkeypatch):
++    import adapters.llm as llm
++    import app.api.v1.content as api
++
++    monkeypatch.setattr(llm, "_CONTENT_CALL_BUDGET_SECONDS", 0.01)
++    invoked_model = False
++
++    async def slow_source_check(_req):
++        await asyncio.sleep(0.03)
++        return [], []
++
++    async def model_call(**_kwargs):
++        nonlocal invoked_model
++        invoked_model = True
++        return {"content": "改稿"}
++
++    monkeypatch.setattr(api, "_validate_saved_sources", slow_source_check)
++    import services.content as service
++    monkeypatch.setattr(service, "improve", model_call)
++
++    result = _run(api.improve(api.ImproveIn(
++        content="原稿", instruction="缩短", context_sources=[],
++    )))
++    assert result["error"]["code"] == "CONTENT_DEADLINE_EXCEEDED"
++    assert invoked_model is False
++
++
++def test_late_sync_model_reply_is_not_returned_as_success(monkeypatch):
++    import adapters.llm as llm
++
++    monkeypatch.setattr(llm, "require_outbound_network", lambda _name: None)
++    monkeypatch.setattr(llm, "_invoke_sync", lambda *_args: (time.sleep(0.06), "late success")[1])
++
++    async def call():
++        with llm.call_budget(0.01):
++            return await llm.chat("prompt")
++
++    with pytest.raises(llm.LLMError) as caught:
++        _run(call())
++    assert caught.value.code == "CONTENT_DEADLINE_EXCEEDED"
++    # The synchronous worker may finish in its thread, but its result is discarded.
++    time.sleep(0.08)
++
++
++def test_transient_retry_exhaustion_obeys_deadline(monkeypatch, tenant):
++    import adapters.llm as llm
++    import services.content as content
++
++    monkeypatch.setattr(llm, "_CONTENT_CALL_BUDGET_SECONDS", 0.01)
++    calls = 0
++
++    async def context(**_kwargs):
++        return {
++            "company_name": "示例公司", "materials": [], "context_sources": [],
++            "source_material_ids": [], "knowledge_status": "ready", "warnings": [],
++            "faq_assets": [], "other_assets": [], "pool_questions": [], "signals": {},
++            "uploaded_sources": [],
++        }
++
++    async def fact_gate(_question):
++        return {"unverified": []}
++
++    async def transient_chat(*_args, **_kwargs):
++        nonlocal calls
++        calls += 1
++        await asyncio.sleep(0.02)
++        raise llm.LLMError("RATE_LIMITED", "busy")
++
++    async def no_delay(_seconds):
++        return None
++
++    monkeypatch.setattr(content, "build_context", context)
++    monkeypatch.setattr(content, "_fact_gate", fact_gate)
++    monkeypatch.setattr(content, "chat", transient_chat)
++    monkeypatch.setattr(asyncio, "sleep", no_delay)
++
++    with llm.call_budget(0.01), pytest.raises(llm.LLMError) as caught:
++        _run(content.generate(question="介绍示例公司"))
++    assert caught.value.code == "CONTENT_DEADLINE_EXCEEDED"
++    assert calls == 1
+--- before/apps/api/tests/test_content_read_status.py
++++ after/apps/api/tests/test_content_read_status.py
+@@ -0,0 +1,57 @@
++"""Content must preserve read failures and never regrant rejected cached sources."""
++import asyncio
++import pytest
++
++
++@pytest.mark.parametrize('code,http,expected', [
++    ('FORBIDDEN_SCOPE',403,'refused'),
++    ('KNOWLEDGE_UNAVAILABLE',503,'unavailable'),
++    ('KNOWLEDGE_INVALID_RESPONSE',502,'invalid_response'),
++])
++def test_context_preserves_named_read_failure(monkeypatch, code, http, expected):
++    import services.content as content
++    from adapters.eios import EIOSKnowledgeError
++    async def facts(*args):
++        content._fact_context_status.set(('empty', []))
++        return []
++    async def search(*args, **kwargs):
++        raise EIOSKnowledgeError(code, 'controlled failure', http)
++    seen=[]
++    def snapshots(*args, **kwargs):
++        seen.append(True)
++        return ['- 文档切块《旧》：旧权限下读到的正文']
++    monkeypatch.setattr(content, '_official_fact_lines', facts)
++    monkeypatch.setattr(content, 'search_knowledge', search)
++    monkeypatch.setattr(content, '_chunk_lines_from_snapshot', snapshots)
++    result=asyncio.run(content.build_context(question='企业介绍', company_name='隔离企业'))
++    assert result['knowledge_status']==expected
++    assert result['knowledge_error']['code']==code
++    assert result['knowledge_error']['status']==http
++    if expected=='refused':
++        assert not seen
++        assert not any(s['items'] for s in result['context_sources'] if s['kind'] in {'enterprise_fact','document_chunk','entity'})
++
++
++@pytest.mark.parametrize('state', ['not_synced','empty','partial'])
++def test_context_distinguishes_snapshot_read_states(monkeypatch, state):
++    import services.content as content
++    async def facts(*args):
++        content._fact_context_status.set(('empty', []))
++        return []
++    async def search(*args, **kwargs):
++        return {'hits': [], 'layers': ['governed'], 'status':state}
++    monkeypatch.setattr(content, '_official_fact_lines', facts)
++    monkeypatch.setattr(content, 'search_knowledge', search)
++    monkeypatch.setattr(content, '_chunk_lines_from_snapshot', lambda *a,**k: [])
++    result=asyncio.run(content.build_context(question='企业介绍',company_name='隔离企业'))
++    assert result['knowledge_status']==state
++
++
++def test_local_search_preserves_partial_snapshot(monkeypatch):
++    from adapters.eios import local_search
++    from app.services import knowledge_snapshot
++    monkeypatch.setattr(knowledge_snapshot, 'read_status', lambda kind: {'status': 'partial'})
++    monkeypatch.setattr(knowledge_snapshot, 'all_chunks', lambda: [])
++    monkeypatch.setattr(knowledge_snapshot, 'objects', lambda: [])
++    result = local_search('隔离企业')
++    assert result['status'] == 'partial'
+--- before/apps/api/tests/test_content_cold_read.py
++++ after/apps/api/tests/test_content_cold_read.py
+@@ -0,0 +1,45 @@
++"""Saved GEO draft excerpts survive two fresh reader processes, using a task DB."""
++import asyncio
++import hashlib
++import json
++import os
++from pathlib import Path
++import subprocess
++import sys
++
++
++def test_saved_draft_and_sources_survive_fresh_reader_processes():
++    from app.models.geo_models import init_db
++    from app.services.store import set_tenant
++    from app.api.v1.content import SaveIn, save
++    from app.api.v1.knowledge import MaterialIn, add_material
++    init_db()
++    set_tenant('cold_read_owner')
++    try:
++        item=asyncio.run(add_material(MaterialIn(title='隔离资料',content='允许选择面料。',source_type='file')))['data']['item']
++        chunk=item['text_chunks'][0]
++        sources=[{'kind':'uploaded_material','label':'用户上传资料（相关原文选段，未经独立核验）','items':[{
++            'id':item['id'],'title':item['title'],'source_type':'file','chunk_id':chunk['id'],
++            'chunk_ordinal':chunk['ordinal'],'content':chunk['text'],
++            'source_digest':hashlib.sha256(chunk['text'].encode()).hexdigest()}]}]
++        saved=asyncio.run(save(SaveIn(content='允许选择面料。',source_material_ids=[item['id']],context_sources=sources)))
++        assert saved['ok']
++        draft_id=saved['data']['item']['id']
++        env=dict(os.environ)
++        root=Path(__file__).resolve().parents[3]
++        env['PYTHONPATH']=os.pathsep.join([str(root/'apps/api'),str(root),env.get('PYTHONPATH','')])
++        script='''import asyncio,json,sys
++from app.services.store import set_tenant
++from app.api.v1.knowledge import get_material
++set_tenant('cold_read_owner')
++print(json.dumps(asyncio.run(get_material(sys.argv[1])),ensure_ascii=False))
++'''
++        for _ in range(2):
++            body=json.loads(subprocess.check_output([sys.executable,'-c',script,draft_id],env=env,text=True,timeout=10))
++            assert body['ok']
++            read=body['data']['item']
++            assert read['content']=='允许选择面料。'
++            assert read['context_sources']==sources
++            assert read['source_material_ids']==[item['id']]
++    finally:
++        set_tenant('tenant_corp_01')

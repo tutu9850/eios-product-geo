@@ -1,0 +1,17 @@
+[
+  {
+    "url": "http://127.0.0.1:8090/health",
+    "error": "HTTPError",
+    "status": 404
+  },
+  {
+    "url": "http://127.0.0.1:8090/api/product/geo/health",
+    "error": "HTTPError",
+    "status": 401
+  },
+  {
+    "url": "http://127.0.0.1:8091/api/product/geo/health",
+    "error": "URLError",
+    "status": null
+  }
+]

@@ -1,0 +1,422 @@
+{
+  "current": [
+    {
+      "key": "content-read-budget",
+      "message": "fix(content): bound model calls and preserve knowledge read failure states",
+      "paths": [
+        "adapters/llm.py",
+        "adapters/model_entry.py",
+        "apps/api/app/services/knowledge_snapshot.py",
+        "apps/api/tests/test_content_budget.py",
+        "apps/api/tests/test_content_cold_read.py",
+        "apps/api/tests/test_content_read_status.py",
+        "apps/api/tests/test_geo_chunk_channel.py",
+        "apps/api/tests/test_geo_knowledge_consumer.py",
+        "adapters/eios/__init__.py",
+        "services/content/__init__.py",
+        "apps/api/app/api/v1/content.py"
+      ],
+      "index_preimages": {
+        "adapters/eios/__init__.py": "/Users/tutu/eios-product-geo/docs/audits/2026-10-11-geo-consumption-plan/backend-before/adapters/eios/__init__.py",
+        "services/content/__init__.py": "/Users/tutu/eios-product-geo/docs/audits/2026-10-11-geo-consumption-plan/backend-before/services/content/__init__.py",
+        "apps/api/app/api/v1/content.py": "/Users/tutu/eios-product-geo/docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/content.py"
+      }
+    },
+    {
+      "key": "monitor-intelligence",
+      "message": "fix(geo): preserve scoped monitor analytics and tenant-aware parsing",
+      "paths": [
+        "apps/api/app/api/v1/battle.py",
+        "apps/api/app/api/v1/cognition.py",
+        "apps/api/app/api/v1/intelligence.py",
+        "apps/api/app/api/v1/monitor.py",
+        "apps/api/app/api/v1/stats.py",
+        "services/intelligence/adapter.py",
+        "services/intelligence/aggregator.py",
+        "services/intelligence/cognition.py",
+        "services/intelligence/prompts.py",
+        "services/intelligence/queue.py",
+        "services/intelligence/repo.py",
+        "apps/api/tests/test_geo_answer_denominator_audit.py",
+        "apps/api/tests/test_geo_monitor_audit_remediation.py",
+        "apps/api/tests/test_geo_stats.py",
+        "apps/api/tests/test_intelligence_queue_tenant.py",
+        "apps/api/tests/test_intelligence_subject_scope.py",
+        "apps/api/tests/test_monitor_analysis_scope.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "profile-planning",
+      "message": "fix(geo): scope profile and growth planning to selected subjects",
+      "paths": [
+        "apps/api/app/api/v1/distill.py",
+        "apps/api/app/api/v1/enterprise_profile.py",
+        "apps/api/app/api/v1/kb_init.py",
+        "apps/api/app/services/company_profile.py",
+        "apps/api/tests/test_geo_full_report.py",
+        "apps/api/tests/test_kb_init.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "formal-content",
+      "message": "feat(content): preserve formal fact provenance and reject unbound readers",
+      "paths": [
+        "adapters/eios/__init__.py",
+        "services/content/__init__.py",
+        "apps/api/app/api/v1/content.py",
+        "apps/api/app/api/v1/knowledge.py",
+        "apps/api/tests/fixtures/formal_content/attributes.json",
+        "apps/api/tests/fixtures/formal_content/relations.json",
+        "apps/api/tests/fixtures/formal_content/evidence.json",
+        "apps/api/tests/fixtures/formal_content/object.json",
+        "apps/api/tests/fixtures/formal_content/objects.json",
+        "apps/api/tests/test_geo_formal_content.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "ui-host-demo",
+      "message": "feat(ui): preserve guided navigation and explicit demo data boundaries",
+      "paths": [
+        "packages/geo/src/main.tsx",
+        "packages/geo/src/index.css",
+        "packages/geo/vite.config.ts",
+        "packages/geo/src/geo-advisor/shared.tsx",
+        "packages/geo/src/geo-advisor/index.tsx",
+        "packages/geo/src/geo-advisor/geo-api.ts",
+        "packages/geo/src/geo-advisor/geo-monitor-subject.tsx",
+        "packages/geo/src/geo-advisor/GeoProductGuide.tsx",
+        "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx",
+        "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx",
+        "packages/geo/src/geo-advisor/demo-fixtures.ts",
+        "packages/geo/src/geo-advisor/demo-monitor-samples.ts",
+        "packages/geo/tests/demo-monitor.test.mjs",
+        "package.json"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "ui-monitor-insight",
+      "message": "feat(ui): preserve monitor evidence and insight workspaces",
+      "paths": [
+        "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+        "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+        "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+        "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+        "packages/geo/src/geo-advisor/GeoCognitionMap.tsx",
+        "packages/geo/src/geo-advisor/GeoBattleCard.tsx",
+        "packages/geo/src/geo-advisor/GeoReportCard.tsx"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "ui-content-growth",
+      "message": "feat(ui): preserve profile and content action flows",
+      "paths": [
+        "packages/geo/src/geo-advisor/AutoConfigFlow.tsx",
+        "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx",
+        "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx",
+        "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx",
+        "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+        "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoGapsListCard.tsx",
+        "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx",
+        "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoPlansListCard.tsx",
+        "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "dev-runtime",
+      "message": "chore(dev): preserve explicit Foundation identity configuration",
+      "paths": [
+        "scripts/run_dev.sh"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "docs-evidence",
+      "message": "docs(geo): preserve governance, delivery evidence and audit findings",
+      "paths": [
+        "docs/audits/geo-product-health-check-2026-09-26.md",
+        "docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md",
+        "docs/architecture/GEO_PRODUCT_CONSTITUTION_V1.md",
+        "docs/GEO_PRODUCT_DOOR_MATRIX.md",
+        "docs/audits/2026-10-11-geo-consumption-plan/preservation-check.json",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/cognition-final.png",
+        "AGENTS.md",
+        "docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/content.py",
+        "docs/audits/2026-10-12-geo-real-wiring/door-check.json",
+        "docs/audits/2026-10-12-geo-real-wiring/probe.py",
+        "docs/decisions/2026-10-11-geo-documentation-alignment.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/generated.png",
+        "docs/engineering/GEO-WORKTREE-GROUPS-2026-10-08.json",
+        "docs/audits/2026-10-12-geo-real-wiring/probe-result.json",
+        "docs/audits/geo-shared-update-2026-10-08/shared-page.png",
+        "docs/decisions/2026-10-11-geo-backend-authorization.md",
+        "docs/audits/2026-10-12-geo-demo-ui/fact-check-visible.txt",
+        "docs/audits/2026-10-12-geo-demo-ui/unknown-visible.txt",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/citations.png",
+        "docs/engineering/CARD-GEO-CONTENT-01.md",
+        "docs/audits/2026-10-12-geo-demo-ui/analysis-snapshot.txt",
+        "docs/audits/2026-10-12-geo-demo-ui/browser-check.json",
+        "docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/knowledge.py",
+        "docs/audits/geo-content-fleet-2026-10-08/产品FAQ-待核验样本.md",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/fact-check.png",
+        "docs/audits/2026-10-12-geo-demo-ui/sha256.json",
+        "docs/audits/2026-10-11-geo-consumption-plan/backend-before/adapters/eios/__init__.py",
+        "docs/audits/2026-10-11-geo-consumption-plan/backend-before/services/content/__init__.py",
+        "docs/audits/2026-10-12-geo-real-wiring/live-probe.json",
+        "docs/audits/2026-10-12-geo-demo-ui/answers-snapshot.txt",
+        "docs/audits/geo-content-fleet-2026-10-08/REPORT.md",
+        "docs/audits/2026-10-11-geo-docs-alignment/validation.txt",
+        "docs/audits/geo-content-fleet-2026-10-08/reopened.png",
+        "docs/decisions/2026-10-12-geo-demo-ui-authorization.md",
+        "docs/audits/2026-10-11-geo-consumption-plan/status-before.txt",
+        "docs/audits/geo-local-seams-2026-10-09/REPORT.md",
+        "docs/audits/2026-10-12-geo-demo-ui/sources-visible.txt",
+        "docs/audits/geo-content-fleet-2026-10-08/evidence-summary.json",
+        "docs/engineering/GEO-PRODUCT-RESTRUCTURE-2026-10-12.md",
+        "docs/archive/2026-10/root/CURRENT_STATE-before-governance-2026-10-11.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/品牌介绍-测试草稿.md",
+        "docs/audits/geo-local-seams-2026-10-09/status-before.txt",
+        "CURRENT_STATE.md",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/actions.png",
+        "docs/audits/geo-rewrite-seam-2026-10-08/REPORT.md",
+        "docs/audits/2026-10-12-geo-demo-ui/competitor-visible.txt",
+        "docs/audits/geo-local-seams-2026-10-09/selected-source.tar.gz",
+        "docs/archive/INDEX.md",
+        "docs/audits/2026-10-11-geo-consumption-plan/backend-round.patch",
+        "docs/audits/2026-10-12-geo-demo-ui/功能接口清单.json",
+        "docs/audits/2026-10-12-geo-demo-ui/sentiment-visible.txt",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/answers-expanded.png",
+        "docs/audits/geo-content-walkthrough-2026-10-08/reopened.png",
+        "docs/audits/geo-content-fleet-2026-10-08/品牌介绍-改稿样本.md",
+        "docs/audits/2026-10-11-geo-docs-alignment/报告.md",
+        "docs/audits/2026-10-12-geo-demo-ui/samples.json",
+        "docs/audits/geo-local-seams-2026-10-09/manifest.json",
+        "docs/audits/geo-local-seams-2026-10-09/round.patch",
+        "docs/audits/geo-shared-update-2026-10-08/evidence-summary.json",
+        "docs/audits/2026-10-11-geo-consumption-plan/方案.md",
+        "docs/audits/2026-10-12-geo-demo-ui/industry-visible.txt",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/profile-final.png",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/insight-evidence.png",
+        "docs/audits/geo-content-walkthrough-2026-10-08/evidence-summary.json",
+        "docs/audits/2026-10-12-geo-demo-ui/profile-final-visible.txt",
+        "docs/architecture/GEO_ANALYSIS_INTEGRATION_V1.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/产品FAQ-问题样稿.md",
+        "docs/audits/2026-10-12-geo-real-wiring/报告.md",
+        "docs/audits/geo-shared-update-2026-10-08/REPORT.md",
+        "docs/audits/2026-10-12-geo-demo-ui/manifest.json",
+        "README.md",
+        "docs/audits/2026-10-11-geo-docs-alignment/source-manifest.json",
+        "docs/audits/2026-10-12-geo-real-wiring/verification.txt",
+        "docs/audits/geo-local-seams-2026-10-09/ui-timing-check.cjs",
+        "docs/audits/geo-content-fleet-2026-10-08/verification.txt",
+        "docs/audits/2026-10-12-geo-demo-ui/backend-aggregate.py",
+        "docs/audits/2026-10-12-geo-demo-ui/round.patch",
+        "docs/audits/2026-10-12-geo-demo-ui/报告.md",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/analysis.png",
+        "docs/README.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/REPORT.md",
+        "docs/audits/2026-10-11-geo-consumption-plan/status-after.txt",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/gaps.png",
+        "docs/audits/2026-10-12-geo-demo-ui/analysis-sources-visible.txt",
+        "docs/audits/2026-10-12-geo-real-wiring/source-baseline.json",
+        "docs/audits/2026-10-12-geo-demo-ui/market-visible.txt",
+        "docs/audits/2026-10-11-geo-consumption-plan/后端报告.md",
+        "docs/audits/2026-10-11-geo-consumption-plan/backend-manifest.json",
+        "docs/audits/2026-10-12-geo-real-wiring/sha256.json",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/overview-final.png",
+        "docs/audits/2026-10-12-geo-demo-ui/screenshots/market.png",
+        "docs/audits/geo-content-walkthrough-2026-10-08/upload.png"
+      ],
+      "index_preimages": {}
+    }
+  ],
+  "package": [
+    {
+      "key": "identity-filter",
+      "message": "fix(identity): reject template phrases during company detection",
+      "paths": [
+        "services/company_identity.py",
+        "apps/api/app/api/v1/onboard.py",
+        "apps/api/tests/test_geo_company_identity.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "content-source-docx",
+      "message": "fix(content): preserve selected draft sources and DOCX table text",
+      "paths": [
+        "services/content/__init__.py",
+        "apps/api/app/api/v1/content.py",
+        "apps/api/app/api/v1/knowledge.py",
+        "services/content/claim_check.py",
+        "apps/api/tests/test_geo_chunk_retrieval.py",
+        "apps/api/tests/test_geo_content_improve_save.py",
+        "apps/api/tests/test_geo_content_provenance.py",
+        "apps/api/tests/test_geo_content_source_context.py",
+        "apps/api/tests/test_geo_docx_upload_tables.py",
+        "apps/api/tests/test_geo_fact_consumption.py",
+        "apps/api/tests/test_geo_own_materials.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "monitor-intelligence",
+      "message": "fix(geo): preserve scoped monitor analytics and tenant-aware parsing",
+      "paths": [
+        "apps/api/app/api/v1/battle.py",
+        "apps/api/app/api/v1/cognition.py",
+        "apps/api/app/api/v1/intelligence.py",
+        "apps/api/app/api/v1/monitor.py",
+        "apps/api/app/api/v1/stats.py",
+        "services/intelligence/adapter.py",
+        "services/intelligence/aggregator.py",
+        "services/intelligence/cognition.py",
+        "services/intelligence/prompts.py",
+        "services/intelligence/queue.py",
+        "services/intelligence/repo.py",
+        "apps/api/tests/test_geo_answer_denominator_audit.py",
+        "apps/api/tests/test_geo_monitor_audit_remediation.py",
+        "apps/api/tests/test_geo_stats.py",
+        "apps/api/tests/test_intelligence_queue_tenant.py",
+        "apps/api/tests/test_intelligence_subject_scope.py",
+        "apps/api/tests/test_monitor_analysis_scope.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "profile-planning",
+      "message": "fix(geo): scope profile and growth planning to selected subjects",
+      "paths": [
+        "apps/api/app/api/v1/distill.py",
+        "apps/api/app/api/v1/enterprise_profile.py",
+        "apps/api/app/api/v1/kb_init.py",
+        "apps/api/app/services/company_profile.py",
+        "apps/api/tests/test_geo_full_report.py",
+        "apps/api/tests/test_kb_init.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "ui-host-demo",
+      "message": "feat(ui): preserve guided navigation and explicit demo data boundaries",
+      "paths": [
+        "packages/geo/src/main.tsx",
+        "packages/geo/src/index.css",
+        "packages/geo/vite.config.ts",
+        "packages/geo/src/geo-advisor/shared.tsx",
+        "packages/geo/src/geo-advisor/index.tsx",
+        "packages/geo/src/geo-advisor/geo-api.ts",
+        "packages/geo/src/geo-advisor/geo-monitor-subject.tsx",
+        "packages/geo/src/geo-advisor/GeoProductGuide.tsx",
+        "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx",
+        "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx",
+        "packages/geo/src/geo-advisor/demo-fixtures.ts"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "ui-monitor-insight",
+      "message": "feat(ui): preserve monitor evidence and insight workspaces",
+      "paths": [
+        "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+        "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+        "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+        "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+        "packages/geo/src/geo-advisor/GeoCognitionMap.tsx",
+        "packages/geo/src/geo-advisor/GeoBattleCard.tsx",
+        "packages/geo/src/geo-advisor/GeoReportCard.tsx"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "ui-content-growth",
+      "message": "feat(ui): preserve profile and content action flows",
+      "paths": [
+        "packages/geo/src/geo-advisor/AutoConfigFlow.tsx",
+        "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx",
+        "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx",
+        "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx",
+        "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+        "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoGapsListCard.tsx",
+        "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx",
+        "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoPlansListCard.tsx",
+        "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx",
+        "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "package-runtime",
+      "message": "build(geo): preserve source-protected product packaging inputs",
+      "paths": [
+        ".dockerignore",
+        "docker/Dockerfile",
+        "docker/Dockerfile.release",
+        "docker/requirements.lock",
+        "docker/serve.py",
+        "apps/api/tests/test_geo_package_entry.py"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "dev-runtime",
+      "message": "chore(dev): preserve explicit Foundation identity configuration",
+      "paths": [
+        "scripts/run_dev.sh"
+      ],
+      "index_preimages": {}
+    },
+    {
+      "key": "docs-evidence",
+      "message": "docs(geo): preserve governance, delivery evidence and audit findings",
+      "paths": [
+        "docs/audits/geo-product-health-check-2026-09-26.md",
+        "docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/reopened.png",
+        "docs/audits/geo-content-fleet-2026-10-08/品牌介绍-改稿样本.md",
+        "docs/architecture/GEO_PRODUCT_CONSTITUTION_V1.md",
+        "docs/GEO_PRODUCT_DOOR_MATRIX.md",
+        "AGENTS.md",
+        "docs/audits/geo-shared-update-2026-10-08/evidence-summary.json",
+        "docs/deliveries/笔革家居首批内容审核稿20261008/README.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/generated.png",
+        "docs/audits/geo-shared-update-2026-10-08/shared-page.png",
+        "docs/audits/geo-content-walkthrough-2026-10-08/evidence-summary.json",
+        "docs/architecture/GEO_ANALYSIS_INTEGRATION_V1.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/产品FAQ-问题样稿.md",
+        "docs/engineering/CARD-GEO-CONTENT-01.md",
+        "docs/audits/geo-shared-update-2026-10-08/REPORT.md",
+        "README.md",
+        "docs/audits/geo-content-fleet-2026-10-08/产品FAQ-待核验样本.md",
+        "docs/engineering/CARD-GEO-CONTENT-DELIVERY-02.md",
+        "docs/audits/geo-content-fleet-2026-10-08/verification.txt",
+        "docs/audits/geo-content-fleet-2026-10-08/REPORT.md",
+        "docs/deliveries/笔革家居首批内容审核稿20261008/交付记录.json",
+        "docs/audits/geo-content-fleet-2026-10-08/reopened.png",
+        "docs/audits/geo-content-walkthrough-2026-10-08/REPORT.md",
+        "docs/deliveries/笔革家居首批内容审核稿20261008/04资料对照及企业确认清单.md",
+        "docs/audits/geo-content-fleet-2026-10-08/evidence-summary.json",
+        "docs/deliveries/笔革家居首批内容审核稿20261008/02全案定制FAQ.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/品牌介绍-测试草稿.md",
+        "docs/deliveries/笔革家居首批内容审核稿20261008/01品牌介绍.md",
+        "CURRENT_STATE.md",
+        "docs/audits/geo-rewrite-seam-2026-10-08/REPORT.md",
+        "docs/deliveries/笔革家居首批内容审核稿20261008/03售后说明.md",
+        "docs/audits/geo-content-walkthrough-2026-10-08/upload.png"
+      ],
+      "index_preimages": {}
+    }
+  ]
+}

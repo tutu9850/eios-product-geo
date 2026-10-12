@@ -1,0 +1,85 @@
+- banner
+  - StaticText "隔离 UI 自测 · 测试 Host · 无真实产品 API"
+- Iframe [ref=e1]
+  - main
+    - sectionheader
+      - navigation "GEO 功能" [ref=e2]
+        - button "经营总览" [ref=e8]
+          - StaticText "经营总览"
+        - button "企业资料" [ref=e9]
+          - StaticText "企业资料"
+        - button "国产模型监测" [ref=e10]
+          - StaticText "国产模型监测"
+        - button "认知洞察" [ref=e11]
+          - StaticText "认知洞察"
+        - button "增长行动" [ref=e12]
+          - StaticText "增长行动"
+        - button "市场情报" [ref=e13]
+          - StaticText "市场情报"
+      - button "打开 GEO 使用说明" [ref=e3]
+        - StaticText "怎么使用"
+      - button "演示数据（仅用于内测样例）：已开启" [ref=e4]
+        - StaticText "演示数据 "
+        - StaticText "开"
+      - button "高级工具" [ref=e5]
+        - StaticText "高级工具"
+      - StaticText "已连接"
+    - generic
+      - sectionheader
+        - StaticText "模型监测"
+        - heading "国产大模型监测" [level=1, ref=e26]
+        - paragraph
+          - StaticText "选择要持续观察的品牌，运行一轮真实客户问题，并核对模型原话。"
+        - emphasis
+          - StaticText "仅监测国产大模型"
+      - navigation "页内功能" [ref=e25]
+        - button "监测工作台" [ref=e27]
+        - button "模型回答" [ref=e28]
+        - button "监测分析" [ref=e29]
+        - button "模型对比" [ref=e30]
+      - note
+        - StaticText "你现在在"
+        - StaticText "模型监测"
+        - paragraph
+          - StaticText "把客户问题交给国产模型，记录模型原话和主体是否被正确识别。"
+        - button "完成一轮监测后看认知差距 →" [ref=e31]
+          - StaticText "完成一轮监测后看认知差距 →"
+      - StaticText "模型回答"
+      - StaticText "内测演示数据已开启"
+      - StaticText "内测演示数据 · 虚构企业与回答；解析、核验和行动为模拟结果，不进入正式统计或证据链"
+      - paragraph
+        - StaticText "3 轮 × 3 个问题 × 4 个模型，共 36 个槽位：33 条回答、3 条失败；3 条主体未知。总览与监测分析从本页同一套原话计算。"
+      - button "原始回答" [ref=e35]
+      - button "评价语气" [ref=e36]
+      - button "是否引用内容" [ref=e37]
+      - button "回答来自哪里" [ref=e38]
+      - paragraph
+        - StaticText "这里保存模型的原始回答：每组对应一个监测问题在一批国产模型中的回答。先核对“它说了什么、说的是不是这家企业”，再把可靠结果带入认知洞察；原始回答本身不等于企业事实。"
+      - generic
+        - StaticText "模型怎样提到你 · 原始观察，未核实为企业事实"
+      - StaticText "成都适合年轻家庭的家居品牌有哪些？"
+      - StaticText "DeepSeek"
+      - paragraph
+        - StaticText "云栖示例家居提供空间规划、沙发与柜类组合建议，推荐给需要组合规划的家庭。[演示来源](https://example.invalid/brand)仅为虚构资料，选择前仍需确认预算和户型。"
+      - StaticText "成都适合年轻家庭的家居品牌有哪些？"
+      - StaticText "Kimi"
+      - paragraph
+        - StaticText "云栖示例家居提供空间规划、沙发与柜类组合建议，推荐给需要组合规划的家庭。[演示来源](https://example.invalid/brand)仅为虚构资料，选择前仍需确认预算和户型。"
+      - StaticText "成都适合年轻家庭的家居品牌有哪些？"
+      - StaticText "豆包"
+      - paragraph
+        - StaticText "云栖示例家居提供空间规划、沙发与柜类组合建议，推荐给需要组合规划的家庭。[演示来源](https://example.invalid/brand)仅为虚构资料，选择前仍需确认预算和户型。"
+      - paragraph
+        - StaticText "待补依据：案例预算与结果、统一交付时限——演示资料还不足以支持确定结论"
+      - button "全部" [ref=e39]
+      - button "企业品牌" [ref=e40]
+      - group
+        - DisclosureTriangle "统计范围与判断说明 展开" [expanded=false]
+          - StaticText "统计范围与判断说明"
+          - StaticText "展开"
+      - group
+        - DisclosureTriangle "原始回答 9 组问题回答，默认只看摘要 展开" [expanded=false]
+          - StaticText "原始回答"
+          - generic
+            - StaticText "9 组问题回答，默认只看摘要"
+          - StaticText "展开"

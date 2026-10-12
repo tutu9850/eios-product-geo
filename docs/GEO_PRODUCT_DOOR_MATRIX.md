@@ -224,23 +224,15 @@ fail-closed 成 invalid response，绝不把一页错误页当文件递给浏览
 
 ## 3. 已知差异与下一卡必须处理的事
 
-1. **标准页面在无 Host 握手时回落到老 BFF 基址**（2026-09-22 复核，仍成立）
-   `geo-advisor/frontend/geo-api.ts` 默认 `geoApiBase = '/api/geo/api/v1'`，
-   只有收到 `eios.product_host/v1` 的 `host.session`/`host.hello` 才切到 `/api/product/geo`。
+1. **无 Host 时的第二入口已收口**（2026-09-27 已修复）
+   `packages/geo/src/main.tsx` 现在把 `eios.product_host/v1` 会话设为业务渲染门：
+   只有收到 `host.session` / `host.hello` 后才渲染 GEO 数据页面并使用 `/api/product/geo/*`。
 
-   2026-09-22 用浏览器实测（不是推断）：**顶层直开** `http://127.0.0.1:4173/product/geo/`
-   （没有 iframe Host、没有握手），页面发的就是
-   `/api/geo/api/v1/monitor/overview`、`/stats/overview`、`/distill/overview` —— 老 BFF 基址。
-   这些路径在 Client 同源上被 SPA 兜成 **HTTP 200 + HTML**，前端把 HTML 当 JSON 解析失败，
-   于是显示成「GEO 请求失败（200）」—— 症状像后端 500，其实是**没有 Host 就用错了基址**。
+   顶层直开 `http://127.0.0.1:4173/product/geo/` 不再回落到旧 BFF，也不再把 HTML 兜底页当成
+   JSON 解析；页面只显示“请从 EIOS Client 打开 GEO”的入口提示。经 Product Host 加载的
+   `http://127.0.0.1:4173/app/geo` 仍正常握手并显示 GEO 页面。
 
-   **不要再把这件事归因成「构建产物旧了」**：`npm run build:ui` 重建后产物哈希一字未变
-   （`index-CTdzbI4k.js`，md5 `45e0d71b06bb6829550ef00b264e2a49`）。
-
-   **经 Product Host 加载（`http://127.0.0.1:4173/app/geo`）不受影响**：同一轮实测该页面的
-   网络请求只有 `/api/product/geo/*`（`knowledge/materials`、`enterprise-profile/*`），全部 200。
-
-   GEO-02 需要决定：产品构建是否应显式声明「必须 Host 会话」，而不是回落到 yayu BFF。
+   这使 GEO 只有一个产品入口：Client → Product Host → GEO 产品门。
 
 2. **健康契约与身份模式**（2026-09-22 改动，**产品可见字段变了**）
    `/api/product/geo/health` 返回扁平 `product.geo_health/v1` 契约（不是老 envelope）。

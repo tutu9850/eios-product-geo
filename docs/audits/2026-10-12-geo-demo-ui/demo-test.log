@@ -1,0 +1,37 @@
+TAP version 13
+# (node:49659) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: raw observations account for all slots without inventing successful answers
+ok 1 - raw observations account for all slots without inventing successful answers
+  ---
+  duration_ms: 0.763208
+  ...
+# Subtest: cross-page totals and details reconcile with raw observations
+ok 2 - cross-page totals and details reconcile with raw observations
+  ---
+  duration_ms: 0.099417
+  ...
+# Subtest: empty and all-failed inputs cannot produce brand or citation performance
+ok 3 - empty and all-failed inputs cannot produce brand or citation performance
+  ---
+  duration_ms: 0.505625
+  ...
+# Subtest: removing a round changes both details and cumulative totals
+ok 4 - removing a round changes both details and cumulative totals
+  ---
+  duration_ms: 0.169916
+  ...
+# Subtest: a second subject cannot change the selected brand metrics or details
+ok 5 - a second subject cannot change the selected brand metrics or details
+  ---
+  duration_ms: 0.684208
+  ...
+1..5
+# tests 5
+# suites 0
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 66.9125

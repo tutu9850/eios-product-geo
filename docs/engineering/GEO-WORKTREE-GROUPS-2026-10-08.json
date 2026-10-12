@@ -1,0 +1,362 @@
+{
+  "date": "2026-10-08",
+  "status": "DONE inventory and content backend split; remaining batches pending review",
+  "original_head": "4cb07251e10601d2294b826ee5bdcb6d5f22aa83",
+  "content_backend_commit": "a432683beb8739b85a27acdde1fbcdb4dc1e1a35",
+  "backup_directory": "/Users/tutu/eios-backups/geo-worktree-organize-20261008",
+  "misdirected_content_archive": "/Users/tutu/eios-backups/geo-worktree-organize-20261008/misdirected-content",
+  "verification": {
+    "isolated_content_candidate": "325 passed, 5 skipped",
+    "full_working_tree": "351 passed, 5 skipped",
+    "ui": "check:ui passed; task temporary build",
+    "skips": "monitor PostgreSQL environment not configured"
+  },
+  "release_ready": false,
+  "release_blockers": [
+    "remaining UI/content source fields and existing changes uncommitted",
+    "no GEO Product Package build inputs or validated installation orchestration",
+    "233 has source acceptance deployment, not canonical Release install"
+  ],
+  "groups": {
+    "ui_and_host": [
+      {
+        "path": "packages/geo/src/geo-advisor/AutoConfigFlow.tsx",
+        "sha256": "53a625b9a0cf6bc050e193d76f48ec6eb1bf6fefa42b77f0cefbc7e4336bea22"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx",
+        "sha256": "4738f4dfd569fe1c0631345f1eb1e4514f4927f3a51d003c67abec83deee3ceb"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx",
+        "sha256": "406017334f74b8c1cacc04b5c24ee5f219308a5bd263d8b18d4a49f1f470d2fd"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx",
+        "sha256": "159e8453f81f42a72eaeb6e795730f84711eb09fb06a11a74c2342f3bef41fc7"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoBattleCard.tsx",
+        "sha256": "d3565d6c9888e73126ed28c7586080901165233ef572e568088a803597aa0484"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+        "sha256": "4032550dbacb7e0c69bb5d4c951accf61672528a410d329cc131c45dc6a5cf04"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoCognitionMap.tsx",
+        "sha256": "d95adbb4ce1845969ba98f60f00cf6781b3660f9300dce7aeddc56fe52a29592"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+        "sha256": "cd34d448fb29ffe6d08b26cac9576b42a9eef1a3a4cb36fbbfc2fa2691d1d091"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx",
+        "sha256": "d7e8dccdb2afec84f3b9f7551b1adbdcc10c9a4608d82d4fae59a7ff0b353a80"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx",
+        "sha256": "374fa6fbd552272f83e023ea9c2756a1754ab39fe01f9a7f9366a05bb18ed897"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+        "sha256": "ea0e5dd55f029260a1aa243dbcfbe70fe8f4e17cd3ad4585d51ed3ffa52d44f2"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx",
+        "sha256": "3a26e0641895a8705f16d148bce8161ec27b4c5461dcd82fb0619dada2d30e58"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoGapsListCard.tsx",
+        "sha256": "390329b02e5f7010953f41278f9854860a7674ee52e04719e29f6972a61f7223"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx",
+        "sha256": "dfa982f01c819f451072ad6141c407e2006ee14d3f968d7428d703cbe4673308"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx",
+        "sha256": "b21b91fa57c418c65af20c98f9fa9c20fa58e6ef5a59ac379d8453b6f85eada8"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx",
+        "sha256": "7975fdf810bb32c1b5caaea32d0614699a3c596822bb487e4b5b87123425a9be"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+        "sha256": "f11c757de8e3f42cf57f062a6a9625fc0398f59820cb287f111ddc0fe885b78d"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+        "sha256": "52aa973c45ad806586c8d08aa099c70609136cb0c1c50ed0526ecf0fbaa9a503"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoPlansListCard.tsx",
+        "sha256": "a069a6304f2cf48862ebe126ec54627b285e251528c184d7f34e31e320bbaf4e"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoProductGuide.tsx",
+        "sha256": "a68f81761d08a52e98713709d6ca9ec919973ae0c544aec1f3c227fe179a85fd"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx",
+        "sha256": "86c809112c124aae2919414b8094fb4b17f5ce9e941e04370fd47fc25efd931f"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx",
+        "sha256": "1264f720e189bfbc2cbaf55e3ea2d10f71a10ba5ff8b4927a2881bd05297e61b"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/GeoReportCard.tsx",
+        "sha256": "3924377122b5c6567962f242a156c80c281bd9025589c8111fa283a06c0136bf"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/demo-fixtures.ts",
+        "sha256": "cf4662e5cae7cb1743c193057d3fa3b96cc8aa45a41843f1cfe16a7297431d59"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/geo-api.ts",
+        "sha256": "354c4e3412bf35256b4bcf452ec75c8af7d33aa01a9d13add535ecb3089a54a6"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/geo-monitor-subject.tsx",
+        "sha256": "3b600c6fa47cd60b6c3a149555c7eb9c5d8b70a5c0431d472face5c8cfb664d2"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/index.tsx",
+        "sha256": "4b9b21d4622a1399f09b61c0279867cf6cc97612651ba43683af51503c5fbca1"
+      },
+      {
+        "path": "packages/geo/src/geo-advisor/shared.tsx",
+        "sha256": "59687f9cbe101cc32c71f43619e86c2e7396250e23b9452b19fb3d14bfc2889c"
+      },
+      {
+        "path": "packages/geo/src/index.css",
+        "sha256": "60825c31ce732375544f87148faf453284345c7013b532fb6d2b4bb609cfbb93"
+      },
+      {
+        "path": "packages/geo/src/main.tsx",
+        "sha256": "ebb319c0a2a12c7252d0c1170299ba320712959d308410bbcbcea8c18ba685ba"
+      },
+      {
+        "path": "packages/geo/vite.config.ts",
+        "sha256": "ae7462f5163ff734e1e9519443b764be3a9c1b9cbb71cb5dc86d6e74271cefd2"
+      }
+    ],
+    "monitor_and_intelligence": [
+      {
+        "path": "apps/api/app/api/v1/battle.py",
+        "sha256": "e6748e346e2fbb8b38423463cc0365f2227f98c1447a0c39fbe21ec03893932b"
+      },
+      {
+        "path": "apps/api/app/api/v1/cognition.py",
+        "sha256": "5290c0a83655d5f0721fbb3a8d361a1a4879899136b629151e5610d22397e718"
+      },
+      {
+        "path": "apps/api/app/api/v1/intelligence.py",
+        "sha256": "847a7de46872d17da2c47d7d6ab8959b9f67770fa0b6eee0edca9b9302aa4d44"
+      },
+      {
+        "path": "apps/api/app/api/v1/monitor.py",
+        "sha256": "62768388ea09c5c7412fc0640e979491e6764f7a7dd47d00278bf4f428040014"
+      },
+      {
+        "path": "apps/api/tests/test_geo_answer_denominator_audit.py",
+        "sha256": "697e2d9ed2f4df9caccf46dba09b454f41b5af9f539626b19c5bf77104483498"
+      },
+      {
+        "path": "apps/api/tests/test_geo_monitor_audit_remediation.py",
+        "sha256": "b036d95f0bc1c8ee1d2e6281c045ece937ef0b485bfd04b01f3891a60cdb5512"
+      },
+      {
+        "path": "apps/api/tests/test_intelligence_queue_tenant.py",
+        "sha256": "436aea3c9a4ef6a403e812a362ef5fd8e6a61fafa3705e90b6e3a3a1c4fe77f3"
+      },
+      {
+        "path": "apps/api/tests/test_intelligence_subject_scope.py",
+        "sha256": "f54fde8267652749514468ef091e2c340d580c208d162206c0cf9f0ae30e5fa3"
+      },
+      {
+        "path": "apps/api/tests/test_monitor_analysis_scope.py",
+        "sha256": "769d63601861f05bca4a0a95a6df9d41885c90c70f62a73be653cc9f0547974f"
+      },
+      {
+        "path": "services/intelligence/adapter.py",
+        "sha256": "2717602c4a4b221b7cbabc94baf8caf5d4130adcbeb0d9cedae1757dc4e9c8d4"
+      },
+      {
+        "path": "services/intelligence/aggregator.py",
+        "sha256": "97943a3f41ab1f246d58b0af96bffa8cc8645d0a15e2eec42565dcad15215a94"
+      },
+      {
+        "path": "services/intelligence/cognition.py",
+        "sha256": "4e15fd0b8c7bf4c523f40508a36eb912b31fd12b2b85cd69d023c987c162b259"
+      },
+      {
+        "path": "services/intelligence/prompts.py",
+        "sha256": "933cbd437fc5d95986bdabf8baf261190a0dd21635ade997507d9fc70941a6f3"
+      },
+      {
+        "path": "services/intelligence/queue.py",
+        "sha256": "2c4c3d2871e47addafe0b1489edaa4fb4d66382e05c553d8da7b9ca537fc6d0e"
+      },
+      {
+        "path": "services/intelligence/repo.py",
+        "sha256": "52cbab24bafff3edc099b62a940fa0cd028e4e7e0e00ed082579896c171e1c6a"
+      }
+    ],
+    "profile_and_knowledge": [
+      {
+        "path": "apps/api/app/api/v1/distill.py",
+        "sha256": "8cd346db20d10f475b0d59bf5849874614ee92b2403209a12a10d47d0618b0ca"
+      },
+      {
+        "path": "apps/api/app/api/v1/enterprise_profile.py",
+        "sha256": "e70874a6e29adc420c98423e29af0d4f7baab5bdedd5be48334f850515473cb0"
+      },
+      {
+        "path": "apps/api/app/api/v1/kb_init.py",
+        "sha256": "9c2039a083f06fb49eb22ece8779ac63c9bd49f16b2eae9cf2db1d8598ee1ddb"
+      },
+      {
+        "path": "apps/api/app/api/v1/stats.py",
+        "sha256": "4efdb4ec78e835565985f808bc4cd3da52b1a91f8e975dc56d6fc03c6a99190d"
+      },
+      {
+        "path": "apps/api/app/services/company_profile.py",
+        "sha256": "a3a341c6bec8115f1ec5d210a43bcd10212a2e3c1fa3d27918f129fd6f8cd1f4"
+      },
+      {
+        "path": "apps/api/tests/test_geo_full_report.py",
+        "sha256": "53bac4220fa892517ee5071b325930e468d70e1562fb0e902bee7d8eaebbe586"
+      },
+      {
+        "path": "apps/api/tests/test_geo_stats.py",
+        "sha256": "5c978d068fa215d0abc9cdf9f93cdeec4d35051a377c961f13e60d3f519c6bfa"
+      },
+      {
+        "path": "apps/api/tests/test_kb_init.py",
+        "sha256": "ebe2e85f4de7176e926728cef3ada65cf603913bd1e2a52bab7bb94b6dc28bcc"
+      }
+    ],
+    "engineering_documents": [
+      {
+        "path": "AGENTS.md",
+        "sha256": "f37df062516d8fcf749a0e9bc8de3b164b4e86c3fa28bb74f97e4207545ebc0e"
+      },
+      {
+        "path": "CURRENT_STATE.md",
+        "sha256": "68bf3d6578d15b39eeb5fd1fa644bb90bc6e525016937d8cfbb56fe43243e124"
+      },
+      {
+        "path": "README.md",
+        "sha256": "4343338817c7526ca255d1e3d6e295f9454e7a073a77663e4fb2c76eb7dd5047"
+      },
+      {
+        "path": "docs/GEO_PRODUCT_DOOR_MATRIX.md",
+        "sha256": "95c6790c13a8f174dd83a3ade6a749cd976424792ef664749a0fbea105ef9cf5"
+      },
+      {
+        "path": "docs/architecture/GEO_ANALYSIS_INTEGRATION_V1.md",
+        "sha256": "27136d947b025214ef637bf8f070423784b4a59352c123e5d78a1864acce258a"
+      },
+      {
+        "path": "docs/architecture/GEO_PRODUCT_CONSTITUTION_V1.md",
+        "sha256": "b185a2760d50a3f5f1735c60a500791ba861925bbf9c46c8660d81f3ff10f294"
+      },
+      {
+        "path": "docs/audits/geo-content-fleet-2026-10-08/REPORT.md",
+        "sha256": "acbf6d547a5db086fddeefcd60529cfcfb81ba4a6a14e1aadcbbc57cb6babc27"
+      },
+      {
+        "path": "docs/audits/geo-content-fleet-2026-10-08/evidence-summary.json",
+        "sha256": "195fab75d00d1101205a4589b893ffa980a0f52e9f9c7cfeba66d6cc82dc5c0c"
+      },
+      {
+        "path": "docs/audits/geo-content-fleet-2026-10-08/reopened.png",
+        "sha256": "0e026accd65059fd196e57bf30ede9c30a5e039fec071f92411df63e44fccb8e"
+      },
+      {
+        "path": "docs/audits/geo-content-fleet-2026-10-08/verification.txt",
+        "sha256": "428e5dad90d5a9eea279f4a744f8c5b43d96b9878df683982c703a0efbaf9ff7"
+      },
+      {
+        "path": "docs/audits/geo-content-fleet-2026-10-08/产品FAQ-待核验样本.md",
+        "sha256": "4727fc5405290cbdf8cd8315d40b0b41960d152047f4e641075af606ab7068d6"
+      },
+      {
+        "path": "docs/audits/geo-content-fleet-2026-10-08/品牌介绍-改稿样本.md",
+        "sha256": "9e521b85b688bf08e01df3cc6d4b936f8a98df4f1b5073c39b95db453e81a50c"
+      },
+      {
+        "path": "docs/audits/geo-content-walkthrough-2026-10-08/REPORT.md",
+        "sha256": "6b49f64c900424107302b275810a950af2d0ed04c9061313cf07d0794e2f4245"
+      },
+      {
+        "path": "docs/audits/geo-content-walkthrough-2026-10-08/evidence-summary.json",
+        "sha256": "2e6da37cebbdb0a5cb4d56eae894713b47a751a5a790544f95ad74305fd40689"
+      },
+      {
+        "path": "docs/audits/geo-content-walkthrough-2026-10-08/generated.png",
+        "sha256": "f0684d6ee305c4cc4a7531ae5099130bbab4c213afa0ed09ecec2dd7f2fd2ac5"
+      },
+      {
+        "path": "docs/audits/geo-content-walkthrough-2026-10-08/reopened.png",
+        "sha256": "7fbbe041f0e90230911917700d4f35052e47fe33db771817a8377179a3f6a700"
+      },
+      {
+        "path": "docs/audits/geo-content-walkthrough-2026-10-08/upload.png",
+        "sha256": "3570f32fe697611e6eaec0c9bd8f218eca7e569e3d10ff62dd36a6219826510d"
+      },
+      {
+        "path": "docs/audits/geo-content-walkthrough-2026-10-08/产品FAQ-问题样稿.md",
+        "sha256": "a1ce5b2b3736e11c3f0345e2e36ad620ec056a176330fb6df0371367490f844c"
+      },
+      {
+        "path": "docs/audits/geo-content-walkthrough-2026-10-08/品牌介绍-测试草稿.md",
+        "sha256": "671b434baf14f8a8d12094b3e4373eccbb0a6240ad504c5c9cc1cab8676e5fbd"
+      },
+      {
+        "path": "docs/audits/geo-product-health-check-2026-09-26.md",
+        "sha256": "04c19cdd1bc041c887169ccd7f8bdf2f7002c7dae5d5708bf33652f0a7f094fd"
+      },
+      {
+        "path": "docs/audits/geo-rewrite-seam-2026-10-08/REPORT.md",
+        "sha256": "ffa988f8d5144da082cbbeaf7a6c2f175c3bb41eb76b6d81fe9b413b1dffb1c0"
+      },
+      {
+        "path": "docs/audits/geo-shared-update-2026-10-08/REPORT.md",
+        "sha256": "661dcff2ff53cca8818d2eea1760a3ee97333ee8bfc7a02e9578cedb9748f266"
+      },
+      {
+        "path": "docs/audits/geo-shared-update-2026-10-08/evidence-summary.json",
+        "sha256": "4df883f98045d979605d2b649706476893a2d7c5590eb00b6742d1e44e8b6b66"
+      },
+      {
+        "path": "docs/audits/geo-shared-update-2026-10-08/shared-page.png",
+        "sha256": "b73bec14a9744ffea4203b7d199b3974b418832b06bf95d4b630d49d33a9cefb"
+      },
+      {
+        "path": "docs/engineering/CARD-GEO-CONTENT-01.md",
+        "sha256": "56f649267a04efc34fee2e58c87a77b59d2db997f4080fc2978e66b45d0bc841"
+      },
+      {
+        "path": "docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md",
+        "sha256": "90da90a7141d289dd88398a3afd8666dd3aeba3395851abca4418637276acf18"
+      }
+    ],
+    "development_launcher": [
+      {
+        "path": "scripts/run_dev.sh",
+        "sha256": "2887988d186e5174fbc95ab6638cd001b7776b002467476a6960a1ed3113dd9e"
+      }
+    ]
+  },
+  "notes": [
+    "Grouping describes function, not authorship; prior changes and current changes may overlap within files.",
+    "Existing code preserved byte-for-byte against snapshot.",
+    "No push, shared database cleanup, deploy, or product door configuration change.",
+    "Business manuscripts moved outside source repository, shared app drafts untouched."
+  ]
+}

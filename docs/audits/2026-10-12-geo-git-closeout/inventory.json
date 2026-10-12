@@ -1,0 +1,2656 @@
+{
+  "current": {
+    "root": "/Users/tutu/eios-product-geo",
+    "head": "a432683beb8739b85a27acdde1fbcdb4dc1e1a35",
+    "files": {
+      "AGENTS.md": {
+        "sha256": "973ff57a5a327d9f69033c6dd970875ecc73abbb07ce1bb2f3f056748696df1c",
+        "size": 2755
+      },
+      "CURRENT_STATE.md": {
+        "sha256": "b997f4c99a63c7e3a4f5af5a7b7fcc4e67aade4e926288aa573003a1f49bfa4c",
+        "size": 6128
+      },
+      "README.md": {
+        "sha256": "61b59e48977c24b2fee941490c8233fafe7a359bdf023bbc2562f4b458a98c8b",
+        "size": 5885
+      },
+      "adapters/eios/__init__.py": {
+        "sha256": "1717306be3cbf7e24be6834b25fa121a90980b55768e9183d913958d7bf27645",
+        "size": 52422
+      },
+      "adapters/llm.py": {
+        "sha256": "a4c79bf9340f2832c18a9e6f361b939a3ce5de48fbe0d3b98d20d80df712f6d4",
+        "size": 11112
+      },
+      "adapters/model_entry.py": {
+        "sha256": "6d49d15b3c5d83897287883eb863dd0d3a8dfc7a97424682b42351723cc06afd",
+        "size": 5312
+      },
+      "apps/api/app/api/v1/battle.py": {
+        "sha256": "e6748e346e2fbb8b38423463cc0365f2227f98c1447a0c39fbe21ec03893932b",
+        "size": 5390
+      },
+      "apps/api/app/api/v1/cognition.py": {
+        "sha256": "5290c0a83655d5f0721fbb3a8d361a1a4879899136b629151e5610d22397e718",
+        "size": 37140
+      },
+      "apps/api/app/api/v1/content.py": {
+        "sha256": "703d3c46b9bd10b5dd247e84dc05fd0a1d908b4369749de8db8e0d4083d4946f",
+        "size": 16479
+      },
+      "apps/api/app/api/v1/distill.py": {
+        "sha256": "8cd346db20d10f475b0d59bf5849874614ee92b2403209a12a10d47d0618b0ca",
+        "size": 115088
+      },
+      "apps/api/app/api/v1/enterprise_profile.py": {
+        "sha256": "e70874a6e29adc420c98423e29af0d4f7baab5bdedd5be48334f850515473cb0",
+        "size": 56346
+      },
+      "apps/api/app/api/v1/intelligence.py": {
+        "sha256": "847a7de46872d17da2c47d7d6ab8959b9f67770fa0b6eee0edca9b9302aa4d44",
+        "size": 18590
+      },
+      "apps/api/app/api/v1/kb_init.py": {
+        "sha256": "a4712940212040c53af0759c94d6278f1cd3f7bd7e04838ea17995aa18f047c7",
+        "size": 25047
+      },
+      "apps/api/app/api/v1/knowledge.py": {
+        "sha256": "25349885b593306bbbb01b1858b736a4b1e8040ac0a663b8d06e53fb46a87167",
+        "size": 18117
+      },
+      "apps/api/app/api/v1/monitor.py": {
+        "sha256": "62768388ea09c5c7412fc0640e979491e6764f7a7dd47d00278bf4f428040014",
+        "size": 165207
+      },
+      "apps/api/app/api/v1/stats.py": {
+        "sha256": "4efdb4ec78e835565985f808bc4cd3da52b1a91f8e975dc56d6fc03c6a99190d",
+        "size": 3912
+      },
+      "apps/api/app/services/company_profile.py": {
+        "sha256": "a3a341c6bec8115f1ec5d210a43bcd10212a2e3c1fa3d27918f129fd6f8cd1f4",
+        "size": 15459
+      },
+      "apps/api/app/services/knowledge_snapshot.py": {
+        "sha256": "06ceb70fe756fb08c2aedfdfd38f8cc60a4dd0256a0274076651e3cbb819f5a4",
+        "size": 18601
+      },
+      "apps/api/tests/fixtures/formal_content/attributes.json": {
+        "sha256": "f4c75d322455c4001fa42daef61dfade8614e0d12f562c115e132fa9f5881573",
+        "size": 1726
+      },
+      "apps/api/tests/fixtures/formal_content/evidence.json": {
+        "sha256": "0e062296b8920209c2c9dd021e2d08c4965b3e9c0fdb1a4b971070c17f177e86",
+        "size": 849
+      },
+      "apps/api/tests/fixtures/formal_content/object.json": {
+        "sha256": "f1726546db0032d787c5f030d5812b3f8329553fe9787afc26c59a41d552e69f",
+        "size": 1482
+      },
+      "apps/api/tests/fixtures/formal_content/objects.json": {
+        "sha256": "3da664d1f79772a05cbd63a269685e3973c2cc5c0a7c3fba6498c72b2ef3a13c",
+        "size": 1900
+      },
+      "apps/api/tests/fixtures/formal_content/relations.json": {
+        "sha256": "5d2dd75d576be988083f15d6ae698c76371031093801730d58d4e17c83aa678c",
+        "size": 5986
+      },
+      "apps/api/tests/test_content_budget.py": {
+        "sha256": "0cfbaf389a7c4c5655329af6fe7d50d1f592716d6ff83448a3bb0f0ba61d44ae",
+        "size": 4411
+      },
+      "apps/api/tests/test_content_cold_read.py": {
+        "sha256": "5309655cd324c09c472666cd2fcddeb2cbe282f6eb01643914b6b78a96f47195",
+        "size": 2134
+      },
+      "apps/api/tests/test_content_read_status.py": {
+        "sha256": "f551c66ded43c967176dbda6eed09770f231c2dc9fea9ccec6a2169e09745be7",
+        "size": 2688
+      },
+      "apps/api/tests/test_geo_answer_denominator_audit.py": {
+        "sha256": "697e2d9ed2f4df9caccf46dba09b454f41b5af9f539626b19c5bf77104483498",
+        "size": 23667
+      },
+      "apps/api/tests/test_geo_chunk_channel.py": {
+        "sha256": "dcbb4e7f038af647017da58cb5625cbe4594a76aefdfb8bf450a76e259fd9076",
+        "size": 11058
+      },
+      "apps/api/tests/test_geo_formal_content.py": {
+        "sha256": "07e998a626a7c6a56c708133c1ba10780772e76b4ce30b69509337a5b0a9ecd0",
+        "size": 14171
+      },
+      "apps/api/tests/test_geo_full_report.py": {
+        "sha256": "53bac4220fa892517ee5071b325930e468d70e1562fb0e902bee7d8eaebbe586",
+        "size": 8251
+      },
+      "apps/api/tests/test_geo_knowledge_consumer.py": {
+        "sha256": "8cfc1663e88091846b684ca03f03fbcc1a97a00f18b2517abca9b43b4e18cde7",
+        "size": 15865
+      },
+      "apps/api/tests/test_geo_monitor_audit_remediation.py": {
+        "sha256": "b036d95f0bc1c8ee1d2e6281c045ece937ef0b485bfd04b01f3891a60cdb5512",
+        "size": 16092
+      },
+      "apps/api/tests/test_geo_stats.py": {
+        "sha256": "5c978d068fa215d0abc9cdf9f93cdeec4d35051a377c961f13e60d3f519c6bfa",
+        "size": 862
+      },
+      "apps/api/tests/test_intelligence_queue_tenant.py": {
+        "sha256": "436aea3c9a4ef6a403e812a362ef5fd8e6a61fafa3705e90b6e3a3a1c4fe77f3",
+        "size": 7554
+      },
+      "apps/api/tests/test_intelligence_subject_scope.py": {
+        "sha256": "f54fde8267652749514468ef091e2c340d580c208d162206c0cf9f0ae30e5fa3",
+        "size": 2091
+      },
+      "apps/api/tests/test_kb_init.py": {
+        "sha256": "8cbdb0082827c5dfdc7ef4d2e38489ebac9ce26aeeec73e3ebec5bd3bb759f6e",
+        "size": 22285
+      },
+      "apps/api/tests/test_monitor_analysis_scope.py": {
+        "sha256": "769d63601861f05bca4a0a95a6df9d41885c90c70f62a73be653cc9f0547974f",
+        "size": 7758
+      },
+      "docs/GEO_PRODUCT_DOOR_MATRIX.md": {
+        "sha256": "95c6790c13a8f174dd83a3ade6a749cd976424792ef664749a0fbea105ef9cf5",
+        "size": 22241
+      },
+      "docs/README.md": {
+        "sha256": "60bcecbe7cc797c935554dbb63e8e68e1c9566c3ec244e82dc8e016e18efd85e",
+        "size": 5263
+      },
+      "docs/architecture/GEO_ANALYSIS_INTEGRATION_V1.md": {
+        "sha256": "27136d947b025214ef637bf8f070423784b4a59352c123e5d78a1864acce258a",
+        "size": 4897
+      },
+      "docs/architecture/GEO_PRODUCT_CONSTITUTION_V1.md": {
+        "sha256": "b185a2760d50a3f5f1735c60a500791ba861925bbf9c46c8660d81f3ff10f294",
+        "size": 18752
+      },
+      "docs/archive/2026-10/root/CURRENT_STATE-before-governance-2026-10-11.md": {
+        "sha256": "8c7ae6e54c653da856f746380b00c65f71e96a3882b53fee0f7ed4e8ba6a0147",
+        "size": 15516
+      },
+      "docs/archive/INDEX.md": {
+        "sha256": "ce1ae1719b4448235c91afe111783e761d0a458797d2bd402f4aba4b763c14ad",
+        "size": 167
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/backend-before/adapters/eios/__init__.py": {
+        "sha256": "5c5729899db5f7cf63b79d3adbdb4a6747a24c53acf33932a2a7f687621ab3d3",
+        "size": 41523
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/content.py": {
+        "sha256": "c5963428edb74e07b35cdae0ab40f027f72c3964e8735b75de1942d6b836c469",
+        "size": 15504
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/knowledge.py": {
+        "sha256": "279ebfcec8e478d359261f3c5bfd24491ff34c9ff6e2f3cbdf597bb66134c181",
+        "size": 17760
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/backend-before/services/content/__init__.py": {
+        "sha256": "9225f247c176a7907762c2d564692f0cee0247da1f2504916f1d94bb810c8a8d",
+        "size": 72931
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/backend-manifest.json": {
+        "sha256": "876c73670df3c713626ae30ee2d1a2829a5d23b3b8088704e2527840539e32e3",
+        "size": 1877
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/backend-round.patch": {
+        "sha256": "8d760cdb36a05c5ae6a64939b5899d3ac1117ea7184da341b70cfdfbc573f1eb",
+        "size": 49997
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/preservation-check.json": {
+        "sha256": "ae390499c30ec407cd180700573fd91a22a248ae418fbc71ebc8d75454bb95af",
+        "size": 359
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/status-after.txt": {
+        "sha256": "612d3482c4619e5ead2c3e30551d39b8c6689a1326db98b3b406804045677089",
+        "size": 3649
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/status-before.txt": {
+        "sha256": "c958ec88a181db266f6f40e58a36e2c8f8ee3c0b7213a11f5de5529ff6285204",
+        "size": 3540
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/后端报告.md": {
+        "sha256": "63a8075a26e4b45df4f50432e61202786bb680abe156dbb9326e82235a73e22a",
+        "size": 8876
+      },
+      "docs/audits/2026-10-11-geo-consumption-plan/方案.md": {
+        "sha256": "7d893cfc48ddfbbe74b4ff1010b484fc5d5fb315d110b2ce8800db02a0e5ac9f",
+        "size": 5615
+      },
+      "docs/audits/2026-10-11-geo-docs-alignment/source-manifest.json": {
+        "sha256": "33365e9b05c698cdd938c31fa3bffc3abd4e60617db3046ee6f25e0160ad98ff",
+        "size": 4348
+      },
+      "docs/audits/2026-10-11-geo-docs-alignment/validation.txt": {
+        "sha256": "082a135e484ef3aec05a900228c15291be5c6f25f0a20405a6811934d4619a48",
+        "size": 162
+      },
+      "docs/audits/2026-10-11-geo-docs-alignment/报告.md": {
+        "sha256": "751157ef4e2174b55c56abc122d42aee0c35123bcde646675951126c83c58ebe",
+        "size": 2253
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/analysis-snapshot.txt": {
+        "sha256": "9265d7ea255a0886bb069e423c0da69b5a74fb3a3f9bf01221614dc3b9044a3d",
+        "size": 5506
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/analysis-sources-visible.txt": {
+        "sha256": "8e4525aba57b6a125a27ecdd36a50419c76b3a663361c2855fe62bbb6e93904e",
+        "size": 2852
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/answers-snapshot.txt": {
+        "sha256": "90f1e4034efbcab8c9cda116c53f6a1b41c4bc5d613a9237633ed33aef38218b",
+        "size": 4640
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/backend-aggregate.py": {
+        "sha256": "68afaf8e6eb14f4f035cef7995f2dbad8e06b79a43ffd8d0c511d420564978ec",
+        "size": 2803
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/browser-check.json": {
+        "sha256": "45c2064ed8e89d26f53ea4ce3b6efc348658845898961d8bf300aa2245204704",
+        "size": 346
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/competitor-visible.txt": {
+        "sha256": "be76ca56632e4eee99ecf62fbf5500b77b372d73a597598a0a93f08aaf2aa7c0",
+        "size": 3655
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/fact-check-visible.txt": {
+        "sha256": "efd734dd55576f2138ff5e208933205ddbd28d21f5e81f54d2f708b7d9e48389",
+        "size": 3490
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/industry-visible.txt": {
+        "sha256": "9a97ba0871061e6917f07d07f2d8b5cd583778962c25bce65fb43807f8a94557",
+        "size": 3347
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/manifest.json": {
+        "sha256": "3a93a4f4dcedc07cf6e7d45176bb63baa367e8aac876927e7a05dba919c29cf9",
+        "size": 2557
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/market-visible.txt": {
+        "sha256": "a0bbc82580c3804dd6d0dcfd6bf3bfd62fa5bf9132db5ab9acf8fd97326540ef",
+        "size": 1583
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/profile-final-visible.txt": {
+        "sha256": "66922af044377e449273ce391798b0b92d3c0eaf0f25724b41438195693fb9bb",
+        "size": 55
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/round.patch": {
+        "sha256": "4a0c49221990a063d04170d312490858fdcf629ace76d89be81732ea0d7ddbe4",
+        "size": 64656
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/samples.json": {
+        "sha256": "ca62df8f7318d4ae0c32a634692d43050737da703f29fe6906b66dc68f4d4373",
+        "size": 83480
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/actions.png": {
+        "sha256": "b577213cd82dd7b70554eec571eae4e59e18f8fe4b7b3a62e4d5fd45ede3a05a",
+        "size": 116461
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/analysis.png": {
+        "sha256": "2168b86a6856ce35d9590dab2f06df7fde91bd8f16f2e3c11bd890ebe16069e8",
+        "size": 134294
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/answers-expanded.png": {
+        "sha256": "a231a34cfbee282fbf9bc3c9b031f93a7c302a1f8844489a4dd41c651923bb04",
+        "size": 155249
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/citations.png": {
+        "sha256": "adbdeb4acbc35a70f4355833e2a34c960d294a7fa641b17c9212cfb3c85850db",
+        "size": 138813
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/cognition-final.png": {
+        "sha256": "52f54e78064e8e2a3c341418ddb322011c9cb5ad8621b44718b44a7147339c82",
+        "size": 138252
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/fact-check.png": {
+        "sha256": "7f05ab7394d9eeeac10392dfca3511083f31cf3df2537260452f21b847a28017",
+        "size": 96770
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/gaps.png": {
+        "sha256": "8e5b33810ccefa7322daa2f5705eb4138ca2c69a95b0a87290fbf959dbeae46d",
+        "size": 132433
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/insight-evidence.png": {
+        "sha256": "3d370bea73b27cb1123a20e40021b2b9629248e78c94679f6daa5bdca35ff639",
+        "size": 146388
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/market.png": {
+        "sha256": "87df2aab8b3f27c3f12812bf1c85902989960e74b705fe6ae6e7c7fb5ae794e3",
+        "size": 118562
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/overview-final.png": {
+        "sha256": "f968259c8829c371933cfeaefc8c672bbdda6cd2f53c521a5b72c60775215328",
+        "size": 134083
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/screenshots/profile-final.png": {
+        "sha256": "d290c76466e138509ae292ccc4a2e89c435ba0fe0f9d9315c3a96f0fd3d091b2",
+        "size": 114955
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/sentiment-visible.txt": {
+        "sha256": "ff55776de10e4a3f2010a87637b30059f0aba33886ba06504a912dc7fd02f0a6",
+        "size": 2030
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/sha256.json": {
+        "sha256": "917f92053a4ace101c918512eaf70b68e74c374da86e8b47f4d4bb3a4858574f",
+        "size": 3228
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/sources-visible.txt": {
+        "sha256": "56c57feb203a7066fc518be0e32592719f0c2968c01375bce08938e34fde89e0",
+        "size": 1334
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/unknown-visible.txt": {
+        "sha256": "e9318a339944f52f632404f5396169bfe9c4fdb2be2ecf4742969a48a31b1b78",
+        "size": 6511
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/功能接口清单.json": {
+        "sha256": "6fa698e51f02b9957a9fa8bde68d6d5d9e47e611a1ab27fc7c21482b2ad8cba5",
+        "size": 65752
+      },
+      "docs/audits/2026-10-12-geo-demo-ui/报告.md": {
+        "sha256": "1af3b0167cde7834b8aad395947d1be7dc2a9dbaa374f32bbc884ab3609e8595",
+        "size": 9010
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/door-check.json": {
+        "sha256": "59376e9936ce744fbeb93be65e951e8a36d4fa32cd9d9fa1a699aa043a55710f",
+        "size": 43104
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/live-probe.json": {
+        "sha256": "1e8384c31547af27310a91665055aea97423c0c09b7b623774eb07ad51692f1d",
+        "size": 322
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/probe-result.json": {
+        "sha256": "61209eca4ebd6bcb741f35a4895cf5a467f8d8e5a5dfa6dec3f9e990809ecffa",
+        "size": 44462
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/probe.py": {
+        "sha256": "efca3a45007a11ec604dd6a9e2e84023c86a32ac938fa4f73ae86b452ea21ed6",
+        "size": 6109
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/sha256.json": {
+        "sha256": "a1f35745d8b445f74badb8f90acdd9ff64e394784264a78b8d3d7b930e37ad95",
+        "size": 710
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/source-baseline.json": {
+        "sha256": "6beae9181083aee02a694c8077d1b183e7bb4a22fef8ebd07491c16e1b89583c",
+        "size": 2031
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/verification.txt": {
+        "sha256": "c31823fd101bbde8eb2e29e1dd2c256db467a800f4e9afcf12feeddf787e7b15",
+        "size": 1143
+      },
+      "docs/audits/2026-10-12-geo-real-wiring/报告.md": {
+        "sha256": "4e08e3ee13e698f641eeb340a9908b7ae417e9f5e1d08a8aa19a3bac7f910d29",
+        "size": 8809
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/REPORT.md": {
+        "sha256": "acbf6d547a5db086fddeefcd60529cfcfb81ba4a6a14e1aadcbbc57cb6babc27",
+        "size": 6796
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/evidence-summary.json": {
+        "sha256": "195fab75d00d1101205a4589b893ffa980a0f52e9f9c7cfeba66d6cc82dc5c0c",
+        "size": 2430
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/reopened.png": {
+        "sha256": "0e026accd65059fd196e57bf30ede9c30a5e039fec071f92411df63e44fccb8e",
+        "size": 157920
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/verification.txt": {
+        "sha256": "428e5dad90d5a9eea279f4a744f8c5b43d96b9878df683982c703a0efbaf9ff7",
+        "size": 365
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/产品FAQ-待核验样本.md": {
+        "sha256": "4727fc5405290cbdf8cd8315d40b0b41960d152047f4e641075af606ab7068d6",
+        "size": 2879
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/品牌介绍-改稿样本.md": {
+        "sha256": "9e521b85b688bf08e01df3cc6d4b936f8a98df4f1b5073c39b95db453e81a50c",
+        "size": 1284
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/REPORT.md": {
+        "sha256": "6b49f64c900424107302b275810a950af2d0ed04c9061313cf07d0794e2f4245",
+        "size": 15620
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/evidence-summary.json": {
+        "sha256": "2e6da37cebbdb0a5cb4d56eae894713b47a751a5a790544f95ad74305fd40689",
+        "size": 3626
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/generated.png": {
+        "sha256": "f0684d6ee305c4cc4a7531ae5099130bbab4c213afa0ed09ecec2dd7f2fd2ac5",
+        "size": 140576
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/reopened.png": {
+        "sha256": "7fbbe041f0e90230911917700d4f35052e47fe33db771817a8377179a3f6a700",
+        "size": 132966
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/upload.png": {
+        "sha256": "3570f32fe697611e6eaec0c9bd8f218eca7e569e3d10ff62dd36a6219826510d",
+        "size": 147233
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/产品FAQ-问题样稿.md": {
+        "sha256": "a1ce5b2b3736e11c3f0345e2e36ad620ec056a176330fb6df0371367490f844c",
+        "size": 2900
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/品牌介绍-测试草稿.md": {
+        "sha256": "671b434baf14f8a8d12094b3e4373eccbb0a6240ad504c5c9cc1cab8676e5fbd",
+        "size": 1112
+      },
+      "docs/audits/geo-local-seams-2026-10-09/REPORT.md": {
+        "sha256": "5c2341381697c0bbdf4a957209ba1fe0599eccc505df3e209f1310795c440aca",
+        "size": 5068
+      },
+      "docs/audits/geo-local-seams-2026-10-09/manifest.json": {
+        "sha256": "e61467ca3241cffbe7495f261b0d9fdf030999a9bcad04be76ff3ab20bd18075",
+        "size": 3877
+      },
+      "docs/audits/geo-local-seams-2026-10-09/round.patch": {
+        "sha256": "92ee876a0cf2e939db55145fb5ac0cc73ca9d132cf9e80602728a18f0a2c4cc0",
+        "size": 66689
+      },
+      "docs/audits/geo-local-seams-2026-10-09/selected-source.tar.gz": {
+        "sha256": "d770bbfd6292efe2e43fc0c82ae8065b5e14a79688de413407eae7d9bb9d14ba",
+        "size": 140548
+      },
+      "docs/audits/geo-local-seams-2026-10-09/status-before.txt": {
+        "sha256": "81a493f72a6c618e28ddf7aeb0801e1d6db0170f0f9a6668610989ecd911058c",
+        "size": 2875
+      },
+      "docs/audits/geo-local-seams-2026-10-09/ui-timing-check.cjs": {
+        "sha256": "fdc7020dc62e06d01957207299b098e2974288d8a7080dfd66bf580e053a5016",
+        "size": 4440
+      },
+      "docs/audits/geo-product-health-check-2026-09-26.md": {
+        "sha256": "04c19cdd1bc041c887169ccd7f8bdf2f7002c7dae5d5708bf33652f0a7f094fd",
+        "size": 126582
+      },
+      "docs/audits/geo-rewrite-seam-2026-10-08/REPORT.md": {
+        "sha256": "ffa988f8d5144da082cbbeaf7a6c2f175c3bb41eb76b6d81fe9b413b1dffb1c0",
+        "size": 2543
+      },
+      "docs/audits/geo-shared-update-2026-10-08/REPORT.md": {
+        "sha256": "661dcff2ff53cca8818d2eea1760a3ee97333ee8bfc7a02e9578cedb9748f266",
+        "size": 2900
+      },
+      "docs/audits/geo-shared-update-2026-10-08/evidence-summary.json": {
+        "sha256": "4df883f98045d979605d2b649706476893a2d7c5590eb00b6742d1e44e8b6b66",
+        "size": 924
+      },
+      "docs/audits/geo-shared-update-2026-10-08/shared-page.png": {
+        "sha256": "b73bec14a9744ffea4203b7d199b3974b418832b06bf95d4b630d49d33a9cefb",
+        "size": 150978
+      },
+      "docs/decisions/2026-10-11-geo-backend-authorization.md": {
+        "sha256": "a3432c16f00554d8b2bdb928f52fb195194031f0662f76cf99b2f46552bb8776",
+        "size": 1220
+      },
+      "docs/decisions/2026-10-11-geo-documentation-alignment.md": {
+        "sha256": "d0f0d09ed00507a500afa6e096c5ed3469a4c4edb9b202a4f3420750d94dd76a",
+        "size": 1038
+      },
+      "docs/decisions/2026-10-12-geo-demo-ui-authorization.md": {
+        "sha256": "293b01abb7404e8d8167fa263c7e5ee4d354c32a7f38bacea3310f457cd14aaf",
+        "size": 1165
+      },
+      "docs/engineering/CARD-GEO-CONTENT-01.md": {
+        "sha256": "336a5250d9f84bbeb1287d8db32b5bc3c7aef11d8833fa390238099c793f9aaf",
+        "size": 12391
+      },
+      "docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md": {
+        "sha256": "90da90a7141d289dd88398a3afd8666dd3aeba3395851abca4418637276acf18",
+        "size": 17355
+      },
+      "docs/engineering/GEO-PRODUCT-RESTRUCTURE-2026-10-12.md": {
+        "sha256": "5f687a5fb2ffb3eff2a8167656aaa4cab346d3fd8cfd71b4c910be610fe46697",
+        "size": 9345
+      },
+      "docs/engineering/GEO-WORKTREE-GROUPS-2026-10-08.json": {
+        "sha256": "ba1e6b393fcffcefcc1dda6f1f419786692cb2a40ce4997277473c260bae21c7",
+        "size": 15045
+      },
+      "package.json": {
+        "sha256": "96b97fe92536950b838491cde83575ac47b7b3dcb5b50a13ee7965a7c2a0a077",
+        "size": 490
+      },
+      "packages/geo/src/geo-advisor/AutoConfigFlow.tsx": {
+        "sha256": "53a625b9a0cf6bc050e193d76f48ec6eb1bf6fefa42b77f0cefbc7e4336bea22",
+        "size": 43395
+      },
+      "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx": {
+        "sha256": "4738f4dfd569fe1c0631345f1eb1e4514f4927f3a51d003c67abec83deee3ceb",
+        "size": 8374
+      },
+      "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx": {
+        "sha256": "406017334f74b8c1cacc04b5c24ee5f219308a5bd263d8b18d4a49f1f470d2fd",
+        "size": 19312
+      },
+      "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx": {
+        "sha256": "159e8453f81f42a72eaeb6e795730f84711eb09fb06a11a74c2342f3bef41fc7",
+        "size": 26165
+      },
+      "packages/geo/src/geo-advisor/GeoBattleCard.tsx": {
+        "sha256": "d3565d6c9888e73126ed28c7586080901165233ef572e568088a803597aa0484",
+        "size": 6391
+      },
+      "packages/geo/src/geo-advisor/GeoCognitionCard.tsx": {
+        "sha256": "5d2d18e60e790de51573f10fbec6881f35d30d28714539282c19acfd1f265953",
+        "size": 13221
+      },
+      "packages/geo/src/geo-advisor/GeoCognitionMap.tsx": {
+        "sha256": "d95adbb4ce1845969ba98f60f00cf6781b3660f9300dce7aeddc56fe52a29592",
+        "size": 449
+      },
+      "packages/geo/src/geo-advisor/GeoContentGenForm.tsx": {
+        "sha256": "e17381ba6c9c3ee8f8e77618f07b22e04e73c2453e63f21b71e1fcce3f8a4895",
+        "size": 45062
+      },
+      "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx": {
+        "sha256": "088da04c061ab9e815a1367dad5e6a640342cdb7e60fa37c0581af182771e843",
+        "size": 7410
+      },
+      "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx": {
+        "sha256": "02d65735864f2f2533429346f109da2626f1f300e040e64221eb6540af15d6c7",
+        "size": 1861
+      },
+      "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx": {
+        "sha256": "15eb0c97f994af8158ae04ef87f502eae8b8ac11dea92d91933f70ca272d21db",
+        "size": 13856
+      },
+      "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx": {
+        "sha256": "3a26e0641895a8705f16d148bce8161ec27b4c5461dcd82fb0619dada2d30e58",
+        "size": 2719
+      },
+      "packages/geo/src/geo-advisor/GeoGapsListCard.tsx": {
+        "sha256": "390329b02e5f7010953f41278f9854860a7674ee52e04719e29f6972a61f7223",
+        "size": 6556
+      },
+      "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx": {
+        "sha256": "dfa982f01c819f451072ad6141c407e2006ee14d3f968d7428d703cbe4673308",
+        "size": 31108
+      },
+      "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx": {
+        "sha256": "b21b91fa57c418c65af20c98f9fa9c20fa58e6ef5a59ac379d8453b6f85eada8",
+        "size": 22196
+      },
+      "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx": {
+        "sha256": "7975fdf810bb32c1b5caaea32d0614699a3c596822bb487e4b5b87123425a9be",
+        "size": 10812
+      },
+      "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx": {
+        "sha256": "f111ade1632a58618175a69d784ebb9327b2f513aa24ce74df35bd415500feae",
+        "size": 41349
+      },
+      "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx": {
+        "sha256": "85a07f862573d30b68c7502169c95594eeaeb7ba612168e9222a1a5e379fca7d",
+        "size": 31310
+      },
+      "packages/geo/src/geo-advisor/GeoPlansListCard.tsx": {
+        "sha256": "a069a6304f2cf48862ebe126ec54627b285e251528c184d7f34e31e320bbaf4e",
+        "size": 15198
+      },
+      "packages/geo/src/geo-advisor/GeoProductGuide.tsx": {
+        "sha256": "a68f81761d08a52e98713709d6ca9ec919973ae0c544aec1f3c227fe179a85fd",
+        "size": 4564
+      },
+      "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx": {
+        "sha256": "86c809112c124aae2919414b8094fb4b17f5ce9e941e04370fd47fc25efd931f",
+        "size": 11241
+      },
+      "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx": {
+        "sha256": "1264f720e189bfbc2cbaf55e3ea2d10f71a10ba5ff8b4927a2881bd05297e61b",
+        "size": 13530
+      },
+      "packages/geo/src/geo-advisor/GeoReportCard.tsx": {
+        "sha256": "3924377122b5c6567962f242a156c80c281bd9025589c8111fa283a06c0136bf",
+        "size": 17267
+      },
+      "packages/geo/src/geo-advisor/demo-fixtures.ts": {
+        "sha256": "bdc434df6ef50211d814da70becd2de65c99fadfed4c2918b7056294ea80c5ea",
+        "size": 21857
+      },
+      "packages/geo/src/geo-advisor/demo-monitor-samples.ts": {
+        "sha256": "1255b89ab68b252bfef53c120def539dd0083f302cd5729194d374cf9e984781",
+        "size": 16106
+      },
+      "packages/geo/src/geo-advisor/geo-api.ts": {
+        "sha256": "d52638a8d9ff0f0cd680ebf5076bf84ba5f8fd1438e1300cd16090a168114ad0",
+        "size": 24742
+      },
+      "packages/geo/src/geo-advisor/geo-monitor-subject.tsx": {
+        "sha256": "64ed3afef7ed92766d1bfb1ea31e72046f8976e1a247fcd3e964e5fa66cd8c62",
+        "size": 5216
+      },
+      "packages/geo/src/geo-advisor/index.tsx": {
+        "sha256": "4b9b21d4622a1399f09b61c0279867cf6cc97612651ba43683af51503c5fbca1",
+        "size": 5789
+      },
+      "packages/geo/src/geo-advisor/shared.tsx": {
+        "sha256": "59687f9cbe101cc32c71f43619e86c2e7396250e23b9452b19fb3d14bfc2889c",
+        "size": 19331
+      },
+      "packages/geo/src/index.css": {
+        "sha256": "60825c31ce732375544f87148faf453284345c7013b532fb6d2b4bb609cfbb93",
+        "size": 118849
+      },
+      "packages/geo/src/main.tsx": {
+        "sha256": "ebb319c0a2a12c7252d0c1170299ba320712959d308410bbcbcea8c18ba685ba",
+        "size": 15103
+      },
+      "packages/geo/tests/demo-monitor.test.mjs": {
+        "sha256": "defb3ed6a03a365d41b2bd5281b7ed2cc7042fd1c6dbd2f75da8f31d840aa55e",
+        "size": 3869
+      },
+      "packages/geo/vite.config.ts": {
+        "sha256": "ae7462f5163ff734e1e9519443b764be3a9c1b9cbb71cb5dc86d6e74271cefd2",
+        "size": 1811
+      },
+      "scripts/run_dev.sh": {
+        "sha256": "2887988d186e5174fbc95ab6638cd001b7776b002467476a6960a1ed3113dd9e",
+        "size": 1594
+      },
+      "services/content/__init__.py": {
+        "sha256": "29de27141ec1e8fe1479c901ecbd40127e9b90e42bb3283324cfcc265dc7a273",
+        "size": 75746
+      },
+      "services/intelligence/adapter.py": {
+        "sha256": "2717602c4a4b221b7cbabc94baf8caf5d4130adcbeb0d9cedae1757dc4e9c8d4",
+        "size": 7102
+      },
+      "services/intelligence/aggregator.py": {
+        "sha256": "97943a3f41ab1f246d58b0af96bffa8cc8645d0a15e2eec42565dcad15215a94",
+        "size": 29475
+      },
+      "services/intelligence/cognition.py": {
+        "sha256": "4e15fd0b8c7bf4c523f40508a36eb912b31fd12b2b85cd69d023c987c162b259",
+        "size": 49980
+      },
+      "services/intelligence/prompts.py": {
+        "sha256": "933cbd437fc5d95986bdabf8baf261190a0dd21635ade997507d9fc70941a6f3",
+        "size": 5343
+      },
+      "services/intelligence/queue.py": {
+        "sha256": "2c4c3d2871e47addafe0b1489edaa4fb4d66382e05c553d8da7b9ca537fc6d0e",
+        "size": 14883
+      },
+      "services/intelligence/repo.py": {
+        "sha256": "52cbab24bafff3edc099b62a940fa0cd028e4e7e0e00ed082579896c171e1c6a",
+        "size": 14066
+      }
+    }
+  },
+  "package": {
+    "root": "/Users/tutu/eios-geo-package-session2/geo",
+    "head": "4cb07251e10601d2294b826ee5bdcb6d5f22aa83",
+    "files": {
+      ".dockerignore": {
+        "sha256": "87b328edb72b177995125fdff8e5847d6ebdf721ffbac8b6b5418458e2cd479a",
+        "size": 364
+      },
+      "AGENTS.md": {
+        "sha256": "f37df062516d8fcf749a0e9bc8de3b164b4e86c3fa28bb74f97e4207545ebc0e",
+        "size": 2118
+      },
+      "CURRENT_STATE.md": {
+        "sha256": "68bf3d6578d15b39eeb5fd1fa644bb90bc6e525016937d8cfbb56fe43243e124",
+        "size": 13572
+      },
+      "README.md": {
+        "sha256": "4343338817c7526ca255d1e3d6e295f9454e7a073a77663e4fb2c76eb7dd5047",
+        "size": 5616
+      },
+      "apps/api/app/api/v1/battle.py": {
+        "sha256": "e6748e346e2fbb8b38423463cc0365f2227f98c1447a0c39fbe21ec03893932b",
+        "size": 5390
+      },
+      "apps/api/app/api/v1/cognition.py": {
+        "sha256": "5290c0a83655d5f0721fbb3a8d361a1a4879899136b629151e5610d22397e718",
+        "size": 37140
+      },
+      "apps/api/app/api/v1/content.py": {
+        "sha256": "c238ebebe909937fac5936a20f6a1baf350319343657834f2d481a27c98e70b1",
+        "size": 15082
+      },
+      "apps/api/app/api/v1/distill.py": {
+        "sha256": "8cd346db20d10f475b0d59bf5849874614ee92b2403209a12a10d47d0618b0ca",
+        "size": 115088
+      },
+      "apps/api/app/api/v1/enterprise_profile.py": {
+        "sha256": "e70874a6e29adc420c98423e29af0d4f7baab5bdedd5be48334f850515473cb0",
+        "size": 56346
+      },
+      "apps/api/app/api/v1/intelligence.py": {
+        "sha256": "847a7de46872d17da2c47d7d6ab8959b9f67770fa0b6eee0edca9b9302aa4d44",
+        "size": 18590
+      },
+      "apps/api/app/api/v1/kb_init.py": {
+        "sha256": "9c2039a083f06fb49eb22ece8779ac63c9bd49f16b2eae9cf2db1d8598ee1ddb",
+        "size": 24805
+      },
+      "apps/api/app/api/v1/knowledge.py": {
+        "sha256": "279ebfcec8e478d359261f3c5bfd24491ff34c9ff6e2f3cbdf597bb66134c181",
+        "size": 17760
+      },
+      "apps/api/app/api/v1/monitor.py": {
+        "sha256": "62768388ea09c5c7412fc0640e979491e6764f7a7dd47d00278bf4f428040014",
+        "size": 165207
+      },
+      "apps/api/app/api/v1/onboard.py": {
+        "sha256": "c6f5dd1c56b2ccf3e4bdd99af687be61d22f1877b4c5a65928671703ca8127d4",
+        "size": 62781
+      },
+      "apps/api/app/api/v1/stats.py": {
+        "sha256": "4efdb4ec78e835565985f808bc4cd3da52b1a91f8e975dc56d6fc03c6a99190d",
+        "size": 3912
+      },
+      "apps/api/app/services/company_profile.py": {
+        "sha256": "a3a341c6bec8115f1ec5d210a43bcd10212a2e3c1fa3d27918f129fd6f8cd1f4",
+        "size": 15459
+      },
+      "apps/api/tests/test_geo_answer_denominator_audit.py": {
+        "sha256": "697e2d9ed2f4df9caccf46dba09b454f41b5af9f539626b19c5bf77104483498",
+        "size": 23667
+      },
+      "apps/api/tests/test_geo_chunk_retrieval.py": {
+        "sha256": "626c31c1c2d016c5a12f2b71244fafac2279e9a18fd8dfb04edda6a708d12d16",
+        "size": 10558
+      },
+      "apps/api/tests/test_geo_company_identity.py": {
+        "sha256": "ce41b7fd9b8a7e302ab700bf243b91ac3424b6d870db963479be42a35bcff5f3",
+        "size": 5214
+      },
+      "apps/api/tests/test_geo_content_improve_save.py": {
+        "sha256": "e41b3c16d746ad9d52847579d7a80b4b97ef3a371088dfcbad6f07a1f167d7dc",
+        "size": 3763
+      },
+      "apps/api/tests/test_geo_content_provenance.py": {
+        "sha256": "a11a756e11c4d0ba6a5c42341533ddbdb12e8a62cf17c101fe24c15d9faa4754",
+        "size": 8700
+      },
+      "apps/api/tests/test_geo_content_source_context.py": {
+        "sha256": "7eb1b99569ed8c2fc39cb240d93e0e70901f0e1d686d382da70e7920cb0c4de2",
+        "size": 7322
+      },
+      "apps/api/tests/test_geo_docx_upload_tables.py": {
+        "sha256": "4506fff2445363ee1c5740f8e469d5a6ecdbc627f08e7eb7255fb1d9565d2af9",
+        "size": 2101
+      },
+      "apps/api/tests/test_geo_fact_consumption.py": {
+        "sha256": "278412d23123a0106f8e900dcfc738bcd979245855b3e21a6edb3c69dc8f7a3c",
+        "size": 12744
+      },
+      "apps/api/tests/test_geo_full_report.py": {
+        "sha256": "53bac4220fa892517ee5071b325930e468d70e1562fb0e902bee7d8eaebbe586",
+        "size": 8251
+      },
+      "apps/api/tests/test_geo_monitor_audit_remediation.py": {
+        "sha256": "b036d95f0bc1c8ee1d2e6281c045ece937ef0b485bfd04b01f3891a60cdb5512",
+        "size": 16092
+      },
+      "apps/api/tests/test_geo_own_materials.py": {
+        "sha256": "1b6adcf036796de2ef232ff357875849c125500c2a427cc39b097aaa3868a5c8",
+        "size": 22334
+      },
+      "apps/api/tests/test_geo_package_entry.py": {
+        "sha256": "f42cdf8b1b85dd9bafbc7962dd1b94cb8e5599b4deba7740b0cf93999fc05b64",
+        "size": 1769
+      },
+      "apps/api/tests/test_geo_stats.py": {
+        "sha256": "5c978d068fa215d0abc9cdf9f93cdeec4d35051a377c961f13e60d3f519c6bfa",
+        "size": 862
+      },
+      "apps/api/tests/test_intelligence_queue_tenant.py": {
+        "sha256": "436aea3c9a4ef6a403e812a362ef5fd8e6a61fafa3705e90b6e3a3a1c4fe77f3",
+        "size": 7554
+      },
+      "apps/api/tests/test_intelligence_subject_scope.py": {
+        "sha256": "f54fde8267652749514468ef091e2c340d580c208d162206c0cf9f0ae30e5fa3",
+        "size": 2091
+      },
+      "apps/api/tests/test_kb_init.py": {
+        "sha256": "ebe2e85f4de7176e926728cef3ada65cf603913bd1e2a52bab7bb94b6dc28bcc",
+        "size": 21023
+      },
+      "apps/api/tests/test_monitor_analysis_scope.py": {
+        "sha256": "769d63601861f05bca4a0a95a6df9d41885c90c70f62a73be653cc9f0547974f",
+        "size": 7758
+      },
+      "docker/Dockerfile": {
+        "sha256": "8a3aa4b031cd561cc1dc2d7844bef280370ba7bb2df9a364ab3d2b343227c1e3",
+        "size": 1877
+      },
+      "docker/Dockerfile.release": {
+        "sha256": "e2917d1510a51827482a557feaaa347538c58e7216a9aa3945de9626f7557a76",
+        "size": 3014
+      },
+      "docker/requirements.lock": {
+        "sha256": "f3d6817f58fb218b7b9fe3fc8cded5be97f0c15180c29c805be8b86005a9871f",
+        "size": 1368
+      },
+      "docker/serve.py": {
+        "sha256": "61457d1fe4d71048e187cb52d42f1d37dbe04ee258432b9a9971b5afad108925",
+        "size": 973
+      },
+      "docs/GEO_PRODUCT_DOOR_MATRIX.md": {
+        "sha256": "95c6790c13a8f174dd83a3ade6a749cd976424792ef664749a0fbea105ef9cf5",
+        "size": 22241
+      },
+      "docs/architecture/GEO_ANALYSIS_INTEGRATION_V1.md": {
+        "sha256": "27136d947b025214ef637bf8f070423784b4a59352c123e5d78a1864acce258a",
+        "size": 4897
+      },
+      "docs/architecture/GEO_PRODUCT_CONSTITUTION_V1.md": {
+        "sha256": "b185a2760d50a3f5f1735c60a500791ba861925bbf9c46c8660d81f3ff10f294",
+        "size": 18752
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/REPORT.md": {
+        "sha256": "acbf6d547a5db086fddeefcd60529cfcfb81ba4a6a14e1aadcbbc57cb6babc27",
+        "size": 6796
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/evidence-summary.json": {
+        "sha256": "195fab75d00d1101205a4589b893ffa980a0f52e9f9c7cfeba66d6cc82dc5c0c",
+        "size": 2430
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/reopened.png": {
+        "sha256": "0e026accd65059fd196e57bf30ede9c30a5e039fec071f92411df63e44fccb8e",
+        "size": 157920
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/verification.txt": {
+        "sha256": "428e5dad90d5a9eea279f4a744f8c5b43d96b9878df683982c703a0efbaf9ff7",
+        "size": 365
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/产品FAQ-待核验样本.md": {
+        "sha256": "4727fc5405290cbdf8cd8315d40b0b41960d152047f4e641075af606ab7068d6",
+        "size": 2879
+      },
+      "docs/audits/geo-content-fleet-2026-10-08/品牌介绍-改稿样本.md": {
+        "sha256": "9e521b85b688bf08e01df3cc6d4b936f8a98df4f1b5073c39b95db453e81a50c",
+        "size": 1284
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/REPORT.md": {
+        "sha256": "6b49f64c900424107302b275810a950af2d0ed04c9061313cf07d0794e2f4245",
+        "size": 15620
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/evidence-summary.json": {
+        "sha256": "2e6da37cebbdb0a5cb4d56eae894713b47a751a5a790544f95ad74305fd40689",
+        "size": 3626
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/generated.png": {
+        "sha256": "f0684d6ee305c4cc4a7531ae5099130bbab4c213afa0ed09ecec2dd7f2fd2ac5",
+        "size": 140576
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/reopened.png": {
+        "sha256": "7fbbe041f0e90230911917700d4f35052e47fe33db771817a8377179a3f6a700",
+        "size": 132966
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/upload.png": {
+        "sha256": "3570f32fe697611e6eaec0c9bd8f218eca7e569e3d10ff62dd36a6219826510d",
+        "size": 147233
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/产品FAQ-问题样稿.md": {
+        "sha256": "a1ce5b2b3736e11c3f0345e2e36ad620ec056a176330fb6df0371367490f844c",
+        "size": 2900
+      },
+      "docs/audits/geo-content-walkthrough-2026-10-08/品牌介绍-测试草稿.md": {
+        "sha256": "671b434baf14f8a8d12094b3e4373eccbb0a6240ad504c5c9cc1cab8676e5fbd",
+        "size": 1112
+      },
+      "docs/audits/geo-product-health-check-2026-09-26.md": {
+        "sha256": "04c19cdd1bc041c887169ccd7f8bdf2f7002c7dae5d5708bf33652f0a7f094fd",
+        "size": 126582
+      },
+      "docs/audits/geo-rewrite-seam-2026-10-08/REPORT.md": {
+        "sha256": "ffa988f8d5144da082cbbeaf7a6c2f175c3bb41eb76b6d81fe9b413b1dffb1c0",
+        "size": 2543
+      },
+      "docs/audits/geo-shared-update-2026-10-08/REPORT.md": {
+        "sha256": "661dcff2ff53cca8818d2eea1760a3ee97333ee8bfc7a02e9578cedb9748f266",
+        "size": 2900
+      },
+      "docs/audits/geo-shared-update-2026-10-08/evidence-summary.json": {
+        "sha256": "4df883f98045d979605d2b649706476893a2d7c5590eb00b6742d1e44e8b6b66",
+        "size": 924
+      },
+      "docs/audits/geo-shared-update-2026-10-08/shared-page.png": {
+        "sha256": "b73bec14a9744ffea4203b7d199b3974b418832b06bf95d4b630d49d33a9cefb",
+        "size": 150978
+      },
+      "docs/deliveries/笔革家居首批内容审核稿20261008/01品牌介绍.md": {
+        "sha256": "d824f3eb4daaf14ea883592cdf24414ee61ca0851d0b30ddc03ea47abf277c4b",
+        "size": 1771
+      },
+      "docs/deliveries/笔革家居首批内容审核稿20261008/02全案定制FAQ.md": {
+        "sha256": "41d80cf09ec30dd8e5a8ead2bc9f2596c216f6721a2842cd273ac79eeba644cb",
+        "size": 2633
+      },
+      "docs/deliveries/笔革家居首批内容审核稿20261008/03售后说明.md": {
+        "sha256": "862d745b39dea6fc563188ddca3f09196fc67006e2aec458e44f8a518dad1919",
+        "size": 2324
+      },
+      "docs/deliveries/笔革家居首批内容审核稿20261008/04资料对照及企业确认清单.md": {
+        "sha256": "d42d69ec95ea91bc0550b7aebfa4595206be0a32668cee37adde7db8c1c6f109",
+        "size": 4262
+      },
+      "docs/deliveries/笔革家居首批内容审核稿20261008/README.md": {
+        "sha256": "254d40db2bb33d8d90361bcf0c06e0d99f853709b2ec3f0495d64e6d9405c009",
+        "size": 774
+      },
+      "docs/deliveries/笔革家居首批内容审核稿20261008/交付记录.json": {
+        "sha256": "0c78ff07833d9bb5e9f538b4ac945522be49a95ea4869b881af177f0e7c01578",
+        "size": 3982
+      },
+      "docs/engineering/CARD-GEO-CONTENT-01.md": {
+        "sha256": "56f649267a04efc34fee2e58c87a77b59d2db997f4080fc2978e66b45d0bc841",
+        "size": 12109
+      },
+      "docs/engineering/CARD-GEO-CONTENT-DELIVERY-02.md": {
+        "sha256": "41bf5df52bb44c6804831e59cb555fc059e724c7e632c39debae65b455262fa0",
+        "size": 1613
+      },
+      "docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md": {
+        "sha256": "90da90a7141d289dd88398a3afd8666dd3aeba3395851abca4418637276acf18",
+        "size": 17355
+      },
+      "packages/geo/src/geo-advisor/AutoConfigFlow.tsx": {
+        "sha256": "53a625b9a0cf6bc050e193d76f48ec6eb1bf6fefa42b77f0cefbc7e4336bea22",
+        "size": 43395
+      },
+      "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx": {
+        "sha256": "4738f4dfd569fe1c0631345f1eb1e4514f4927f3a51d003c67abec83deee3ceb",
+        "size": 8374
+      },
+      "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx": {
+        "sha256": "406017334f74b8c1cacc04b5c24ee5f219308a5bd263d8b18d4a49f1f470d2fd",
+        "size": 19312
+      },
+      "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx": {
+        "sha256": "159e8453f81f42a72eaeb6e795730f84711eb09fb06a11a74c2342f3bef41fc7",
+        "size": 26165
+      },
+      "packages/geo/src/geo-advisor/GeoBattleCard.tsx": {
+        "sha256": "d3565d6c9888e73126ed28c7586080901165233ef572e568088a803597aa0484",
+        "size": 6391
+      },
+      "packages/geo/src/geo-advisor/GeoCognitionCard.tsx": {
+        "sha256": "4032550dbacb7e0c69bb5d4c951accf61672528a410d329cc131c45dc6a5cf04",
+        "size": 13215
+      },
+      "packages/geo/src/geo-advisor/GeoCognitionMap.tsx": {
+        "sha256": "d95adbb4ce1845969ba98f60f00cf6781b3660f9300dce7aeddc56fe52a29592",
+        "size": 449
+      },
+      "packages/geo/src/geo-advisor/GeoContentGenForm.tsx": {
+        "sha256": "cd34d448fb29ffe6d08b26cac9576b42a9eef1a3a4cb36fbbfc2fa2691d1d091",
+        "size": 41721
+      },
+      "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx": {
+        "sha256": "d7e8dccdb2afec84f3b9f7551b1adbdcc10c9a4608d82d4fae59a7ff0b353a80",
+        "size": 7596
+      },
+      "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx": {
+        "sha256": "374fa6fbd552272f83e023ea9c2756a1754ab39fe01f9a7f9366a05bb18ed897",
+        "size": 1696
+      },
+      "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx": {
+        "sha256": "ea0e5dd55f029260a1aa243dbcfbe70fe8f4e17cd3ad4585d51ed3ffa52d44f2",
+        "size": 13850
+      },
+      "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx": {
+        "sha256": "3a26e0641895a8705f16d148bce8161ec27b4c5461dcd82fb0619dada2d30e58",
+        "size": 2719
+      },
+      "packages/geo/src/geo-advisor/GeoGapsListCard.tsx": {
+        "sha256": "390329b02e5f7010953f41278f9854860a7674ee52e04719e29f6972a61f7223",
+        "size": 6556
+      },
+      "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx": {
+        "sha256": "dfa982f01c819f451072ad6141c407e2006ee14d3f968d7428d703cbe4673308",
+        "size": 31108
+      },
+      "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx": {
+        "sha256": "b21b91fa57c418c65af20c98f9fa9c20fa58e6ef5a59ac379d8453b6f85eada8",
+        "size": 22196
+      },
+      "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx": {
+        "sha256": "7975fdf810bb32c1b5caaea32d0614699a3c596822bb487e4b5b87123425a9be",
+        "size": 10812
+      },
+      "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx": {
+        "sha256": "f11c757de8e3f42cf57f062a6a9625fc0398f59820cb287f111ddc0fe885b78d",
+        "size": 41343
+      },
+      "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx": {
+        "sha256": "52aa973c45ad806586c8d08aa099c70609136cb0c1c50ed0526ecf0fbaa9a503",
+        "size": 31370
+      },
+      "packages/geo/src/geo-advisor/GeoPlansListCard.tsx": {
+        "sha256": "a069a6304f2cf48862ebe126ec54627b285e251528c184d7f34e31e320bbaf4e",
+        "size": 15198
+      },
+      "packages/geo/src/geo-advisor/GeoProductGuide.tsx": {
+        "sha256": "a68f81761d08a52e98713709d6ca9ec919973ae0c544aec1f3c227fe179a85fd",
+        "size": 4564
+      },
+      "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx": {
+        "sha256": "86c809112c124aae2919414b8094fb4b17f5ce9e941e04370fd47fc25efd931f",
+        "size": 11241
+      },
+      "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx": {
+        "sha256": "1264f720e189bfbc2cbaf55e3ea2d10f71a10ba5ff8b4927a2881bd05297e61b",
+        "size": 13530
+      },
+      "packages/geo/src/geo-advisor/GeoReportCard.tsx": {
+        "sha256": "3924377122b5c6567962f242a156c80c281bd9025589c8111fa283a06c0136bf",
+        "size": 17267
+      },
+      "packages/geo/src/geo-advisor/demo-fixtures.ts": {
+        "sha256": "cf4662e5cae7cb1743c193057d3fa3b96cc8aa45a41843f1cfe16a7297431d59",
+        "size": 27777
+      },
+      "packages/geo/src/geo-advisor/geo-api.ts": {
+        "sha256": "354c4e3412bf35256b4bcf452ec75c8af7d33aa01a9d13add535ecb3089a54a6",
+        "size": 24708
+      },
+      "packages/geo/src/geo-advisor/geo-monitor-subject.tsx": {
+        "sha256": "3b600c6fa47cd60b6c3a149555c7eb9c5d8b70a5c0431d472face5c8cfb664d2",
+        "size": 4660
+      },
+      "packages/geo/src/geo-advisor/index.tsx": {
+        "sha256": "4b9b21d4622a1399f09b61c0279867cf6cc97612651ba43683af51503c5fbca1",
+        "size": 5789
+      },
+      "packages/geo/src/geo-advisor/shared.tsx": {
+        "sha256": "59687f9cbe101cc32c71f43619e86c2e7396250e23b9452b19fb3d14bfc2889c",
+        "size": 19331
+      },
+      "packages/geo/src/index.css": {
+        "sha256": "60825c31ce732375544f87148faf453284345c7013b532fb6d2b4bb609cfbb93",
+        "size": 118849
+      },
+      "packages/geo/src/main.tsx": {
+        "sha256": "ebb319c0a2a12c7252d0c1170299ba320712959d308410bbcbcea8c18ba685ba",
+        "size": 15103
+      },
+      "packages/geo/vite.config.ts": {
+        "sha256": "ae7462f5163ff734e1e9519443b764be3a9c1b9cbb71cb5dc86d6e74271cefd2",
+        "size": 1811
+      },
+      "scripts/run_dev.sh": {
+        "sha256": "2887988d186e5174fbc95ab6638cd001b7776b002467476a6960a1ed3113dd9e",
+        "size": 1594
+      },
+      "services/company_identity.py": {
+        "sha256": "512626f1c14508822e5ea033d105eec6d5ea2793230a1699d7d64add428431c3",
+        "size": 19023
+      },
+      "services/content/__init__.py": {
+        "sha256": "94b317e490ab55d036752ba7c32b248df9ec923c1f9f94cf52508088f20b3afd",
+        "size": 70288
+      },
+      "services/content/claim_check.py": {
+        "sha256": "654c1ed100172e62d894c90d1af2250718b552bf87b7dce30d659d4110d40b29",
+        "size": 3486
+      },
+      "services/intelligence/adapter.py": {
+        "sha256": "2717602c4a4b221b7cbabc94baf8caf5d4130adcbeb0d9cedae1757dc4e9c8d4",
+        "size": 7102
+      },
+      "services/intelligence/aggregator.py": {
+        "sha256": "97943a3f41ab1f246d58b0af96bffa8cc8645d0a15e2eec42565dcad15215a94",
+        "size": 29475
+      },
+      "services/intelligence/cognition.py": {
+        "sha256": "4e15fd0b8c7bf4c523f40508a36eb912b31fd12b2b85cd69d023c987c162b259",
+        "size": 49980
+      },
+      "services/intelligence/prompts.py": {
+        "sha256": "933cbd437fc5d95986bdabf8baf261190a0dd21635ade997507d9fc70941a6f3",
+        "size": 5343
+      },
+      "services/intelligence/queue.py": {
+        "sha256": "2c4c3d2871e47addafe0b1489edaa4fb4d66382e05c553d8da7b9ca537fc6d0e",
+        "size": 14883
+      },
+      "services/intelligence/repo.py": {
+        "sha256": "52cbab24bafff3edc099b62a940fa0cd028e4e7e0e00ed082579896c171e1c6a",
+        "size": 14066
+      }
+    }
+  },
+  "comparison": [
+    {
+      "path": ".dockerignore",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "7941bc4f44dccd8a10b50298a65b9bf3c3b521d5e8929052fc3d834cac4cd44c",
+      "package_sha256": "87b328edb72b177995125fdff8e5847d6ebdf721ffbac8b6b5418458e2cd479a"
+    },
+    {
+      "path": "AGENTS.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "973ff57a5a327d9f69033c6dd970875ecc73abbb07ce1bb2f3f056748696df1c",
+      "package_sha256": "f37df062516d8fcf749a0e9bc8de3b164b4e86c3fa28bb74f97e4207545ebc0e"
+    },
+    {
+      "path": "CURRENT_STATE.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "b997f4c99a63c7e3a4f5af5a7b7fcc4e67aade4e926288aa573003a1f49bfa4c",
+      "package_sha256": "68bf3d6578d15b39eeb5fd1fa644bb90bc6e525016937d8cfbb56fe43243e124"
+    },
+    {
+      "path": "README.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "61b59e48977c24b2fee941490c8233fafe7a359bdf023bbc2562f4b458a98c8b",
+      "package_sha256": "4343338817c7526ca255d1e3d6e295f9454e7a073a77663e4fb2c76eb7dd5047"
+    },
+    {
+      "path": "adapters/eios/__init__.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "1717306be3cbf7e24be6834b25fa121a90980b55768e9183d913958d7bf27645",
+      "package_sha256": "60954a54f1ee50231d3f3db4c799fa29af1886262cc8a8918d5f41c522ba9c4b"
+    },
+    {
+      "path": "adapters/llm.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "a4c79bf9340f2832c18a9e6f361b939a3ce5de48fbe0d3b98d20d80df712f6d4",
+      "package_sha256": "a477b3232a479d73f052c4a2bf21f5010c0df3cfa3ef0956320d31638540e933"
+    },
+    {
+      "path": "adapters/model_entry.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "6d49d15b3c5d83897287883eb863dd0d3a8dfc7a97424682b42351723cc06afd",
+      "package_sha256": "5fb68158bf28d5d66fe19144b8afd7d2b3cf4a6c9844d581a23736e15c0a70d1"
+    },
+    {
+      "path": "apps/api/app/api/v1/battle.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "e6748e346e2fbb8b38423463cc0365f2227f98c1447a0c39fbe21ec03893932b",
+      "package_sha256": "e6748e346e2fbb8b38423463cc0365f2227f98c1447a0c39fbe21ec03893932b"
+    },
+    {
+      "path": "apps/api/app/api/v1/cognition.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "5290c0a83655d5f0721fbb3a8d361a1a4879899136b629151e5610d22397e718",
+      "package_sha256": "5290c0a83655d5f0721fbb3a8d361a1a4879899136b629151e5610d22397e718"
+    },
+    {
+      "path": "apps/api/app/api/v1/content.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "703d3c46b9bd10b5dd247e84dc05fd0a1d908b4369749de8db8e0d4083d4946f",
+      "package_sha256": "c238ebebe909937fac5936a20f6a1baf350319343657834f2d481a27c98e70b1"
+    },
+    {
+      "path": "apps/api/app/api/v1/distill.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "8cd346db20d10f475b0d59bf5849874614ee92b2403209a12a10d47d0618b0ca",
+      "package_sha256": "8cd346db20d10f475b0d59bf5849874614ee92b2403209a12a10d47d0618b0ca"
+    },
+    {
+      "path": "apps/api/app/api/v1/enterprise_profile.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "e70874a6e29adc420c98423e29af0d4f7baab5bdedd5be48334f850515473cb0",
+      "package_sha256": "e70874a6e29adc420c98423e29af0d4f7baab5bdedd5be48334f850515473cb0"
+    },
+    {
+      "path": "apps/api/app/api/v1/intelligence.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "847a7de46872d17da2c47d7d6ab8959b9f67770fa0b6eee0edca9b9302aa4d44",
+      "package_sha256": "847a7de46872d17da2c47d7d6ab8959b9f67770fa0b6eee0edca9b9302aa4d44"
+    },
+    {
+      "path": "apps/api/app/api/v1/kb_init.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "a4712940212040c53af0759c94d6278f1cd3f7bd7e04838ea17995aa18f047c7",
+      "package_sha256": "9c2039a083f06fb49eb22ece8779ac63c9bd49f16b2eae9cf2db1d8598ee1ddb"
+    },
+    {
+      "path": "apps/api/app/api/v1/knowledge.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "25349885b593306bbbb01b1858b736a4b1e8040ac0a663b8d06e53fb46a87167",
+      "package_sha256": "279ebfcec8e478d359261f3c5bfd24491ff34c9ff6e2f3cbdf597bb66134c181"
+    },
+    {
+      "path": "apps/api/app/api/v1/monitor.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "62768388ea09c5c7412fc0640e979491e6764f7a7dd47d00278bf4f428040014",
+      "package_sha256": "62768388ea09c5c7412fc0640e979491e6764f7a7dd47d00278bf4f428040014"
+    },
+    {
+      "path": "apps/api/app/api/v1/onboard.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "c6f5dd1c56b2ccf3e4bdd99af687be61d22f1877b4c5a65928671703ca8127d4",
+      "package_sha256": "c6f5dd1c56b2ccf3e4bdd99af687be61d22f1877b4c5a65928671703ca8127d4"
+    },
+    {
+      "path": "apps/api/app/api/v1/stats.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "4efdb4ec78e835565985f808bc4cd3da52b1a91f8e975dc56d6fc03c6a99190d",
+      "package_sha256": "4efdb4ec78e835565985f808bc4cd3da52b1a91f8e975dc56d6fc03c6a99190d"
+    },
+    {
+      "path": "apps/api/app/services/company_profile.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "a3a341c6bec8115f1ec5d210a43bcd10212a2e3c1fa3d27918f129fd6f8cd1f4",
+      "package_sha256": "a3a341c6bec8115f1ec5d210a43bcd10212a2e3c1fa3d27918f129fd6f8cd1f4"
+    },
+    {
+      "path": "apps/api/app/services/knowledge_snapshot.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "06ceb70fe756fb08c2aedfdfd38f8cc60a4dd0256a0274076651e3cbb819f5a4",
+      "package_sha256": "0899f939ce0d4b18030a7356747243a66eb73533700b033060cf97dbe6cb55b0"
+    },
+    {
+      "path": "apps/api/tests/fixtures/formal_content/attributes.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "f4c75d322455c4001fa42daef61dfade8614e0d12f562c115e132fa9f5881573",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/fixtures/formal_content/evidence.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "0e062296b8920209c2c9dd021e2d08c4965b3e9c0fdb1a4b971070c17f177e86",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/fixtures/formal_content/object.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "f1726546db0032d787c5f030d5812b3f8329553fe9787afc26c59a41d552e69f",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/fixtures/formal_content/objects.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "3da664d1f79772a05cbd63a269685e3973c2cc5c0a7c3fba6498c72b2ef3a13c",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/fixtures/formal_content/relations.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "5d2dd75d576be988083f15d6ae698c76371031093801730d58d4e17c83aa678c",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/test_content_budget.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "0cfbaf389a7c4c5655329af6fe7d50d1f592716d6ff83448a3bb0f0ba61d44ae",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/test_content_cold_read.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "5309655cd324c09c472666cd2fcddeb2cbe282f6eb01643914b6b78a96f47195",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/test_content_read_status.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "f551c66ded43c967176dbda6eed09770f231c2dc9fea9ccec6a2169e09745be7",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/test_geo_answer_denominator_audit.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "697e2d9ed2f4df9caccf46dba09b454f41b5af9f539626b19c5bf77104483498",
+      "package_sha256": "697e2d9ed2f4df9caccf46dba09b454f41b5af9f539626b19c5bf77104483498"
+    },
+    {
+      "path": "apps/api/tests/test_geo_chunk_channel.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "dcbb4e7f038af647017da58cb5625cbe4594a76aefdfb8bf450a76e259fd9076",
+      "package_sha256": "0a0cd63d904bde9b7cf74e03b527a504c153ae435bd5dce8cab47c47a18051ba"
+    },
+    {
+      "path": "apps/api/tests/test_geo_chunk_retrieval.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "626c31c1c2d016c5a12f2b71244fafac2279e9a18fd8dfb04edda6a708d12d16",
+      "package_sha256": "626c31c1c2d016c5a12f2b71244fafac2279e9a18fd8dfb04edda6a708d12d16"
+    },
+    {
+      "path": "apps/api/tests/test_geo_company_identity.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "ce41b7fd9b8a7e302ab700bf243b91ac3424b6d870db963479be42a35bcff5f3",
+      "package_sha256": "ce41b7fd9b8a7e302ab700bf243b91ac3424b6d870db963479be42a35bcff5f3"
+    },
+    {
+      "path": "apps/api/tests/test_geo_content_improve_save.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "e41b3c16d746ad9d52847579d7a80b4b97ef3a371088dfcbad6f07a1f167d7dc",
+      "package_sha256": "e41b3c16d746ad9d52847579d7a80b4b97ef3a371088dfcbad6f07a1f167d7dc"
+    },
+    {
+      "path": "apps/api/tests/test_geo_content_provenance.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "a11a756e11c4d0ba6a5c42341533ddbdb12e8a62cf17c101fe24c15d9faa4754",
+      "package_sha256": "a11a756e11c4d0ba6a5c42341533ddbdb12e8a62cf17c101fe24c15d9faa4754"
+    },
+    {
+      "path": "apps/api/tests/test_geo_content_source_context.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "7eb1b99569ed8c2fc39cb240d93e0e70901f0e1d686d382da70e7920cb0c4de2",
+      "package_sha256": "7eb1b99569ed8c2fc39cb240d93e0e70901f0e1d686d382da70e7920cb0c4de2"
+    },
+    {
+      "path": "apps/api/tests/test_geo_docx_upload_tables.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "4506fff2445363ee1c5740f8e469d5a6ecdbc627f08e7eb7255fb1d9565d2af9",
+      "package_sha256": "4506fff2445363ee1c5740f8e469d5a6ecdbc627f08e7eb7255fb1d9565d2af9"
+    },
+    {
+      "path": "apps/api/tests/test_geo_fact_consumption.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "278412d23123a0106f8e900dcfc738bcd979245855b3e21a6edb3c69dc8f7a3c",
+      "package_sha256": "278412d23123a0106f8e900dcfc738bcd979245855b3e21a6edb3c69dc8f7a3c"
+    },
+    {
+      "path": "apps/api/tests/test_geo_formal_content.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "07e998a626a7c6a56c708133c1ba10780772e76b4ce30b69509337a5b0a9ecd0",
+      "package_sha256": null
+    },
+    {
+      "path": "apps/api/tests/test_geo_full_report.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "53bac4220fa892517ee5071b325930e468d70e1562fb0e902bee7d8eaebbe586",
+      "package_sha256": "53bac4220fa892517ee5071b325930e468d70e1562fb0e902bee7d8eaebbe586"
+    },
+    {
+      "path": "apps/api/tests/test_geo_knowledge_consumer.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "8cfc1663e88091846b684ca03f03fbcc1a97a00f18b2517abca9b43b4e18cde7",
+      "package_sha256": "a8da73ddd1cf134bc1073dff2d8f764226ebc41cddf319f85479fbc8298125d0"
+    },
+    {
+      "path": "apps/api/tests/test_geo_monitor_audit_remediation.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "b036d95f0bc1c8ee1d2e6281c045ece937ef0b485bfd04b01f3891a60cdb5512",
+      "package_sha256": "b036d95f0bc1c8ee1d2e6281c045ece937ef0b485bfd04b01f3891a60cdb5512"
+    },
+    {
+      "path": "apps/api/tests/test_geo_own_materials.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "1b6adcf036796de2ef232ff357875849c125500c2a427cc39b097aaa3868a5c8",
+      "package_sha256": "1b6adcf036796de2ef232ff357875849c125500c2a427cc39b097aaa3868a5c8"
+    },
+    {
+      "path": "apps/api/tests/test_geo_package_entry.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "f42cdf8b1b85dd9bafbc7962dd1b94cb8e5599b4deba7740b0cf93999fc05b64"
+    },
+    {
+      "path": "apps/api/tests/test_geo_stats.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "5c978d068fa215d0abc9cdf9f93cdeec4d35051a377c961f13e60d3f519c6bfa",
+      "package_sha256": "5c978d068fa215d0abc9cdf9f93cdeec4d35051a377c961f13e60d3f519c6bfa"
+    },
+    {
+      "path": "apps/api/tests/test_intelligence_queue_tenant.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "436aea3c9a4ef6a403e812a362ef5fd8e6a61fafa3705e90b6e3a3a1c4fe77f3",
+      "package_sha256": "436aea3c9a4ef6a403e812a362ef5fd8e6a61fafa3705e90b6e3a3a1c4fe77f3"
+    },
+    {
+      "path": "apps/api/tests/test_intelligence_subject_scope.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "f54fde8267652749514468ef091e2c340d580c208d162206c0cf9f0ae30e5fa3",
+      "package_sha256": "f54fde8267652749514468ef091e2c340d580c208d162206c0cf9f0ae30e5fa3"
+    },
+    {
+      "path": "apps/api/tests/test_kb_init.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "8cbdb0082827c5dfdc7ef4d2e38489ebac9ce26aeeec73e3ebec5bd3bb759f6e",
+      "package_sha256": "ebe2e85f4de7176e926728cef3ada65cf603913bd1e2a52bab7bb94b6dc28bcc"
+    },
+    {
+      "path": "apps/api/tests/test_monitor_analysis_scope.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "769d63601861f05bca4a0a95a6df9d41885c90c70f62a73be653cc9f0547974f",
+      "package_sha256": "769d63601861f05bca4a0a95a6df9d41885c90c70f62a73be653cc9f0547974f"
+    },
+    {
+      "path": "docker/Dockerfile",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "e28b2d8cb5d0263547e86cd51c5637316b4fc272df7dd000b8ea6cb8913de1af",
+      "package_sha256": "8a3aa4b031cd561cc1dc2d7844bef280370ba7bb2df9a364ab3d2b343227c1e3"
+    },
+    {
+      "path": "docker/Dockerfile.release",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "e2917d1510a51827482a557feaaa347538c58e7216a9aa3945de9626f7557a76"
+    },
+    {
+      "path": "docker/requirements.lock",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "f3d6817f58fb218b7b9fe3fc8cded5be97f0c15180c29c805be8b86005a9871f"
+    },
+    {
+      "path": "docker/serve.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "61457d1fe4d71048e187cb52d42f1d37dbe04ee258432b9a9971b5afad108925"
+    },
+    {
+      "path": "docs/GEO_PRODUCT_DOOR_MATRIX.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "95c6790c13a8f174dd83a3ade6a749cd976424792ef664749a0fbea105ef9cf5",
+      "package_sha256": "95c6790c13a8f174dd83a3ade6a749cd976424792ef664749a0fbea105ef9cf5"
+    },
+    {
+      "path": "docs/README.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "60bcecbe7cc797c935554dbb63e8e68e1c9566c3ec244e82dc8e016e18efd85e",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/architecture/GEO_ANALYSIS_INTEGRATION_V1.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "27136d947b025214ef637bf8f070423784b4a59352c123e5d78a1864acce258a",
+      "package_sha256": "27136d947b025214ef637bf8f070423784b4a59352c123e5d78a1864acce258a"
+    },
+    {
+      "path": "docs/architecture/GEO_PRODUCT_CONSTITUTION_V1.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "b185a2760d50a3f5f1735c60a500791ba861925bbf9c46c8660d81f3ff10f294",
+      "package_sha256": "b185a2760d50a3f5f1735c60a500791ba861925bbf9c46c8660d81f3ff10f294"
+    },
+    {
+      "path": "docs/archive/2026-10/root/CURRENT_STATE-before-governance-2026-10-11.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "8c7ae6e54c653da856f746380b00c65f71e96a3882b53fee0f7ed4e8ba6a0147",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/archive/INDEX.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "ce1ae1719b4448235c91afe111783e761d0a458797d2bd402f4aba4b763c14ad",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/backend-before/adapters/eios/__init__.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "5c5729899db5f7cf63b79d3adbdb4a6747a24c53acf33932a2a7f687621ab3d3",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/content.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "c5963428edb74e07b35cdae0ab40f027f72c3964e8735b75de1942d6b836c469",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/backend-before/apps/api/app/api/v1/knowledge.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "279ebfcec8e478d359261f3c5bfd24491ff34c9ff6e2f3cbdf597bb66134c181",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/backend-before/services/content/__init__.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "9225f247c176a7907762c2d564692f0cee0247da1f2504916f1d94bb810c8a8d",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/backend-manifest.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "876c73670df3c713626ae30ee2d1a2829a5d23b3b8088704e2527840539e32e3",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/backend-round.patch",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "8d760cdb36a05c5ae6a64939b5899d3ac1117ea7184da341b70cfdfbc573f1eb",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/preservation-check.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "ae390499c30ec407cd180700573fd91a22a248ae418fbc71ebc8d75454bb95af",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/status-after.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "612d3482c4619e5ead2c3e30551d39b8c6689a1326db98b3b406804045677089",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/status-before.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "c958ec88a181db266f6f40e58a36e2c8f8ee3c0b7213a11f5de5529ff6285204",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/后端报告.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "63a8075a26e4b45df4f50432e61202786bb680abe156dbb9326e82235a73e22a",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-consumption-plan/方案.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "7d893cfc48ddfbbe74b4ff1010b484fc5d5fb315d110b2ce8800db02a0e5ac9f",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-docs-alignment/source-manifest.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "33365e9b05c698cdd938c31fa3bffc3abd4e60617db3046ee6f25e0160ad98ff",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-docs-alignment/validation.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "082a135e484ef3aec05a900228c15291be5c6f25f0a20405a6811934d4619a48",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-11-geo-docs-alignment/报告.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "751157ef4e2174b55c56abc122d42aee0c35123bcde646675951126c83c58ebe",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/analysis-snapshot.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "9265d7ea255a0886bb069e423c0da69b5a74fb3a3f9bf01221614dc3b9044a3d",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/analysis-sources-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "8e4525aba57b6a125a27ecdd36a50419c76b3a663361c2855fe62bbb6e93904e",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/answers-snapshot.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "90f1e4034efbcab8c9cda116c53f6a1b41c4bc5d613a9237633ed33aef38218b",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/backend-aggregate.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "68afaf8e6eb14f4f035cef7995f2dbad8e06b79a43ffd8d0c511d420564978ec",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/browser-check.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "45c2064ed8e89d26f53ea4ce3b6efc348658845898961d8bf300aa2245204704",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/competitor-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "be76ca56632e4eee99ecf62fbf5500b77b372d73a597598a0a93f08aaf2aa7c0",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/fact-check-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "efd734dd55576f2138ff5e208933205ddbd28d21f5e81f54d2f708b7d9e48389",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/industry-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "9a97ba0871061e6917f07d07f2d8b5cd583778962c25bce65fb43807f8a94557",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/manifest.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "3a93a4f4dcedc07cf6e7d45176bb63baa367e8aac876927e7a05dba919c29cf9",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/market-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "a0bbc82580c3804dd6d0dcfd6bf3bfd62fa5bf9132db5ab9acf8fd97326540ef",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/profile-final-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "66922af044377e449273ce391798b0b92d3c0eaf0f25724b41438195693fb9bb",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/round.patch",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "4a0c49221990a063d04170d312490858fdcf629ace76d89be81732ea0d7ddbe4",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/samples.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "ca62df8f7318d4ae0c32a634692d43050737da703f29fe6906b66dc68f4d4373",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/actions.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "b577213cd82dd7b70554eec571eae4e59e18f8fe4b7b3a62e4d5fd45ede3a05a",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/analysis.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "2168b86a6856ce35d9590dab2f06df7fde91bd8f16f2e3c11bd890ebe16069e8",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/answers-expanded.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "a231a34cfbee282fbf9bc3c9b031f93a7c302a1f8844489a4dd41c651923bb04",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/citations.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "adbdeb4acbc35a70f4355833e2a34c960d294a7fa641b17c9212cfb3c85850db",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/cognition-final.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "52f54e78064e8e2a3c341418ddb322011c9cb5ad8621b44718b44a7147339c82",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/fact-check.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "7f05ab7394d9eeeac10392dfca3511083f31cf3df2537260452f21b847a28017",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/gaps.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "8e5b33810ccefa7322daa2f5705eb4138ca2c69a95b0a87290fbf959dbeae46d",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/insight-evidence.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "3d370bea73b27cb1123a20e40021b2b9629248e78c94679f6daa5bdca35ff639",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/market.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "87df2aab8b3f27c3f12812bf1c85902989960e74b705fe6ae6e7c7fb5ae794e3",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/overview-final.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "f968259c8829c371933cfeaefc8c672bbdda6cd2f53c521a5b72c60775215328",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/screenshots/profile-final.png",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "d290c76466e138509ae292ccc4a2e89c435ba0fe0f9d9315c3a96f0fd3d091b2",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/sentiment-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "ff55776de10e4a3f2010a87637b30059f0aba33886ba06504a912dc7fd02f0a6",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/sha256.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "917f92053a4ace101c918512eaf70b68e74c374da86e8b47f4d4bb3a4858574f",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/sources-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "56c57feb203a7066fc518be0e32592719f0c2968c01375bce08938e34fde89e0",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/unknown-visible.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "e9318a339944f52f632404f5396169bfe9c4fdb2be2ecf4742969a48a31b1b78",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/功能接口清单.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "6fa698e51f02b9957a9fa8bde68d6d5d9e47e611a1ab27fc7c21482b2ad8cba5",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-demo-ui/报告.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "1af3b0167cde7834b8aad395947d1be7dc2a9dbaa374f32bbc884ab3609e8595",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/door-check.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "59376e9936ce744fbeb93be65e951e8a36d4fa32cd9d9fa1a699aa043a55710f",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/live-probe.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "1e8384c31547af27310a91665055aea97423c0c09b7b623774eb07ad51692f1d",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/probe-result.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "61209eca4ebd6bcb741f35a4895cf5a467f8d8e5a5dfa6dec3f9e990809ecffa",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/probe.py",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "efca3a45007a11ec604dd6a9e2e84023c86a32ac938fa4f73ae86b452ea21ed6",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/sha256.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "a1f35745d8b445f74badb8f90acdd9ff64e394784264a78b8d3d7b930e37ad95",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/source-baseline.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "6beae9181083aee02a694c8077d1b183e7bb4a22fef8ebd07491c16e1b89583c",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/verification.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "c31823fd101bbde8eb2e29e1dd2c256db467a800f4e9afcf12feeddf787e7b15",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/2026-10-12-geo-real-wiring/报告.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "4e08e3ee13e698f641eeb340a9908b7ae417e9f5e1d08a8aa19a3bac7f910d29",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/geo-content-fleet-2026-10-08/REPORT.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "acbf6d547a5db086fddeefcd60529cfcfb81ba4a6a14e1aadcbbc57cb6babc27",
+      "package_sha256": "acbf6d547a5db086fddeefcd60529cfcfb81ba4a6a14e1aadcbbc57cb6babc27"
+    },
+    {
+      "path": "docs/audits/geo-content-fleet-2026-10-08/evidence-summary.json",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "195fab75d00d1101205a4589b893ffa980a0f52e9f9c7cfeba66d6cc82dc5c0c",
+      "package_sha256": "195fab75d00d1101205a4589b893ffa980a0f52e9f9c7cfeba66d6cc82dc5c0c"
+    },
+    {
+      "path": "docs/audits/geo-content-fleet-2026-10-08/reopened.png",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "0e026accd65059fd196e57bf30ede9c30a5e039fec071f92411df63e44fccb8e",
+      "package_sha256": "0e026accd65059fd196e57bf30ede9c30a5e039fec071f92411df63e44fccb8e"
+    },
+    {
+      "path": "docs/audits/geo-content-fleet-2026-10-08/verification.txt",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "428e5dad90d5a9eea279f4a744f8c5b43d96b9878df683982c703a0efbaf9ff7",
+      "package_sha256": "428e5dad90d5a9eea279f4a744f8c5b43d96b9878df683982c703a0efbaf9ff7"
+    },
+    {
+      "path": "docs/audits/geo-content-fleet-2026-10-08/产品FAQ-待核验样本.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "4727fc5405290cbdf8cd8315d40b0b41960d152047f4e641075af606ab7068d6",
+      "package_sha256": "4727fc5405290cbdf8cd8315d40b0b41960d152047f4e641075af606ab7068d6"
+    },
+    {
+      "path": "docs/audits/geo-content-fleet-2026-10-08/品牌介绍-改稿样本.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "9e521b85b688bf08e01df3cc6d4b936f8a98df4f1b5073c39b95db453e81a50c",
+      "package_sha256": "9e521b85b688bf08e01df3cc6d4b936f8a98df4f1b5073c39b95db453e81a50c"
+    },
+    {
+      "path": "docs/audits/geo-content-walkthrough-2026-10-08/REPORT.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "6b49f64c900424107302b275810a950af2d0ed04c9061313cf07d0794e2f4245",
+      "package_sha256": "6b49f64c900424107302b275810a950af2d0ed04c9061313cf07d0794e2f4245"
+    },
+    {
+      "path": "docs/audits/geo-content-walkthrough-2026-10-08/evidence-summary.json",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "2e6da37cebbdb0a5cb4d56eae894713b47a751a5a790544f95ad74305fd40689",
+      "package_sha256": "2e6da37cebbdb0a5cb4d56eae894713b47a751a5a790544f95ad74305fd40689"
+    },
+    {
+      "path": "docs/audits/geo-content-walkthrough-2026-10-08/generated.png",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "f0684d6ee305c4cc4a7531ae5099130bbab4c213afa0ed09ecec2dd7f2fd2ac5",
+      "package_sha256": "f0684d6ee305c4cc4a7531ae5099130bbab4c213afa0ed09ecec2dd7f2fd2ac5"
+    },
+    {
+      "path": "docs/audits/geo-content-walkthrough-2026-10-08/reopened.png",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "7fbbe041f0e90230911917700d4f35052e47fe33db771817a8377179a3f6a700",
+      "package_sha256": "7fbbe041f0e90230911917700d4f35052e47fe33db771817a8377179a3f6a700"
+    },
+    {
+      "path": "docs/audits/geo-content-walkthrough-2026-10-08/upload.png",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "3570f32fe697611e6eaec0c9bd8f218eca7e569e3d10ff62dd36a6219826510d",
+      "package_sha256": "3570f32fe697611e6eaec0c9bd8f218eca7e569e3d10ff62dd36a6219826510d"
+    },
+    {
+      "path": "docs/audits/geo-content-walkthrough-2026-10-08/产品FAQ-问题样稿.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "a1ce5b2b3736e11c3f0345e2e36ad620ec056a176330fb6df0371367490f844c",
+      "package_sha256": "a1ce5b2b3736e11c3f0345e2e36ad620ec056a176330fb6df0371367490f844c"
+    },
+    {
+      "path": "docs/audits/geo-content-walkthrough-2026-10-08/品牌介绍-测试草稿.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "671b434baf14f8a8d12094b3e4373eccbb0a6240ad504c5c9cc1cab8676e5fbd",
+      "package_sha256": "671b434baf14f8a8d12094b3e4373eccbb0a6240ad504c5c9cc1cab8676e5fbd"
+    },
+    {
+      "path": "docs/audits/geo-local-seams-2026-10-09/REPORT.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "5c2341381697c0bbdf4a957209ba1fe0599eccc505df3e209f1310795c440aca",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/geo-local-seams-2026-10-09/manifest.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "e61467ca3241cffbe7495f261b0d9fdf030999a9bcad04be76ff3ab20bd18075",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/geo-local-seams-2026-10-09/round.patch",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "92ee876a0cf2e939db55145fb5ac0cc73ca9d132cf9e80602728a18f0a2c4cc0",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/geo-local-seams-2026-10-09/selected-source.tar.gz",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "d770bbfd6292efe2e43fc0c82ae8065b5e14a79688de413407eae7d9bb9d14ba",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/geo-local-seams-2026-10-09/status-before.txt",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "81a493f72a6c618e28ddf7aeb0801e1d6db0170f0f9a6668610989ecd911058c",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/geo-local-seams-2026-10-09/ui-timing-check.cjs",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "fdc7020dc62e06d01957207299b098e2974288d8a7080dfd66bf580e053a5016",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/audits/geo-product-health-check-2026-09-26.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "04c19cdd1bc041c887169ccd7f8bdf2f7002c7dae5d5708bf33652f0a7f094fd",
+      "package_sha256": "04c19cdd1bc041c887169ccd7f8bdf2f7002c7dae5d5708bf33652f0a7f094fd"
+    },
+    {
+      "path": "docs/audits/geo-rewrite-seam-2026-10-08/REPORT.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "ffa988f8d5144da082cbbeaf7a6c2f175c3bb41eb76b6d81fe9b413b1dffb1c0",
+      "package_sha256": "ffa988f8d5144da082cbbeaf7a6c2f175c3bb41eb76b6d81fe9b413b1dffb1c0"
+    },
+    {
+      "path": "docs/audits/geo-shared-update-2026-10-08/REPORT.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "661dcff2ff53cca8818d2eea1760a3ee97333ee8bfc7a02e9578cedb9748f266",
+      "package_sha256": "661dcff2ff53cca8818d2eea1760a3ee97333ee8bfc7a02e9578cedb9748f266"
+    },
+    {
+      "path": "docs/audits/geo-shared-update-2026-10-08/evidence-summary.json",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "4df883f98045d979605d2b649706476893a2d7c5590eb00b6742d1e44e8b6b66",
+      "package_sha256": "4df883f98045d979605d2b649706476893a2d7c5590eb00b6742d1e44e8b6b66"
+    },
+    {
+      "path": "docs/audits/geo-shared-update-2026-10-08/shared-page.png",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "b73bec14a9744ffea4203b7d199b3974b418832b06bf95d4b630d49d33a9cefb",
+      "package_sha256": "b73bec14a9744ffea4203b7d199b3974b418832b06bf95d4b630d49d33a9cefb"
+    },
+    {
+      "path": "docs/decisions/2026-10-11-geo-backend-authorization.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "a3432c16f00554d8b2bdb928f52fb195194031f0662f76cf99b2f46552bb8776",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/decisions/2026-10-11-geo-documentation-alignment.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "d0f0d09ed00507a500afa6e096c5ed3469a4c4edb9b202a4f3420750d94dd76a",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/decisions/2026-10-12-geo-demo-ui-authorization.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "293b01abb7404e8d8167fa263c7e5ee4d354c32a7f38bacea3310f457cd14aaf",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/deliveries/笔革家居首批内容审核稿20261008/01品牌介绍.md",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "d824f3eb4daaf14ea883592cdf24414ee61ca0851d0b30ddc03ea47abf277c4b"
+    },
+    {
+      "path": "docs/deliveries/笔革家居首批内容审核稿20261008/02全案定制FAQ.md",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "41d80cf09ec30dd8e5a8ead2bc9f2596c216f6721a2842cd273ac79eeba644cb"
+    },
+    {
+      "path": "docs/deliveries/笔革家居首批内容审核稿20261008/03售后说明.md",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "862d745b39dea6fc563188ddca3f09196fc67006e2aec458e44f8a518dad1919"
+    },
+    {
+      "path": "docs/deliveries/笔革家居首批内容审核稿20261008/04资料对照及企业确认清单.md",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "d42d69ec95ea91bc0550b7aebfa4595206be0a32668cee37adde7db8c1c6f109"
+    },
+    {
+      "path": "docs/deliveries/笔革家居首批内容审核稿20261008/README.md",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "254d40db2bb33d8d90361bcf0c06e0d99f853709b2ec3f0495d64e6d9405c009"
+    },
+    {
+      "path": "docs/deliveries/笔革家居首批内容审核稿20261008/交付记录.json",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "0c78ff07833d9bb5e9f538b4ac945522be49a95ea4869b881af177f0e7c01578"
+    },
+    {
+      "path": "docs/engineering/CARD-GEO-CONTENT-01.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "336a5250d9f84bbeb1287d8db32b5bc3c7aef11d8833fa390238099c793f9aaf",
+      "package_sha256": "56f649267a04efc34fee2e58c87a77b59d2db997f4080fc2978e66b45d0bc841"
+    },
+    {
+      "path": "docs/engineering/CARD-GEO-CONTENT-DELIVERY-02.md",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": null,
+      "package_sha256": "41bf5df52bb44c6804831e59cb555fc059e724c7e632c39debae65b455262fa0"
+    },
+    {
+      "path": "docs/engineering/GEO-CONTENT-DELIVERY-PLAN-2026-10-08.md",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "90da90a7141d289dd88398a3afd8666dd3aeba3395851abca4418637276acf18",
+      "package_sha256": "90da90a7141d289dd88398a3afd8666dd3aeba3395851abca4418637276acf18"
+    },
+    {
+      "path": "docs/engineering/GEO-PRODUCT-RESTRUCTURE-2026-10-12.md",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "5f687a5fb2ffb3eff2a8167656aaa4cab346d3fd8cfd71b4c910be610fe46697",
+      "package_sha256": null
+    },
+    {
+      "path": "docs/engineering/GEO-WORKTREE-GROUPS-2026-10-08.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "ba1e6b393fcffcefcc1dda6f1f419786692cb2a40ce4997277473c260bae21c7",
+      "package_sha256": null
+    },
+    {
+      "path": "package.json",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "96b97fe92536950b838491cde83575ac47b7b3dcb5b50a13ee7965a7c2a0a077",
+      "package_sha256": "fd4c86cd64810f7a37fc4057f16f09e9df10b95191750cd6ecd1b706f2955f97"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/AutoConfigFlow.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "53a625b9a0cf6bc050e193d76f48ec6eb1bf6fefa42b77f0cefbc7e4336bea22",
+      "package_sha256": "53a625b9a0cf6bc050e193d76f48ec6eb1bf6fefa42b77f0cefbc7e4336bea22"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoActionPlanCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "4738f4dfd569fe1c0631345f1eb1e4514f4927f3a51d003c67abec83deee3ceb",
+      "package_sha256": "4738f4dfd569fe1c0631345f1eb1e4514f4927f3a51d003c67abec83deee3ceb"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoAdvancedTools.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "406017334f74b8c1cacc04b5c24ee5f219308a5bd263d8b18d4a49f1f470d2fd",
+      "package_sha256": "406017334f74b8c1cacc04b5c24ee5f219308a5bd263d8b18d4a49f1f470d2fd"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoAssetsListCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "159e8453f81f42a72eaeb6e795730f84711eb09fb06a11a74c2342f3bef41fc7",
+      "package_sha256": "159e8453f81f42a72eaeb6e795730f84711eb09fb06a11a74c2342f3bef41fc7"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoBattleCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "d3565d6c9888e73126ed28c7586080901165233ef572e568088a803597aa0484",
+      "package_sha256": "d3565d6c9888e73126ed28c7586080901165233ef572e568088a803597aa0484"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoCognitionCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "5d2d18e60e790de51573f10fbec6881f35d30d28714539282c19acfd1f265953",
+      "package_sha256": "4032550dbacb7e0c69bb5d4c951accf61672528a410d329cc131c45dc6a5cf04"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoCognitionMap.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "d95adbb4ce1845969ba98f60f00cf6781b3660f9300dce7aeddc56fe52a29592",
+      "package_sha256": "d95adbb4ce1845969ba98f60f00cf6781b3660f9300dce7aeddc56fe52a29592"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoContentGenForm.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "e17381ba6c9c3ee8f8e77618f07b22e04e73c2453e63f21b71e1fcce3f8a4895",
+      "package_sha256": "cd34d448fb29ffe6d08b26cac9576b42a9eef1a3a4cb36fbbfc2fa2691d1d091"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoDemoFlowPreview.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "088da04c061ab9e815a1367dad5e6a640342cdb7e60fa37c0581af182771e843",
+      "package_sha256": "d7e8dccdb2afec84f3b9f7551b1adbdcc10c9a4608d82d4fae59a7ff0b353a80"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoDemoMonitorSetup.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "02d65735864f2f2533429346f109da2626f1f300e040e64221eb6540af15d6c7",
+      "package_sha256": "374fa6fbd552272f83e023ea9c2756a1754ab39fe01f9a7f9366a05bb18ed897"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoEnterpriseOverview.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "15eb0c97f994af8158ae04ef87f502eae8b8ac11dea92d91933f70ca272d21db",
+      "package_sha256": "ea0e5dd55f029260a1aa243dbcfbe70fe8f4e17cd3ad4585d51ed3ffa52d44f2"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoFaqWorkspace.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "3a26e0641895a8705f16d148bce8161ec27b4c5461dcd82fb0619dada2d30e58",
+      "package_sha256": "3a26e0641895a8705f16d148bce8161ec27b4c5461dcd82fb0619dada2d30e58"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoGapsListCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "390329b02e5f7010953f41278f9854860a7674ee52e04719e29f6972a61f7223",
+      "package_sha256": "390329b02e5f7010953f41278f9854860a7674ee52e04719e29f6972a61f7223"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoInsightWorkspace.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "dfa982f01c819f451072ad6141c407e2006ee14d3f968d7428d703cbe4673308",
+      "package_sha256": "dfa982f01c819f451072ad6141c407e2006ee14d3f968d7428d703cbe4673308"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoKnowledgeInitCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "b21b91fa57c418c65af20c98f9fa9c20fa58e6ef5a59ac379d8453b6f85eada8",
+      "package_sha256": "b21b91fa57c418c65af20c98f9fa9c20fa58e6ef5a59ac379d8453b6f85eada8"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoMarketWorkspace.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "7975fdf810bb32c1b5caaea32d0614699a3c596822bb487e4b5b87123425a9be",
+      "package_sha256": "7975fdf810bb32c1b5caaea32d0614699a3c596822bb487e4b5b87123425a9be"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoMonitorAnalytics.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "f111ade1632a58618175a69d784ebb9327b2f513aa24ce74df35bd415500feae",
+      "package_sha256": "f11c757de8e3f42cf57f062a6a9625fc0398f59820cb287f111ddc0fe885b78d"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoMonitorReportCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "85a07f862573d30b68c7502169c95594eeaeb7ba612168e9222a1a5e379fca7d",
+      "package_sha256": "52aa973c45ad806586c8d08aa099c70609136cb0c1c50ed0526ecf0fbaa9a503"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoPlansListCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "a069a6304f2cf48862ebe126ec54627b285e251528c184d7f34e31e320bbaf4e",
+      "package_sha256": "a069a6304f2cf48862ebe126ec54627b285e251528c184d7f34e31e320bbaf4e"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoProductGuide.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "a68f81761d08a52e98713709d6ca9ec919973ae0c544aec1f3c227fe179a85fd",
+      "package_sha256": "a68f81761d08a52e98713709d6ca9ec919973ae0c544aec1f3c227fe179a85fd"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoProfileWorkspace.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "86c809112c124aae2919414b8094fb4b17f5ce9e941e04370fd47fc25efd931f",
+      "package_sha256": "86c809112c124aae2919414b8094fb4b17f5ce9e941e04370fd47fc25efd931f"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoQuestionsListCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "1264f720e189bfbc2cbaf55e3ea2d10f71a10ba5ff8b4927a2881bd05297e61b",
+      "package_sha256": "1264f720e189bfbc2cbaf55e3ea2d10f71a10ba5ff8b4927a2881bd05297e61b"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/GeoReportCard.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "3924377122b5c6567962f242a156c80c281bd9025589c8111fa283a06c0136bf",
+      "package_sha256": "3924377122b5c6567962f242a156c80c281bd9025589c8111fa283a06c0136bf"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/demo-fixtures.ts",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "bdc434df6ef50211d814da70becd2de65c99fadfed4c2918b7056294ea80c5ea",
+      "package_sha256": "cf4662e5cae7cb1743c193057d3fa3b96cc8aa45a41843f1cfe16a7297431d59"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/demo-monitor-samples.ts",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "1255b89ab68b252bfef53c120def539dd0083f302cd5729194d374cf9e984781",
+      "package_sha256": null
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/geo-api.ts",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "d52638a8d9ff0f0cd680ebf5076bf84ba5f8fd1438e1300cd16090a168114ad0",
+      "package_sha256": "354c4e3412bf35256b4bcf452ec75c8af7d33aa01a9d13add535ecb3089a54a6"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/geo-monitor-subject.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "64ed3afef7ed92766d1bfb1ea31e72046f8976e1a247fcd3e964e5fa66cd8c62",
+      "package_sha256": "3b600c6fa47cd60b6c3a149555c7eb9c5d8b70a5c0431d472face5c8cfb664d2"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/index.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "4b9b21d4622a1399f09b61c0279867cf6cc97612651ba43683af51503c5fbca1",
+      "package_sha256": "4b9b21d4622a1399f09b61c0279867cf6cc97612651ba43683af51503c5fbca1"
+    },
+    {
+      "path": "packages/geo/src/geo-advisor/shared.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "59687f9cbe101cc32c71f43619e86c2e7396250e23b9452b19fb3d14bfc2889c",
+      "package_sha256": "59687f9cbe101cc32c71f43619e86c2e7396250e23b9452b19fb3d14bfc2889c"
+    },
+    {
+      "path": "packages/geo/src/index.css",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "60825c31ce732375544f87148faf453284345c7013b532fb6d2b4bb609cfbb93",
+      "package_sha256": "60825c31ce732375544f87148faf453284345c7013b532fb6d2b4bb609cfbb93"
+    },
+    {
+      "path": "packages/geo/src/main.tsx",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "ebb319c0a2a12c7252d0c1170299ba320712959d308410bbcbcea8c18ba685ba",
+      "package_sha256": "ebb319c0a2a12c7252d0c1170299ba320712959d308410bbcbcea8c18ba685ba"
+    },
+    {
+      "path": "packages/geo/tests/demo-monitor.test.mjs",
+      "current_changed": true,
+      "package_changed": false,
+      "same_working_bytes": false,
+      "current_sha256": "defb3ed6a03a365d41b2bd5281b7ed2cc7042fd1c6dbd2f75da8f31d840aa55e",
+      "package_sha256": null
+    },
+    {
+      "path": "packages/geo/vite.config.ts",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "ae7462f5163ff734e1e9519443b764be3a9c1b9cbb71cb5dc86d6e74271cefd2",
+      "package_sha256": "ae7462f5163ff734e1e9519443b764be3a9c1b9cbb71cb5dc86d6e74271cefd2"
+    },
+    {
+      "path": "scripts/run_dev.sh",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "2887988d186e5174fbc95ab6638cd001b7776b002467476a6960a1ed3113dd9e",
+      "package_sha256": "2887988d186e5174fbc95ab6638cd001b7776b002467476a6960a1ed3113dd9e"
+    },
+    {
+      "path": "services/company_identity.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "512626f1c14508822e5ea033d105eec6d5ea2793230a1699d7d64add428431c3",
+      "package_sha256": "512626f1c14508822e5ea033d105eec6d5ea2793230a1699d7d64add428431c3"
+    },
+    {
+      "path": "services/content/__init__.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": false,
+      "current_sha256": "29de27141ec1e8fe1479c901ecbd40127e9b90e42bb3283324cfcc265dc7a273",
+      "package_sha256": "94b317e490ab55d036752ba7c32b248df9ec923c1f9f94cf52508088f20b3afd"
+    },
+    {
+      "path": "services/content/claim_check.py",
+      "current_changed": false,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "654c1ed100172e62d894c90d1af2250718b552bf87b7dce30d659d4110d40b29",
+      "package_sha256": "654c1ed100172e62d894c90d1af2250718b552bf87b7dce30d659d4110d40b29"
+    },
+    {
+      "path": "services/intelligence/adapter.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "2717602c4a4b221b7cbabc94baf8caf5d4130adcbeb0d9cedae1757dc4e9c8d4",
+      "package_sha256": "2717602c4a4b221b7cbabc94baf8caf5d4130adcbeb0d9cedae1757dc4e9c8d4"
+    },
+    {
+      "path": "services/intelligence/aggregator.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "97943a3f41ab1f246d58b0af96bffa8cc8645d0a15e2eec42565dcad15215a94",
+      "package_sha256": "97943a3f41ab1f246d58b0af96bffa8cc8645d0a15e2eec42565dcad15215a94"
+    },
+    {
+      "path": "services/intelligence/cognition.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "4e15fd0b8c7bf4c523f40508a36eb912b31fd12b2b85cd69d023c987c162b259",
+      "package_sha256": "4e15fd0b8c7bf4c523f40508a36eb912b31fd12b2b85cd69d023c987c162b259"
+    },
+    {
+      "path": "services/intelligence/prompts.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "933cbd437fc5d95986bdabf8baf261190a0dd21635ade997507d9fc70941a6f3",
+      "package_sha256": "933cbd437fc5d95986bdabf8baf261190a0dd21635ade997507d9fc70941a6f3"
+    },
+    {
+      "path": "services/intelligence/queue.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "2c4c3d2871e47addafe0b1489edaa4fb4d66382e05c553d8da7b9ca537fc6d0e",
+      "package_sha256": "2c4c3d2871e47addafe0b1489edaa4fb4d66382e05c553d8da7b9ca537fc6d0e"
+    },
+    {
+      "path": "services/intelligence/repo.py",
+      "current_changed": true,
+      "package_changed": true,
+      "same_working_bytes": true,
+      "current_sha256": "52cbab24bafff3edc099b62a940fa0cd028e4e7e0e00ed082579896c171e1c6a",
+      "package_sha256": "52cbab24bafff3edc099b62a940fa0cd028e4e7e0e00ed082579896c171e1c6a"
+    }
+  ]
+}
