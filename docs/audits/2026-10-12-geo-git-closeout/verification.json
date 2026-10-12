@@ -1,0 +1,15 @@
+{
+  "root": "/Users/tutu/eios-geo-package-session2/geo",
+  "branch": "codex/geo-package-preserved-20261012",
+  "verified_clean_head": "a7e56ee03872d2dd2f00a70d7732591b68e9253f",
+  "porcelain": "",
+  "all_initial_files_exactly_preserved_except_authorized_CURRENT_STATE_update": true,
+  "source_mismatches": [],
+  "backend": {
+    "passed": 353,
+    "skipped": 5,
+    "warnings": 6
+  },
+  "ui": "check:ui passed; temporary output",
+  "build_artifacts_committed": false
+}
