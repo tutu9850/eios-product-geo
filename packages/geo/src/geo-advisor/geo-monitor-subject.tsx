@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { geoGet } from './geo-api'
+import { useGeoDemoMode } from './shared'
+import { DEMO_COMPANY } from './demo-monitor-samples'
 
 /**
  * 监测主体（哪家企业品牌）在 GEO 内是**同一份**选择：
@@ -42,10 +44,19 @@ export function setMonitorSubject(value: string) {
 }
 
 export function useMonitorSubjects() {
+  const { enabled: demoMode } = useGeoDemoMode()
   const [subjects, setSubjects] = useState<MonitorSubject[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [loadedMode, setLoadedMode] = useState<boolean | null>(null)
   useEffect(() => {
     let alive = true
+    if (demoMode) {
+      setSubjects([{ monitor_id: 'demo-brand', name: DEMO_COMPANY }])
+      setLoadedMode(true)
+      setLoaded(true)
+      return () => { alive = false }
+    }
+    setLoaded(false)
     geoGet<{ items: MonitorItemRow[] }>('/monitor/items')
       .then((result) => {
         if (!alive) return
@@ -62,16 +73,17 @@ export function useMonitorSubjects() {
         if (alive) setSubjects([])
       })
       .finally(() => {
-        if (alive) setLoaded(true)
+        if (alive) { setLoadedMode(false); setLoaded(true) }
       })
     return () => {
       alive = false
     }
-  }, [])
-  return { subjects, loaded }
+  }, [demoMode])
+  return { subjects, loaded: loaded && loadedMode === demoMode }
 }
 
 export function useMonitorSubject() {
+  const { enabled: demoMode } = useGeoDemoMode()
   const { subjects, loaded } = useMonitorSubjects()
   const [value, setValue] = useState(readStored)
 
@@ -86,16 +98,18 @@ export function useMonitorSubject() {
   }, [])
 
   useEffect(() => {
-    if (!loaded) return
+    if (!loaded || demoMode) return
     const known = value === ALL_SUBJECTS || subjects.some((item) => item.monitor_id === value)
     if (value && known) return
     // 第一次进来 / 存的主体已经不存在了：只有一个就自动选它，否则先汇总，别让页面停在空态
     setMonitorSubject(subjects.length === 1 ? subjects[0].monitor_id : ALL_SUBJECTS)
-  }, [loaded, subjects, value])
+  }, [loaded, subjects, value, demoMode])
 
   const select = useCallback((next: string) => setMonitorSubject(next), [])
   const query = value ? `monitor_id=${encodeURIComponent(value)}` : ''
-  return { value, select, query, subjects, loaded }
+  const scopeQuery = value && value !== ALL_SUBJECTS ? `monitor_id=${encodeURIComponent(value)}` : ''
+  const subject = subjects.find((item) => item.monitor_id === value) ?? null
+  return { value, select, query, scopeQuery, subject, subjects, loaded }
 }
 
 /** 监测主体选择器：全 GEO 共用一处，选完各页都用这个主体。 */
@@ -119,7 +133,7 @@ export function MonitorSubjectPicker({ note }: { note?: string }) {
           ? '正在读取监测对象…'
           : subjects.length === 0
             ? '还没有启用中的企业品牌监测对象，请先到监测工作台创建。'
-            : note ?? `共 ${subjects.length} 个企业品牌对象；这里选一次，GEO 各页都用它`}
+            : note ?? `共 ${subjects.length} 个企业品牌对象；在这里选择后，其他页面都会使用同一个主体`}
       </span>
     </div>
   )

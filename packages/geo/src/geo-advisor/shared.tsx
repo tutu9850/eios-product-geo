@@ -28,6 +28,15 @@ export function GeoRow({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
+/** 把内部 P0/P1/P2 优先级翻译成第一次使用也能理解的动作语言。 */
+export function geoPriorityLabel(value: unknown): string {
+  const raw = String(value ?? '').trim().toUpperCase()
+  if (raw === 'P0' || raw === '0') return '现在处理'
+  if (raw === 'P1' || raw === '1') return '近期处理'
+  if (raw === 'P2' || raw === '2') return '长期建设'
+  return String(value ?? '未分级')
+}
+
 export function GeoList({ items }: { items: Array<{ title: string; desc?: string; meta?: string }> }) {
   return (
     <div className="geo-data-list space-y-1">
@@ -393,6 +402,14 @@ export const GeoNavContext = createContext<GeoGo | null>(null)
 export const GeoNavParamsContext = createContext<GeoNavParams>({ focus: null, seed: null, nonce: 0 })
 export const useGeoNav = () => useContext(GeoNavContext)
 export const useGeoNavParams = () => useContext(GeoNavParamsContext)
+
+/**
+ * 内测演示夹具开关。演示数据必须显式打开，并在产品界面持续标注，不能把
+ * fixture 伪装成企业资料、监测证据或正式统计。
+ */
+export type GeoDemoMode = { enabled: boolean; toggle: () => void }
+export const GeoDemoModeContext = createContext<GeoDemoMode>({ enabled: false, toggle: () => undefined })
+export const useGeoDemoMode = () => useContext(GeoDemoModeContext)
 
 /** 折线趋势图：只有两三个点也看得清方向；不引图表库，直接出 SVG */
 export function GeoLine({
