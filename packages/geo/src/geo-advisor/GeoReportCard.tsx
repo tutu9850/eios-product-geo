@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import { Button } from '@yayu/ui'
 import { geoDownload, geoGet, geoPost, type GeoOnboardStatus } from './geo-api'
-import { GeoBars, GeoButtonRow, GeoCardShell, GeoError, GeoKpis, GeoList, GeoLoading, GeoQuote, GeoTable } from './shared'
+import { GeoBars, GeoButtonRow, GeoCardShell, GeoError, GeoKpis, GeoList, GeoLoading, GeoQuote, GeoTable, geoPriorityLabel } from './shared'
 import { saveBlobToDisk } from '../lib/save-to-disk'
 
 /** 报告证据来源枚举 → 业务文字（后端 reasoning.py / prompts.py 固定写 ["ai_answer"]） */
-const REPORT_SCOPE_LABEL: Record<string, string> = { ai_answer: 'AI 回答（监测证据）' }
+const REPORT_SCOPE_LABEL: Record<string, string> = { ai_answer: '模型回答（监测证据）' }
 const reportScopeText = (value: string) => REPORT_SCOPE_LABEL[value] ?? `其他来源（${value}）`
 
 /** 阶段报告卡：自动配置/监测整体状态汇总 + 导出 */
@@ -46,7 +46,7 @@ export function GeoReportCard() {
       // 实时综合报告：导出时聚合认知健康、画像、覆盖、竞品、来源、缺口和行动计划。
       // 复用 Product API 已冻结放行的 PDF 文档路径；后端在导出时实时聚合。
       const blob = await geoDownload('/intelligence/reports/latest/pdf')
-      await saveBlobToDisk(blob, `GEO-AI认知报告-${new Date().toISOString().slice(0, 10)}.pdf`)
+      await saveBlobToDisk(blob, `企业模型认知报告-${new Date().toISOString().slice(0, 10)}.pdf`)
     } catch (e) {
       setError(e instanceof Error ? e.message : '导出失败')
     } finally {
@@ -66,42 +66,43 @@ export function GeoReportCard() {
   // 后端在还没建过报告时会把公司名写成 "unknown"，直接当标题显示等于把占位符给用户看（2026-09-21 修）
   const body = report?.report ?? null
   const reportCompany = (body?.company ?? '').trim() || ((report?.company ?? '').trim() === 'unknown' ? '' : (report?.company ?? '').trim())
+  const reportHasEvidence = Number(body?.brand_overview?.total_evidence ?? 0) > 0
 
   const knowledge = status?.knowledge
   const knowledgeLine = !knowledge
-    ? '未检测'
+    ? '暂未读取'
     : knowledge.read_ever
-      ? `历史快照 · 曾读取知识对象 ${knowledge.objects_seen} / 文档 ${knowledge.documents_seen}`
-      : '尚未读取知识库'
+      ? `历史读取 · 企业资料 ${knowledge.objects_seen} 项 / 文档 ${knowledge.documents_seen} 份`
+      : '尚未读取企业资料'
 
   return (
     <GeoCardShell title="阶段成果摘要" className="geo-report-workbench">
       <GeoList
         items={[
-          { title: '企业知识历史快照', meta: knowledgeLine },
-          { title: 'GEO 素材库', meta: `${status?.materials ?? 0} 个` },
-          { title: '监测对象', meta: `${status?.items ?? 0} 个` },
-          { title: '客户问题池', meta: `${status?.questions ?? 0} 个` },
+          { title: '历史资料快照', meta: knowledgeLine },
+          { title: '内容资产库', meta: status?.materials == null ? '—' : `${status.materials} 个` },
+          { title: '监测对象', meta: status?.items == null ? '—' : `${status.items} 个` },
+          { title: '客户问题', meta: status?.questions == null ? '—' : `${status.questions} 个` },
         ]}
       />
       {knowledge ? (
         <p className="pt-1 text-[11px] text-[var(--yayu-muted)]">
           {knowledge.read_ever
-            ? `这里只记录 GEO 历史上读到过什么，不代表知识库当前仍有这些资料；删除或退休正本不会删除历史快照${knowledge.last_read_at ? `，最后读取 ${knowledge.last_read_at.slice(0, 10)}` : ''}。`
-            : 'GEO 还没从企业知识库读到过内容；GEO 只读知识库，不写。'}
+            ? `这里只记录系统过去读到过的资料，不代表当前资料仍然存在；删除或退休原资料不会删除这份历史记录${knowledge.last_read_at ? `，最后读取 ${knowledge.last_read_at.slice(0, 10)}` : ''}。`
+            : '系统还没从企业资料库读到过内容；系统只读取资料，不改写原资料。'}
         </p>
       ) : null}
       <div className="latest-report">
         <div>
           <span>最新周期报告</span>
-          <b>{body ? (reportCompany ? `${reportCompany} · 企业 AI 可见性报告` : '企业 AI 可见性报告') : '尚未生成'}</b>
+          <b>{body ? (reportCompany ? `${reportCompany} · 企业在模型回答中的表现` : '企业在模型回答中的表现') : '尚未生成'}</b>
           <small>{report?.created_at ? `生成于 ${report.created_at.slice(0, 16).replace('T', ' ')}` : '生成后可查看管理摘要并导出 PDF'}</small>
         </div>
         {body ? <ReportBody report={body} /> : null}
       </div>
       <GeoButtonRow>
         <Button variant="secondary" size="sm" disabled={generating} onClick={() => void generateReport()}><RefreshCw className={`size-3.5 ${generating?'animate-spin':''}`} />{generating?'生成中…':'生成本期报告'}</Button>
-        <Button size="sm" disabled={exporting} onClick={() => void exportReport()}>
+        <Button size="sm" disabled={exporting || Boolean(body && !reportHasEvidence)} onClick={() => void exportReport()} title={body && !reportHasEvidence ? '当前报告没有可引用的模型回答，先运行监测并重新生成' : undefined}>
           <Download className="size-3.5" /> {exporting ? '生成中…' : '导出 PDF 报告'}
         </Button>
       </GeoButtonRow>
@@ -170,8 +171,25 @@ function ReportBody({ report }: { report: GeoReport }) {
   const period = report.period_days ? `统计周期 ${report.period_days} 天` : ''
   // 2026-09-21：source_scope 是证据来源枚举（后端固定 ai_answer = 监测到的 AI 回答），
   // 页面上不打印英文代号（原来显示「来源 ai_answer」）。
-  const scope = report.source_scope?.length ? `来源 ${report.source_scope.map(reportScopeText).join(' / ')}` : ''
-  const meta = [period, scope, report.model ? `模型 ${report.model}` : '', report.prompt_version ? `提示词 v${report.prompt_version}` : ''].filter(Boolean).join(' · ')
+  const scope = report.source_scope?.length ? `依据 ${report.source_scope.map(reportScopeText).join(' / ')}` : ''
+  const meta = [period, scope].filter(Boolean).join(' · ')
+
+  // 没有一条可引用的模型回答时，报告里的自由文本可能混入内部资料摘要。
+  // 这类内容不能冒充外部认知结论，直接收口成下一步，避免把“企业内部事实”误读成“AI 已经这样认识企业”。
+  const evidenceCount = Number(report.brand_overview?.total_evidence ?? 0)
+  if (evidenceCount <= 0) {
+    return (
+      <div className="report-no-evidence">
+        <div className="geo-subhead"><h3>本期没有可引用的模型回答</h3><small>{meta || '等待监测证据'}</small></div>
+        <p>当前不能判断品牌曝光、推荐、竞品差距或认知偏差。报告不会把企业内部资料拼成外部市场结论。</p>
+        <ol>
+          <li>到“监测工作台”运行一批国产模型问题。</li>
+          <li>等待系统读懂回答并确认对应企业。</li>
+          <li>再生成本期报告，结论才会带可核对的模型原话。</li>
+        </ol>
+      </div>
+    )
+  }
 
   return (
     <div className="report-body">
@@ -180,16 +198,16 @@ function ReportBody({ report }: { report: GeoReport }) {
 
       <GeoKpis
         items={[
-          { label: '分析的回答', value: `${report.brand_overview?.total_evidence ?? 0} 条`, detail: '报告引用的 AI 回答数' },
-          { label: '认知标签', value: `${tags.length} 个`, detail: 'AI 回答里出现的认知词', tone: tags.length ? 'good' : 'warn' },
+          { label: '分析的回答', value: report.brand_overview?.total_evidence == null ? '—' : `${report.brand_overview.total_evidence} 条`, detail: '报告引用的模型回答数' },
+          { label: '认知标签', value: `${tags.length} 个`, detail: '模型回答里出现的认知词', tone: tags.length ? 'good' : 'warn' },
           { label: '认知偏差', value: `${bias.length} 处`, detail: '我方与竞品被提及方式不一致', tone: bias.length ? 'warn' : 'good' },
-          { label: '知识缺口（报告口径）', value: `${knowledgeGaps.length} 个`, detail: '竞品有、我方缺的能力——与「增长行动 → 知识缺口」不是同一个东西' },
+          { label: '资料缺口（报告口径）', value: `${knowledgeGaps.length} 个`, detail: '竞品有、我方缺的能力——与「增长行动 → 资料缺口」不是同一个东西' },
         ]}
       />
 
       {brands.length ? (
         <>
-          <div className="geo-subhead"><h3>品牌提及对比</h3><small>{report.brand_overview?.self_name ? `我方登记名 ${report.brand_overview.self_name}` : 'AI 回答里的品牌出现次数'}</small></div>
+          <div className="geo-subhead"><h3>品牌提及对比</h3><small>{report.brand_overview?.self_name ? `我方登记名 ${report.brand_overview.self_name}` : '模型回答里的品牌出现次数'}</small></div>
           <GeoTable
             columns={['品牌', '提及', '曝光率', '推荐率']}
             template="minmax(0,1.4fr) 64px 74px 74px"
@@ -205,7 +223,7 @@ function ReportBody({ report }: { report: GeoReport }) {
 
       {tags.length ? (
         <>
-          <div className="geo-subhead"><h3>AI 眼中的认知标签</h3><small>占比越高说明这个印象越强</small></div>
+          <div className="geo-subhead"><h3>模型回答中的认知标签</h3><small>占比越高说明这个印象越强</small></div>
           <GeoBars
             items={tags.slice(0, 8).map((row) => ({
               label: row.tag ?? '未命名标签',
@@ -217,17 +235,19 @@ function ReportBody({ report }: { report: GeoReport }) {
       ) : null}
 
       {reasons.length ? (
-        <>
-          <div className="geo-subhead"><h3>AI 为什么推荐竞品</h3><small>报告给出的原因</small></div>
-          <GeoTable
-            columns={['竞品', '原因']}
-            template="minmax(0,110px) minmax(0,2fr)"
-            rows={reasons.slice(0, 6).map((row) => [
-              <b>{row.competitor ?? row.brand ?? '竞品'}</b>,
-              <em>{row.reason ?? row.summary ?? '报告没写原因'}</em>,
-            ])}
-          />
-        </>
+        <details className="geo-long-list" open={reasons.length <= 4}>
+          <summary><span>为什么有人选择竞品</span><small>{reasons.length} 条</small></summary>
+          <div className="geo-long-list-body">
+            <GeoTable
+              columns={['竞品', '原因']}
+              template="minmax(0,110px) minmax(0,2fr)"
+              rows={reasons.slice(0, 6).map((row) => [
+                <b>{row.competitor ?? row.brand ?? '竞品'}</b>,
+                <em>{row.reason ?? row.summary ?? '报告没写原因'}</em>,
+              ])}
+            />
+          </div>
+        </details>
       ) : null}
 
       {bias.length ? (
@@ -257,56 +277,61 @@ function ReportBody({ report }: { report: GeoReport }) {
       ) : null}
 
       {knowledgeGaps.length ? (
-        <>
-          {/* 2026-09-21：这份报告里的「知识缺口」和「增长行动 → 知识缺口」是同名不同物——
-              这里是模型读完监测证据后自己写的能力差距，上面 KPI 已经标明「报告口径」，
-              正文章节也跟上，免得用户拿两边的数字对账。 */}
-          <div className="geo-subhead"><h3>知识缺口（报告口径）</h3><small>竞品有、我方缺的能力 · 与「增长行动 → 知识缺口」不是同一个东西</small></div>
-          <GeoTable
-            columns={['维度', '竞品', '补法']}
-            template="minmax(0,1fr) 110px minmax(0,1.6fr)"
-            rows={knowledgeGaps.slice(0, 8).map((row) => [
-              <b>{row.dimension ?? '—'}</b>,
-              <em>{row.competitor ?? '—'}</em>,
-              <em>{row.suggestion ?? '报告没给补法'}</em>,
-            ])}
-          />
-        </>
+        <details className="geo-long-list" open={knowledgeGaps.length <= 4}>
+          <summary><span>报告发现的能力缺口</span><small>{knowledgeGaps.length} 个</small></summary>
+          <div className="geo-long-list-body">
+            <p className="geo-note">竞品已经被提到、但我方还缺少清晰证据的能力。</p>
+            <GeoTable
+              columns={['维度', '竞品', '补法']}
+              template="minmax(0,1fr) 110px minmax(0,1.6fr)"
+              rows={knowledgeGaps.slice(0, 8).map((row) => [
+                <b>{row.dimension ?? '—'}</b>,
+                <em>{row.competitor ?? '—'}</em>,
+                <em>{row.suggestion ?? '报告没给补法'}</em>,
+              ])}
+            />
+          </div>
+        </details>
       ) : null}
 
       {actions.length ? (
-        <>
-          <div className="geo-subhead"><h3>内容建设建议</h3><small>按优先级排序</small></div>
-          <GeoTable
-            columns={['优先级', '做什么', '从哪个角度', '为什么']}
-            template="58px minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr)"
-            rows={actions.slice(0, 8).map((row) => [
-              <b>{`P${row.priority ?? 1}`}</b>,
-              <b>{row.task ?? '—'}</b>,
-              <em>{row.angle ?? '—'}</em>,
-              <em>{row.reason ?? '—'}</em>,
-            ])}
-          />
-        </>
+        <details className="geo-long-list" open={actions.length <= 4}>
+          <summary><span>下一步内容建议</span><small>{actions.length} 条</small></summary>
+          <div className="geo-long-list-body">
+            <GeoTable
+              columns={['优先级', '做什么', '从哪个角度', '为什么']}
+              template="58px minmax(0,1fr) minmax(0,1fr) minmax(0,1.2fr)"
+              rows={actions.slice(0, 8).map((row) => [
+                <b>{geoPriorityLabel(row.priority ?? 1)}</b>,
+                <b>{row.task ?? '—'}</b>,
+                <em>{row.angle ?? '—'}</em>,
+                <em>{row.reason ?? '—'}</em>,
+              ])}
+            />
+          </div>
+        </details>
       ) : null}
 
       {missing.length ? (
-        <>
-          <div className="geo-subhead"><h3>还没有覆盖的问题</h3><small>AI 回答里我方缺席的提问</small></div>
-          <ul className="geo-lines">
-            {missing.slice(0, 8).map((line, index) => (
-              <li key={index}>{line}</li>
-            ))}
-          </ul>
-          {missing.length > 8 ? <p className="geo-note">另有 {missing.length - 8} 条未展开。</p> : null}
-        </>
+        <details className="geo-long-list" open={missing.length <= 4}>
+          <summary><span>还没有覆盖的问题</span><small>{missing.length} 条</small></summary>
+          <div className="geo-long-list-body">
+            <p className="geo-note">这些问题在模型回答里还没有出现我方。</p>
+            <ul className="geo-lines">
+              {missing.slice(0, 8).map((line, index) => (
+                <li key={index}>{line}</li>
+              ))}
+            </ul>
+            {missing.length > 8 ? <p className="geo-note">另有 {missing.length - 8} 条未展开。</p> : null}
+          </div>
+        </details>
       ) : null}
 
       {keywords.length ? (
-        <>
-          <div className="geo-subhead"><h3>报告提到的关键词</h3><small>下一轮内容该围绕的词</small></div>
-          <p className="geo-note">{keywords.slice(0, 16).join('、')}</p>
-        </>
+        <details className="geo-long-list" open={keywords.length <= 8}>
+          <summary><span>下一轮内容要覆盖的词</span><small>{keywords.length} 个</small></summary>
+          <div className="geo-long-list-body"><p className="geo-note">{keywords.slice(0, 16).join('、')}</p></div>
+        </details>
       ) : null}
 
       {!tags.length && !brands.length && !actions.length && !knowledgeGaps.length ? (
