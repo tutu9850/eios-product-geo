@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, CheckCircle2, CircleAlert, FlaskConical, LoaderCircle, RefreshCw } from 'lucide-react'
+import { ArrowUpRight, CheckCircle2, CircleAlert, LoaderCircle, RefreshCw } from 'lucide-react'
 import {
   geoGet,
   type GeoDistillOverview,
   type GeoMonitorOverview,
   type GeoStatsOverview,
 } from './geo-api'
-import { ALL_SUBJECTS, MonitorSubjectPicker, useMonitorSubject } from './geo-monitor-subject'
-import { GEO_DEMO_NOTICE, GEO_DEMO_OVERVIEW } from './demo-fixtures'
+import { ALL_SUBJECTS, useMonitorSubject } from './geo-monitor-subject'
+import { GEO_DEMO_OVERVIEW } from './demo-fixtures'
 import { useGeoDemoMode } from './shared'
 
 type OverviewState = {
@@ -44,7 +44,6 @@ export function GeoEnterpriseOverview({ onNavigate }: { onNavigate: (target: str
   const { value: selectedBrandId, query: subjectQuery, loaded: brandsLoaded } = useMonitorSubject()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [journeyOpen, setJourneyOpen] = useState(() => window.localStorage.getItem('eios-geo-journey-open') !== 'closed')
 
   async function load() {
     setLoading(true)
@@ -113,19 +112,8 @@ export function GeoEnterpriseOverview({ onNavigate }: { onNavigate: (target: str
 
   return <div className="geo-dashboard">
     <div className="geo-page-head"><div><span>总览</span><h1>客户问模型时，品牌是否会被提到</h1><p>看品牌有没有被看见、被正确理解，再决定下一步补什么。</p></div><button className="geo-btn secondary" onClick={() => void load()} disabled={loading}>{loading ? <LoaderCircle className="spin" /> : <RefreshCw />}刷新</button></div>
-    {demoMode ? <div className="geo-demo-subject"><FlaskConical /><span>演示主体</span><b>云栖示例家居</b><small>固定内测样本；关闭演示数据后恢复真实监测对象。</small></div> : <MonitorSubjectPicker />}
     {error && <div className="geo-inline-error"><CircleAlert />{error}</div>}
-    {demoMode && <div className="geo-demo-banner"><FlaskConical /><span><b>内测演示数据已开启</b>　{GEO_DEMO_NOTICE}</span></div>}
     <p className="geo-note">{readableIdentityNote(data.monitor?.scope?.identity_note) ?? (selectedBrandId ? `提及率、句序和平台表现来自${selectedBrandId === ALL_SUBJECTS ? '全选汇总的' : '所选'}主体最近批次（${latestBatchLabel}）。` : '请选择企业品牌后查看该主体的监测指标。')}资料缺口、内容资产与系统状态为当前工作空间汇总，不与品牌监测指标直接比较。</p>
-    <details className="geo-journey-guide" open={journeyOpen} onToggle={(event) => { const open = (event.currentTarget as HTMLDetailsElement).open; setJourneyOpen(open); window.localStorage.setItem('eios-geo-journey-open', open ? 'open' : 'closed') }}>
-      <summary><span>第一次使用？按这条路径走</span><small>准备资料 → 运行监测 → 看懂差距 → 推进行动</small></summary>
-      <div className="geo-journey-grid">
-        <button type="button" onClick={() => onNavigate('profile')}><b>1. 准备企业资料</b><span>让系统知道你是谁、卖什么、有什么证据。</span></button>
-        <button type="button" onClick={() => onNavigate('monitor')}><b>2. 运行国产模型监测</b><span>把客户问题交给模型，看回答里有没有提到你。</span></button>
-        <button type="button" onClick={() => onNavigate('insight')}><b>3. 看懂认知差距</b><span>区分被提到、被推荐和有证据支持。</span></button>
-        <button type="button" onClick={() => onNavigate('growth')}><b>4. 变成增长动作</b><span>补资料、做内容，再回到监测验证变化。</span></button>
-      </div>
-    </details>
     {identityPending ? <section className="geo-identity-gate" role="status">
       <div><strong>品牌指标暂不计算</strong><p>已有模型回答，但目前还不能确认回答里的名称对应哪家企业。先查看模型原话并完成回答理解，再判断曝光率、推荐率和竞品差距。</p></div>
       <button type="button" onClick={() => onNavigate('monitor-report')}>先看模型回答 <ArrowUpRight /></button>
@@ -147,8 +135,8 @@ export function GeoEnterpriseOverview({ onNavigate }: { onNavigate: (target: str
       <article className="geo-panel trend-panel"><header><div><h2>不同模型的表现</h2><p>最近一批回答里，各模型提到品牌的比例；没有回答的不算 0%</p></div><span>{latestBatchLabel}</span></header>
     {platformRows.length ? <div className="geo-platform-chart">{platformRows.slice(0, 6).map((item) => <div className="geo-platform" key={item.name}><div className="geo-platform-bar"><i style={{ height: `${Math.max(8, item.value)}%` }} /></div><b>{pct(item.value)}</b><span>{item.name}</span></div>)}</div> : <div className="geo-chart-empty">{latestBatchAt ? '最近批次没有平台返回可判定回答。' : '该主体完成一次监测后，这里会展示各国产大模型的真实表现。'}</div>}
       </article>
-      <article className="geo-panel action-panel"><header><div><h2>现在最值得做</h2><p>{identityPending ? '先确认主体，再把结论变成行动' : '从监测结论直接进入业务动作'}</p></div></header>
-        {actionSteps.map((step, index) => <button key={`${step.target}-${step.title}`} onClick={() => onNavigate(step.target)}><span className="action-index">{index + 1}</span><span><b>{step.title}</b><small>{step.detail}</small></span><ArrowUpRight /></button>)}
+      <article className="geo-panel action-panel"><header><div><h2>下一步</h2><p>{identityPending ? '先确认主体，再把结论变成行动' : '从监测结论直接进入业务动作'}</p></div></header>
+        {actionSteps.slice(0, 1).map((step, index) => <button key={`${step.target}-${step.title}`} onClick={() => onNavigate(step.target)}><span className="action-index">{index + 1}</span><span><b>{step.title}</b><small>{step.detail}</small></span><ArrowUpRight /></button>)}
       </article>
       <article className="geo-panel health-panel"><header><div><h2>系统准备情况</h2><p>这些是工作区记录，不代表当前主体已有可判定回答</p></div></header><div className="health-list"><span>{data.stats?.engines.total ? <CheckCircle2 /> : <CircleAlert />}<b>{data.stats?.engines.total ? `${data.stats.engines.answered} / ${data.stats.engines.total}` : '暂无可统计回答'}</b><small>最近有回答的模型 / 当前已登记模型</small></span><span>{data.stats?.monitor.runs ? <CheckCircle2 /> : <CircleAlert />}<b>{data.stats?.monitor.runs ? `${data.stats.monitor.runs} 批历史运行` : '暂无运行记录'}</b><small>工作区累计；请到监测页核对当前主体的回答</small></span><span>{data.stats?.links.total ? <CheckCircle2 /> : <CircleAlert />}<b>{data.stats?.links.total ? `${data.stats.links.indexed} / ${data.stats.links.total}` : '尚未登记链接'}</b><small>已收录链接 / 已登记发布链接</small></span></div></article>
       <article className="geo-panel funnel-panel"><header><div><h2>资料能回答哪些客户问题</h2><p>当前工作区的客户问题，有多少能被企业资料回答；这不是品牌曝光或推荐指标</p></div></header>{!demoMode && enterpriseKnowledgeReady === false ? <div className="geo-chart-empty">还没有同步可核实的企业资料；先去企业资料完成同步，再看问题覆盖。</div> : !demoMode && enterpriseKnowledgeReady == null ? <div className="geo-chart-empty">当前无法确认资料状态，暂不显示覆盖数字。</div> : data.distill?.funnel?.length ? <div className="funnel-list">{data.distill.funnel.map((row) => <div key={row.stage}><span>{customerStageLabel(row.stage)}</span><i><em style={{ width: `${row.coverage_pct == null ? 0 : Math.max(3, row.coverage_pct)}%` }} /></i><b>{row.question_count} 个问题 · {row.judged_count ? `${row.judged_count} 个已判定 · ${pct(row.coverage_pct)}` : '未判定'}</b></div>)}</div> : <div className="geo-chart-empty">生成客户问题并检查企业资料后，这里会显示覆盖情况。</div>}</article>

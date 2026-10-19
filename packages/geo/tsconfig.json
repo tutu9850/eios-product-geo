@@ -2,13 +2,28 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["vite/client", "node"],
+    "types": [
+      "vite/client",
+      "node"
+    ],
     "paths": {
-      "@geo-advisor": ["./src/geo-advisor/index.tsx"],
-      "@geo-advisor/*": ["./src/geo-advisor/*"],
-      "@yayu/ui": ["../ui/src/index.ts"],
-      "@yayu/ui/theme.css": ["../ui/src/tokens/theme.css"]
-    }
+      "@geo-advisor": [
+        "./src/geo-advisor/index.tsx"
+      ],
+      "@geo-advisor/*": [
+        "./src/geo-advisor/*"
+      ],
+      "@yayu/ui": [
+        "../ui/src/index.ts"
+      ],
+      "@yayu/ui/theme.css": [
+        "../ui/src/tokens/theme.css"
+      ]
+    },
+    "allowImportingTsExtensions": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": [
+    "src",
+    "vite.config.ts"
+  ]
 }

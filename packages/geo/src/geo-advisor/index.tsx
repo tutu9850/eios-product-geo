@@ -7,7 +7,7 @@ import { GeoContentGenForm } from './GeoContentGenForm'
 import { GeoGapsListCard } from './GeoGapsListCard'
 import { GeoKnowledgeInitCard } from './GeoKnowledgeInitCard'
 import { GeoMonitorObjectsCard } from './GeoMonitorObjectsCard'
-import { GeoDemoMonitorSetup } from './GeoDemoMonitorSetup'
+import { GeoMonitorSetup } from './GeoMonitorSetup'
 import { GeoMonitorReportCard } from './GeoMonitorReportCard'
 import { GeoPlansListCard } from './GeoPlansListCard'
 import { GeoQuestionsListCard } from './GeoQuestionsListCard'
@@ -89,7 +89,7 @@ export function GeoFlowRouter({ kind, onClose }: { kind: GeoFlowKind; onClose?: 
       return <AutoConfigFlow onClose={onClose ? () => onClose('auto-config') : undefined} />
     case 'monitor':
       // 监测工作台只负责管理监测对象和定时任务；模型回答有独立目的地。
-      if (demoMode) return <GeoDemoMonitorSetup />
+      if (demoMode) return <GeoMonitorSetup />
       return (
         <GeoCardErrorBoundary label="监测对象">
           <GeoMonitorObjectsCard />

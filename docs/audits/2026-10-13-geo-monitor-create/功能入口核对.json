@@ -1,0 +1,44 @@
+{
+  "flow_count": 18,
+  "destinations_with_overview_and_market": 20,
+  "flows": [
+    "kb-init",
+    "auto-config",
+    "monitor",
+    "monitor-report",
+    "assets",
+    "questions",
+    "gaps",
+    "cognition",
+    "content",
+    "battle",
+    "report",
+    "action-plan",
+    "plans",
+    "insight-overview",
+    "profile-overview",
+    "monitor-analysis",
+    "faq",
+    "cognition-map"
+  ],
+  "business_routes_deleted": false,
+  "restored": [
+    "monitor create",
+    "legacy monitor reports and analytics",
+    "legacy insight/cognition",
+    "legacy assets and action-plan"
+  ],
+  "sample_only_gaps": [
+    "scheduled task configuration and automatic execution",
+    "single-question quick check and multi-object batch run",
+    "product/competitor/industry/review object types and original extended fields",
+    "material upload/editing, FAQ/model comparison/export full operation",
+    "formal knowledge reads and model tool execution"
+  ],
+  "methods": [
+    "source routing enumeration",
+    "original object form/action inventory",
+    "browser legacy analytics navigation",
+    "browser advanced tools disabled/no requests"
+  ]
+}

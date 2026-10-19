@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useState, type ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
-import { Activity, BarChart3, BookOpenCheck, ChartNoAxesCombined, CircleDot, FlaskConical, Radar, Sparkles, Target, Wrench } from 'lucide-react'
+import { BarChart3, BookOpenCheck, ChartNoAxesCombined, CircleDot, FlaskConical, Radar, Sparkles, Target, Wrench } from 'lucide-react'
 import { GeoFlowRouter, type GeoFlowKind } from '@geo-advisor'
 import { GeoEnterpriseOverview } from '@geo-advisor/GeoEnterpriseOverview'
 import { GeoMarketWorkspace } from '@geo-advisor/GeoMarketWorkspace'
@@ -8,6 +8,8 @@ import { GeoAdvancedTools } from '@geo-advisor/GeoAdvancedTools'
 import { GeoProductGuide } from '@geo-advisor/GeoProductGuide'
 import { configureGeoProductTransport } from '@geo-advisor/geo-api'
 import { GeoCardErrorBoundary, GeoConfirmHost, GeoDemoModeContext, GeoNavContext, GeoNavParamsContext, type GeoNavParams } from '@geo-advisor/shared'
+import { MonitorSubjectPicker } from '@geo-advisor/geo-monitor-subject'
+import { GeoJourneyWorkspace } from '@geo-advisor/GeoJourneyWorkspace'
 import './index.css'
 
 const PRODUCT_HOST_CONTRACT = 'eios.product_host/v1'
@@ -41,17 +43,21 @@ function useProductHostSession() {
 type Workspace = 'overview' | 'monitor' | 'insight' | 'profile' | 'growth' | 'market'
 type NavItem = { id: Workspace; label: string; icon: ComponentType<{ className?: string }> }
 const NAV: NavItem[] = [
-  { id: 'overview', label: '经营总览', icon: BarChart3 }, { id: 'profile', label: '企业资料', icon: BookOpenCheck },
-  { id: 'monitor', label: '国产模型监测', icon: Radar }, { id: 'insight', label: '认知洞察', icon: ChartNoAxesCombined },
-  { id: 'growth', label: '增长行动', icon: Target }, { id: 'market', label: '市场情报', icon: Activity },
+  { id: 'overview', label: '总览', icon: BarChart3 },
+  { id: 'monitor', label: '监测', icon: Radar },
+  { id: 'insight', label: '差距', icon: ChartNoAxesCombined },
+  { id: 'growth', label: '内容行动', icon: Target },
+  { id: 'profile', label: '企业资料', icon: BookOpenCheck },
+  { id: 'market', label: '更多', icon: Wrench },
 ]
 const SUBNAV: Partial<Record<Workspace, Array<{ id: GeoFlowKind; label: string }>>> = {
-  monitor: [{ id: 'monitor', label: '监测工作台' }, { id: 'monitor-report', label: '模型回答' }, { id: 'monitor-analysis', label: '监测分析' }, { id: 'battle', label: '模型对比' }],
-  insight: [{ id: 'insight-overview', label: '差距诊断' }, { id: 'cognition', label: '品牌理解' }, { id: 'report', label: '阶段报告' }],
-  profile: [{ id: 'profile-overview', label: '资料总览' }, { id: 'kb-init', label: '导入企业资料' }, { id: 'assets', label: '内容资产' }, { id: 'auto-config', label: '首次设置' }],
-  growth: [{ id: 'questions', label: '客户会问什么' }, { id: 'gaps', label: '资料缺口' }, { id: 'plans', label: '内容计划' }, { id: 'content', label: '内容生成' }, { id: 'faq', label: '生成常见问答' }, { id: 'action-plan', label: '行动计划' }],
+  monitor: [{ id: 'monitor-report', label: '模型回答' }, { id: 'monitor-analysis', label: '统计分析' }, { id: 'monitor', label: '对象与任务' }, { id: 'questions', label: '监测问题' }, { id: 'cognition-map', label: '问题分布' }],
+  insight: [{ id: 'insight-overview', label: '有据差距' }, { id: 'gaps', label: '资料缺口' }, { id: 'cognition', label: '理解评估' }],
+  profile: [{ id: 'profile-overview', label: '资料与出处' }, { id: 'kb-init', label: '导入资料' }, { id: 'auto-config', label: '首次设置' }],
+  growth: [{ id: 'plans', label: '内容计划' }, { id: 'content', label: '撰写稿件' }, { id: 'assets', label: '内容资产' }, { id: 'action-plan', label: '行动排序' }],
+  market: [{ id: 'battle', label: '模型对照' }, { id: 'faq', label: '常见问答' }, { id: 'report', label: '阶段报告' }],
 }
-const DEFAULTS: Partial<Record<Workspace, GeoFlowKind>> = { monitor: 'monitor', insight: 'insight-overview', profile: 'profile-overview', growth: 'questions' }
+const DEFAULTS: Partial<Record<Workspace, GeoFlowKind>> = { monitor: 'monitor-report', insight: 'insight-overview', profile: 'profile-overview', growth: 'plans' }
 
 // 默认页只把已经存在的卡片排成一条业务路径；单点页仍由下方页签保留。
 // 这里不创建新的业务组件，也不改变任何卡片的数据或接口。
@@ -62,7 +68,7 @@ const WORKSPACE_BUNDLES: Partial<Record<Workspace, GeoFlowKind[]>> = {
 }
 
 const FLOW_WORKSPACE: Record<GeoFlowKind, Workspace> = {
-  'kb-init': 'profile', 'auto-config': 'profile', monitor: 'monitor', 'monitor-report': 'monitor', assets: 'profile', questions: 'growth', gaps: 'growth', cognition: 'insight', content: 'growth', battle: 'monitor', report: 'insight', plans: 'growth', 'action-plan': 'growth', 'insight-overview': 'insight', 'profile-overview': 'profile', 'monitor-analysis': 'monitor', faq: 'growth', 'cognition-map': 'insight',
+  'kb-init': 'profile', 'auto-config': 'profile', monitor: 'monitor', 'monitor-report': 'monitor', assets: 'growth', questions: 'monitor', gaps: 'insight', cognition: 'insight', content: 'growth', battle: 'market', report: 'market', plans: 'growth', 'action-plan': 'growth', 'insight-overview': 'insight', 'profile-overview': 'profile', 'monitor-analysis': 'monitor', faq: 'market', 'cognition-map': 'monitor',
 }
 
 const WORKSPACES = new Set<Workspace>(['overview', 'monitor', 'insight', 'profile', 'growth', 'market'])
@@ -75,14 +81,15 @@ function readGeoRoute(): { workspace: Workspace; flow?: GeoFlowKind } {
   const requestedFlow = params.get('view') as GeoFlowKind | null
   if (requestedFlow && FLOWS.has(requestedFlow)) {
     const flowWorkspace = FLOW_WORKSPACE[requestedFlow]
-    if (!requestedWorkspace || requestedWorkspace === flowWorkspace) return { workspace: flowWorkspace, flow: requestedFlow }
+    return { workspace: flowWorkspace, flow: requestedFlow }
   }
   if (requestedWorkspace && WORKSPACES.has(requestedWorkspace)) return { workspace: requestedWorkspace }
   try {
     const stored = JSON.parse(window.localStorage.getItem(GEO_ROUTE_STORAGE_KEY) ?? 'null') as { workspace?: unknown; flow?: unknown } | null
     const workspace = stored?.workspace as Workspace | undefined
     const flow = stored?.flow as GeoFlowKind | undefined
-    if (workspace && WORKSPACES.has(workspace) && (!flow || (FLOWS.has(flow) && FLOW_WORKSPACE[flow] === workspace))) return { workspace, ...(flow ? { flow } : {}) }
+    if (flow && FLOWS.has(flow)) return { workspace: FLOW_WORKSPACE[flow], flow }
+    if (workspace && WORKSPACES.has(workspace)) return { workspace }
   } catch {
     // 损坏的本地路由只影响恢复，不阻断 GEO 首屏。
   }
@@ -99,23 +106,10 @@ function writeGeoRoute(workspace: Workspace, flow?: GeoFlowKind) {
 }
 
 const WORKSPACE_COPY: Record<Exclude<Workspace, 'overview' | 'market' | 'insight' | 'profile'>, { eyebrow: string; title: string; description: string; note: string }> = {
-  monitor: { eyebrow: '模型监测', title: '国产大模型监测', description: '选择要持续观察的品牌，运行一轮真实客户问题，并核对模型原话。', note: '仅监测国产大模型' },
-  growth: { eyebrow: '增长闭环', title: '增长行动中心', description: '把客户问题、资料缺口和内容计划串成可执行的增长闭环。', note: '从洞察进入行动' },
+  monitor: { eyebrow: '模型监测', title: '模型如何回答客户的问题', description: '选择要持续观察的品牌，运行一轮真实客户问题，并核对模型原话。', note: '仅监测国产大模型' },
+  growth: { eyebrow: '增长闭环', title: '把差距变成一篇有依据的内容', description: '把客户问题、资料缺口和内容计划串成可执行的增长闭环。', note: '从洞察进入行动' },
 }
 
-const WORKSPACE_GUIDE: Partial<Record<Workspace, { current: string; purpose: string; next?: { label: string; target: Workspace } }>> = {
-  profile: { current: '企业资料', purpose: '先让 GEO 知道你是谁、卖什么，以及哪些资料可以作为依据。', next: { label: '资料准备好后去运行监测', target: 'monitor' } },
-  monitor: { current: '模型监测', purpose: '把客户问题交给国产模型，记录模型原话和主体是否被正确识别。', next: { label: '完成一轮监测后看认知差距', target: 'insight' } },
-  insight: { current: '认知洞察', purpose: '把模型回答整理成有证据的优势、缺口和风险。', next: { label: '确认主体后去做增长行动', target: 'growth' } },
-  growth: { current: '增长行动', purpose: '把缺口变成资料、内容和可复测的行动。', next: { label: '发布后回到模型监测', target: 'monitor' } },
-  market: { current: '市场情报', purpose: '追踪竞品和行业变化，把外部信号变成内容线索。', next: { label: '确认信号后去做增长行动', target: 'growth' } },
-}
-
-function WorkspaceGuide({ workspace, onNavigate }: { workspace: Workspace; onNavigate: (target: string) => void }) {
-  const guide = WORKSPACE_GUIDE[workspace]
-  if (!guide) return null
-  return <div className="geo-workspace-guide" role="note"><div><span>你现在在</span><b>{guide.current}</b><p>{guide.purpose}</p></div>{guide.next ? <button type="button" onClick={() => onNavigate(guide.next!.target)}>{guide.next.label} <span>→</span></button> : null}</div>
-}
 
 function WorkspaceHeader({ workspace }: { workspace: Exclude<Workspace, 'overview' | 'market' | 'insight' | 'profile'> }) {
   const copy = WORKSPACE_COPY[workspace]
@@ -127,6 +121,7 @@ function GeoProduct() {
   const initialRoute = readGeoRoute()
   const [active, setActive] = useState<Workspace>(initialRoute.workspace)
   const [flows, setFlows] = useState(() => ({ ...DEFAULTS, ...(initialRoute.flow ? { [initialRoute.workspace]: initialRoute.flow } : {}) }))
+  const [legacyPreview, setLegacyPreview] = useState(false)
   const [advanced, setAdvanced] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
   const [demoMode, setDemoMode] = useState(() => window.localStorage.getItem('eios-geo-demo-fixtures') === 'on')
@@ -134,13 +129,16 @@ function GeoProduct() {
   const flow = flows[active]
   useEffect(() => { writeGeoRoute(active, flow) }, [active, flow])
   function navigate(next: string) {
+    setLegacyPreview(false)
     if (!NAV.some((item) => item.id === next)) return
     const target = next as Workspace
     setActive(target)
     const defaultFlow = DEFAULTS[target]
+    if (!defaultFlow) setFlows((current) => ({ ...current, [target]: undefined }))
     if (defaultFlow) setFlows((current) => ({ ...current, [target]: defaultFlow }))
   }
   function go(kind: string, options?: { focus?: string; seed?: string }) {
+    setLegacyPreview(false)
     if (!(kind in FLOW_WORKSPACE)) return
     const target = FLOW_WORKSPACE[kind as GeoFlowKind]
     setActive(target)
@@ -165,15 +163,20 @@ function GeoProduct() {
     return <GeoCardErrorBoundary label={labels[kind]}><GeoFlowRouter kind={kind} /></GeoCardErrorBoundary>
   }
   return <GeoDemoModeContext.Provider value={{ enabled: demoMode, toggle: toggleDemoMode }}><GeoNavContext.Provider value={go}><GeoNavParamsContext.Provider value={navParams}><main className="geo-product-shell">
-    <header className="geo-product-nav"><nav aria-label="GEO 功能">{NAV.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-label={label} aria-current={active === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon /><span>{label}</span></button>)}</nav><div className="product-utilities"><button className="guide-trigger" aria-label="打开 GEO 使用说明" onClick={() => setGuideOpen(true)}><Sparkles/><span>怎么使用</span></button><button className={`demo-trigger${demoMode ? ' active' : ''}`} aria-label={`演示数据（仅用于内测样例）：${demoMode ? '已开启' : '已关闭'}`} aria-pressed={demoMode} onClick={toggleDemoMode}><FlaskConical/><span>演示数据 {demoMode ? '开' : '关'}</span></button><button className="advanced-trigger" aria-label="高级工具" onClick={()=>setAdvanced(true)}><Wrench/><span>高级工具</span></button><div className="geo-rail-status"><CircleDot /><span>{connected ? '已连接' : '等待会话'}</span></div></div></header>
-    <section className="geo-workspace">
-      {active !== 'overview' && active !== 'market' && active !== 'insight' && active !== 'profile' && <WorkspaceHeader workspace={active} />}
-      {SUBNAV[active] && <nav className="geo-subnav" aria-label="页内功能">{SUBNAV[active]?.map((item) => <button key={item.id} type="button" aria-current={flow === item.id ? 'page' : undefined} className={flow === item.id ? 'active' : ''} onClick={() => setFlows((current) => ({ ...current, [active]: item.id }))}>{item.label}</button>)}</nav>}
-      <WorkspaceGuide workspace={active} onNavigate={navigate} />
+    <header className="geo-product-nav"><div className="geo-r1-brand"><b>GEO</b><span>企业模型可见性</span></div><nav aria-label="GEO 功能">{NAV.map(({ id, label, icon: Icon }) => <button key={id} type="button" aria-label={label} aria-current={active === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon /><span>{label}</span></button>)}</nav><div className="product-utilities"><button className="guide-trigger" aria-label="打开 GEO 使用说明" onClick={() => setGuideOpen(true)}><Sparkles/><span>怎么使用</span></button><button className={`demo-trigger${demoMode ? ' active' : ''}`} aria-label={`演示数据（仅用于内测样例）：${demoMode ? '已开启' : '已关闭'}`} aria-pressed={demoMode} onClick={toggleDemoMode}><FlaskConical/><span>演示数据 {demoMode ? '开' : '关'}</span></button><button className="advanced-trigger" aria-label="高级工具" onClick={()=>setAdvanced(true)}><Wrench/><span>高级工具</span></button><div className="geo-rail-status"><CircleDot /><span>{connected ? '已连接' : '等待会话'}</span></div></div></header>
+    <section className="geo-workspace geo-r1-workspace">
+      {!demoMode && active !== 'overview' && active !== 'market' && active !== 'insight' && active !== 'profile' && <WorkspaceHeader workspace={active} />}
+      {active === 'market' && <button className="geo-more-market" onClick={()=>setFlows((current)=>({...current,market:undefined}))}>市场线索</button>}
+      {demoMode && (active === 'monitor' || active === 'insight' || active === 'growth') && <details className="geo-jw-tools"><summary>辅助功能与原有入口（分析、任务、评估等）</summary><nav className="geo-subnav">{SUBNAV[active]?.map(item=><button key={item.id} onClick={()=>{setLegacyPreview(true);setFlows(current=>({...current,[active]:item.id}))}}>{item.label}</button>)}</nav></details>}
+      {SUBNAV[active] && !(demoMode && ['monitor','insight','growth'].includes(active)) && <nav className="geo-subnav" aria-label="页内功能">{SUBNAV[active]?.map((item) => <button key={item.id} type="button" aria-current={flow === item.id ? 'page' : undefined} className={flow === item.id ? 'active' : ''} onClick={() => setFlows((current) => ({ ...current, [active]: item.id }))}>{item.label}</button>)}</nav>}
+      {connected && active === 'monitor' && legacyPreview && <button className="geo-btn" onClick={()=>navigate('monitor')}>返回监测主入口 / 新建对象</button>}
+      {connected && <div className="geo-scope-bar">{demoMode ? <div><span className="geo-demo-pill">演示样例</span><b>云栖示例家居</b><span>3 轮 · 4 个模型 · 固定样本</span></div> : <MonitorSubjectPicker />}<span>当前范围应用于支持主体筛选的读面</span></div>}
+      {connected && <div className="geo-journey-strip" aria-label="GEO 操作主线">{[{id:'monitor',number:'01',title:'看模型回答',detail:'原话与监测结果'}, {id:'insight',number:'02',title:'确认差距',detail:'结论与对应证据'}, {id:'growth',number:'03',title:'完成内容',detail:'计划、稿件与发布登记'}, {id:'monitor',number:'04',title:'新轮次对比',detail:'发布后重新监测'}].map((step,i)=><button key={i} onClick={()=>navigate(step.id)} className={active===step.id && i!==3 ? 'current' : ''}><span>{step.number}</span><div><b>{step.title}</b><small>{step.detail}</small></div><span>→</span></button>)}</div>}
+      {connected && demoMode && <p className="geo-preview-notice">界面验收样例 · 数字来自隔离样本，正式资料生成与发布后效果尚未完成真实链验收。</p>}
       {connected ? <>
         {active === 'overview' && <GeoEnterpriseOverview onNavigate={navigateDestination} />}
-        {active === 'market' && <GeoMarketWorkspace />}
-        {active !== 'overview' && active !== 'market' && flow ? (
+        {active === 'market' && !flow && <GeoMarketWorkspace />}
+        {demoMode && (active === 'monitor' || active === 'insight' || active === 'growth') && !legacyPreview && !['monitor','questions','cognition-map','cognition','action-plan'].includes(flow ?? '') ? <GeoJourneyWorkspace workspace={active} /> : active !== 'overview' && flow ? (
           <div className={WORKSPACE_BUNDLES[active]?.includes(flow) && WORKSPACE_BUNDLES[active]?.[0] === flow ? `geo-legacy-surface geo-flow-bundle geo-flow-bundle-${active}` : 'geo-legacy-surface'}>
             {WORKSPACE_BUNDLES[active]?.includes(flow) && WORKSPACE_BUNDLES[active]?.[0] === flow
               ? WORKSPACE_BUNDLES[active]?.map((kind) => <section className="geo-flow-bundle-item" key={kind}>{renderFlow(kind)}</section>)

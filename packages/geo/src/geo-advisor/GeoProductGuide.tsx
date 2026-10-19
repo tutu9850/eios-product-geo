@@ -6,7 +6,7 @@ const STEPS: Array<{ workspace: GuideWorkspace; icon: typeof BookOpenCheck; titl
   { workspace: 'profile', icon: BookOpenCheck, title: '准备企业资料', detail: '告诉 GEO 你是谁、卖什么、有什么真实交付能力。', result: '得到可引用的企业事实' },
   { workspace: 'monitor', icon: Radar, title: '运行模型监测', detail: '把客户会问的问题交给国产大模型，保存模型原话。', result: '知道品牌有没有被看见' },
   { workspace: 'insight', icon: ChartNoAxesCombined, title: '看懂认知差距', detail: '区分“被提到”“被正确理解”和“被明确推荐”。', result: '找到需要补证据的地方' },
-  { workspace: 'growth', icon: Target, title: '推进增长行动', detail: '把问题和缺口变成资料、内容，发布后再复测。', result: '形成可重复的改进闭环' },
+  { workspace: 'growth', icon: Target, title: '完成内容行动', detail: '把问题和缺口变成资料、内容，登记发布后运行新轮次。', result: '形成可重复的改进闭环' },
 ]
 
 const OBJECTS = [
@@ -21,7 +21,7 @@ const OBJECTS = [
 ]
 
 const WORKSPACE_LABEL: Record<GuideWorkspace, string> = {
-  overview: '经营总览', profile: '企业资料', monitor: '国产模型监测', insight: '认知洞察', growth: '增长行动', market: '市场情报',
+  overview: '总览', profile: '企业资料', monitor: '监测', insight: '差距', growth: '内容行动', market: '更多',
 }
 
 export function GeoProductGuide({ workspace, onNavigate, onClose }: { workspace: GuideWorkspace; onNavigate: (workspace: GuideWorkspace) => void; onClose: () => void }) {

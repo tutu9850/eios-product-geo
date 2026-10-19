@@ -1,6 +1,6 @@
 # GEO 当前现场
 
-最后核实：2026-10-12（北京时间），两工作树按功能保全提交，当前源码候选与历史打包候选分别保留，不推送；[收口报告](docs/audits/2026-10-12-geo-git-closeout/报告.md)。真实链审计与重构候选已交付，正式后端适配与端到端验收仍 PARTIAL。只读探测8090 GEO门401、8091未监听，未登录核验主环境数据。规范入口见 [docs/README](docs/README.md)；历史现场见[归档](docs/archive/INDEX.md)。
+最后核实：2026-10-19（北京时间），R1 前端结构及监测/差距/内容行动合并样例闭环已在 Client 壳内隔离展示；当前前端改动按用户指定新仓库推送授权提交保全，历史打包树内容不动；见 [推送授权](docs/decisions/2026-10-19-geo-push-authorization.md)。两工作树按功能保全提交，当前源码候选与历史打包候选分别保留；[收口报告](docs/audits/2026-10-12-geo-git-closeout/报告.md)。真实链审计与重构候选已交付，正式后端适配与端到端验收仍 PARTIAL。只读探测8090 GEO门401、8091未监听，未登录核验主环境数据。规范入口见 [docs/README](docs/README.md)；历史现场见[归档](docs/archive/INDEX.md)。
 
 ## 1. 主轴
 
@@ -24,7 +24,11 @@
 | 内容链局部候选 | 自测通过待验收 | [10-09 证据](docs/audits/geo-local-seams-2026-10-09/REPORT.md)；原卡保留，未登记为新主轴已批卡 |
 | A5 GEO 正式读口迁移 | 后端隔离候选 PARTIAL | 用户明确批准路径和“先做后端适配”；[本轮授权](docs/decisions/2026-10-11-geo-backend-authorization.md)、[391通过/5跳过证据](docs/audits/2026-10-11-geo-consumption-plan/后端报告.md)；中控登记、共享身份/F7接缝及联合验收待交付 |
 | GEO 演示样本与功能接线盘点 | 自测通过待验收；完整审计 PARTIAL | [10-12直接授权](docs/decisions/2026-10-12-geo-demo-ui-authorization.md)、[报告](docs/audits/2026-10-12-geo-demo-ui/报告.md)；36槽位/33回答/3失败，5项样例测试及隔离浏览器检查通过，后端391通过/5跳过；共享登记、独立旅程走查和真实接线未完成 |
-| GEO 真实接线审计与产品重构方案 | 审计交付 DONE；端到端及独立走查 PARTIAL | 本轮用户直接授权继续审计并给方案；[真实链报告](docs/audits/2026-10-12-geo-real-wiring/报告.md)、[重构候选](docs/engineering/GEO-PRODUCT-RESTRUCTURE-2026-10-12.md)；临时库逐阶段写读回、两仓门对照、59项定向测试通过；未授权实施重构 |
+| GEO 真实接线审计与产品重构方案 | 审计交付 DONE；端到端及独立走查 PARTIAL | 本轮用户直接授权继续审计并给方案；[真实链报告](docs/audits/2026-10-12-geo-real-wiring/报告.md)、[重构候选](docs/engineering/GEO-PRODUCT-RESTRUCTURE-2026-10-12.md)；临时库逐阶段写读回、两仓门对照、59项定向测试通过；现已授权 R1 前端预览；真实闭环与后端修复未施工 |
+
+| GEO 三页合并样例闭环 | 前端样例 DONE；正式接线 PARTIAL | 用户直接授权仅前端；[报告](docs/audits/2026-10-12-geo-ui-merge/报告.md)，6项样例测试与Client内操作闭环通过，后端及产品门未改 |
+
+| 监测对象创建 / 首轮样例补齐 | DONE；其他完整演练仍PARTIAL | 用户授权仅前端，标题创建入口、问题/模型配置与首轮读回通过；[报告及遗漏清单](docs/audits/2026-10-13-geo-monitor-create/报告.md)，7项样例测试通过；后端未改 |
 
 ## 4. 代码与环境现场
 
@@ -39,6 +43,8 @@
 | GEO UI 制品 | 10-12 演示检查仅输出任务临时目录 | 类型/5项样例测试/隔离构建通过，未覆盖在用 packages/geo/dist；10-09误写尚无可靠原制品恢复，当前served版本仍未知 |
 
 ## 5. 阻塞
+
+- 10-19上传前复测：前端类型/7项样例/构建通过；后端历史Foundation合同生成物导入CanonicalAttributeListResultV2失败（136通过/13失败后中断），需要匹配依赖基线后重新验证，不声明本轮后端通过。
 
 - 真实接线审计已复现：Product API缺intelligence/progress放行且UI吞错；认知评估无主体/稳定原话归属导致跨主体读分；效果统计含失败槽位、缺主体与发布后时间窗，无新轮次仍出neutral。责任修复待独立卡，不在审计中改业务。严格首次用户走查尚缺独立目标度量，产品重构目前为候选。
 - 路径及后端施工已获用户批准；C4 合法逐请求 reader 委托、冻结 dossier/chunk 读面及有界对象范围仍待唯一负责人交付，中控 A5 登记待同步。部署级 system 凭证不能替代当前员工。
@@ -56,5 +62,5 @@
 
 - 后端四文件隔离适配已完成；10-12另获准完成演示夹具与必要前端接线，未授权的正式读口UI/共享接缝迁移、旧 candidate 链删除、历史数据修补仍暂停。391通过/5跳过及演示浏览器自测只证明隔离环境，C4–C8主环境仍未验证。
 - 自动升版、新 pin 续跑、第二 chunk、跨 DOCX 补证、自动实质纠错、非 current 历史投影、VideoPublish 按主轴暂停。
-- 不改 Foundation、Product API、Integrations、Provider、Release 及部署配置；不真实调用模型。本轮用户已明确授权两树现有成果本地分批提交，此前“不提交”限制在该范围内解除；仍不推送，不自动合并，不实施产品级重构。
+- 不改 Foundation、Product API、Integrations、Provider、Release 及部署配置；不真实调用模型。本轮用户已明确授权两树现有成果本地分批提交，此前“不提交”限制在该范围内解除；10-19已直接授权向tutu9850/eios-product-geo推送；不自动合并；现已直接授权前端 R1 预览，见 [授权](docs/decisions/2026-10-12-geo-ui-r1-authorization.md)，不扩到后端及正式部署。
 - 范围外债统一登记见 [Foundation DEBT](../eios-foundation/docs/cards/DEBT.md)，本仓不另造共享登记。

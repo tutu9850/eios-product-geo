@@ -9,7 +9,7 @@
     "build:ui": "npm run build --workspace @eios-product/geo",
     "typecheck:ui": "npm run typecheck --workspace @eios-product/geo",
     "test:api": "python -m pytest",
-    "test:demo:ui": "node --experimental-strip-types --test packages/geo/tests/demo-monitor.test.mjs",
+    "test:demo:ui": "node --experimental-strip-types --test packages/geo/tests/demo-monitor.test.mjs packages/geo/tests/demo-journey.test.mjs packages/geo/tests/demo-monitor-setup.test.mjs",
     "check:ui": "npm run typecheck:ui && npm run test:demo:ui && npm run build:ui"
   }
 }

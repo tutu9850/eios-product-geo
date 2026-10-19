@@ -1,0 +1,94 @@
+
+> eios-product-geo@0.1.0 check:ui
+> npm run typecheck:ui && npm run test:demo:ui && npm run build:ui
+
+
+> eios-product-geo@0.1.0 typecheck:ui
+> npm run typecheck --workspace @eios-product/geo
+
+
+> @eios-product/geo@0.1.0 typecheck
+> tsc --noEmit
+
+
+> eios-product-geo@0.1.0 test:demo:ui
+> node --experimental-strip-types --test packages/geo/tests/demo-monitor.test.mjs packages/geo/tests/demo-journey.test.mjs
+
+TAP version 13
+# (node:35344) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: sample action preserves evidence, refuses unsaved publication, and requires a later round
+ok 1 - sample action preserves evidence, refuses unsaved publication, and requires a later round
+  ---
+  duration_ms: 1.252042
+  ...
+# (node:35345) ExperimentalWarning: Type Stripping is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: raw observations account for all slots without inventing successful answers
+ok 2 - raw observations account for all slots without inventing successful answers
+  ---
+  duration_ms: 0.689042
+  ...
+# Subtest: cross-page totals and details reconcile with raw observations
+ok 3 - cross-page totals and details reconcile with raw observations
+  ---
+  duration_ms: 0.083042
+  ...
+# Subtest: empty and all-failed inputs cannot produce brand or citation performance
+ok 4 - empty and all-failed inputs cannot produce brand or citation performance
+  ---
+  duration_ms: 0.452166
+  ...
+# Subtest: removing a round changes both details and cumulative totals
+ok 5 - removing a round changes both details and cumulative totals
+  ---
+  duration_ms: 0.172417
+  ...
+# Subtest: a second subject cannot change the selected brand metrics or details
+ok 6 - a second subject cannot change the selected brand metrics or details
+  ---
+  duration_ms: 0.716334
+  ...
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 68.713458
+
+> eios-product-geo@0.1.0 build:ui
+> npm run build --workspace @eios-product/geo
+
+
+> @eios-product/geo@0.1.0 build
+> tsc --noEmit && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 2150 modules transformed.
+
+(!) outDir /tmp/eios-test/geo-r1-20261012/ui is not inside project root and will not be emptied.
+Use --emptyOutDir to override.
+
+rendering chunks...
+computing gzip size...
+../../../../../tmp/eios-test/geo-r1-20261012/ui/index.html                                              0.42 kB │ gzip:   0.28 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2     10.25 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2      11.23 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2       18.74 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/inter-greek-wght-normal-CkhJZR-_.woff2          18.99 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2   25.96 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/inter-latin-wght-normal-Dx4kXJAl.woff2          48.25 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2      85.06 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/index-DDxOeP3p.css                             141.50 kB │ gzip:  28.12 kB
+../../../../../tmp/eios-test/geo-r1-20261012/ui/assets/index-COd7KIYC.js                              606.79 kB │ gzip: 178.23 kB
+
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 253ms
